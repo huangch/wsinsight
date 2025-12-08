@@ -246,7 +246,6 @@ WSInfer-compatible models: ::
 
   wsinfer-zoo ls
 
-
 .. list-table::
    :header-rows: 1
 
