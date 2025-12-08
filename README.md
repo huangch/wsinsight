@@ -28,9 +28,9 @@ WSInsight is a fork of [WSInfer](https://github.com/SBU-BMI/wsinfer) that delive
 |Original H&E ROI                                                   |                                                                           |
 |:-----------------------------------------------------------------:|:-------------------------------------------------------------------------:|
 |![original H&amp;E](docs/_static/roi-hne.png)                      |                                                                           |
-|Immune Cells/Lympho Regions                                        |Neoplastic Cells/Lympho Regions                                            |
+|Immune Cells (green) / Lympho Regions (blue)                       |Neoplastic Cells (yellow) / Lympho Regions (blue)                          |
 |![immune cells/lympho regions](docs/_static/roi-lympho-immune.png) |![neoplastic cells/lympho regions](docs/_static/roi-lympho-neoplastic.png) |
-|Immune Cells/Tumor Regions                                         |Neoplastic Cells/Tumor Regions                                             |
+|Immune Cells (green) / Tumor Regions (red)                         |Neoplastic Cells (yellow) / Tumor Regions (red)                            |
 |![immune cells/tumor regions](docs/_static/roi-tumor-immune.png)   |![neoplastic cells/tumor regions](docs/_static/roi-tumor-neoplastic.png)   |
 
 ## Documentation
