@@ -115,6 +115,8 @@ Visual overview
 Integrative patch-level and single-cell inference
 -------------------------------------------------
 
+The models used in this experiment include:`CellViT-SAM-H-x40`, `breast-tumor-resnet34.tcga-brca`, and `pancancer-lymphocytes-inceptionv4.tcga`.
+
 Original H&E ROI
 
 .. image:: _static/roi-hne.png
@@ -131,15 +133,15 @@ Original H&E ROI
 .. |img-roi-tumor-neoplastic| image:: _static/roi-tumor-neoplastic.png
   :alt: Neoplastic cells in tumor regions
 
-+----------------------------------------------+-----------------------------------------------+
-| Immune Cells / Lympho Regions                | Neoplastic Cells / Lympho Regions             |
-+----------------------------------------------+-----------------------------------------------+
-| |img-roi-lympho-immune|                      | |img-roi-lympho-neoplastic|                   |
-+----------------------------------------------+-----------------------------------------------+
-| Immune Cells / Tumor Regions                 | Neoplastic Cells / Tumor Regions              |
-+----------------------------------------------+-----------------------------------------------+
-| |img-roi-tumor-immune|                       | |img-roi-tumor-neoplastic|                    |
-+----------------------------------------------+-----------------------------------------------+
++----------------------------------------------+---------------------------------------------------+
+| Immune Cells (green) / Lympho Regions (blue) | Neoplastic Cells (yellow) / Lympho Regions (blue) |
++----------------------------------------------+---------------------------------------------------+
+| |img-roi-lympho-immune|                      | |img-roi-lympho-neoplastic|                       |
++----------------------------------------------+---------------------------------------------------+
+| Immune Cells (green) / Tumor Regions (red)   | Neoplastic Cells (yellow) / Tumor Regions (red)   |
++----------------------------------------------+---------------------------------------------------+
+| |img-roi-tumor-immune|                       | |img-roi-tumor-neoplastic|                        |
++----------------------------------------------+---------------------------------------------------+
 
 WSInsight-native workflow (CellViT models)
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
