@@ -3,7 +3,7 @@
 .. image:: _static/logo.svg
   :alt: WSInsight logo
   :align: left
-  :height: 36px
+  :height: 48px
 
 WSInsight: Cloud-Native Single-Cell Pathology Inference on Whole Slide Images
 =============================================================================
