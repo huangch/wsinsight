@@ -229,13 +229,8 @@ GitHub issue <https://github.com/SBU-BMI/wsinsight/issues/new>`_.
 Available models
 ----------------
 
-WSInsight also publishes native CellViT/HoverNet identifiers that appear only in our
+WSInsight publishes native CellViT/HoverNet identifiers that appear only in our
 registry. A non-exhaustive list is provided below.
-
-WSInsight-native models
-~~~~~~~~~~~~~~~~~~~~~~~
-
-Cell-level and hybrid models shipped exclusively with WSInsight:
 
 * ``CellViT-256-x20``
 * ``CellViT-256-x40``
@@ -245,6 +240,69 @@ Cell-level and hybrid models shipped exclusively with WSInsight:
 * ``CellViT-SAM-H-x40-AMP``
 * ``CellViT-Virchow-x40-AMP``
 * ``hovernet_fast_pannuke``
+
+After installing :code:`wsinsight`, use the following command to list the most up-to-date
+WSInfer-compatible models: ::
+
+  wsinfer-zoo ls
+
+
+.. list-table::
+   :header-rows: 1
+
+   * - Classification task
+     - Output classes
+     - Architecture
+     - Dataset
+     - Resolution (px @ um/px)
+     - Reference
+   * - Breast adenocarcinoma detection
+     - no-tumor, tumor
+     - ResNet34
+     - TCGA BRCA
+     - 350 @ 0.25
+     - `Ref <https://doi.org/10.1016%2Fj.ajpath.2020.03.012>`_
+   * - Colorectal tissue classification
+     - background, normal_colon_mucosa, debris, colorectal_adenocarcinoma_epithelium, adipose, mucus, smooth_muscle, cancer_associated_stroma, lymphocytes
+     - ResNet50 (trained by TIAToolbox dev team)
+     - NCT-CRC-HE-100K
+     - 224 @ 0.5
+     - `Ref <https://doi.org/10.1038/s43856-022-00186-5>`_
+   * - Lung adenocarcinoma detection
+     - lepidic, benign, acinar, micropapillary, mucinous, solid
+     - ResNet34
+     - TCGA LUAD
+     - 350 @ 0.5
+     - `Ref <https://github.com/SBU-BMI/quip_lung_cancer_detection>`_
+   * - Lymph node metastasis detection in breast cancer
+     - nomets, mets
+     - ResNet50 (trained via TIAToolbox dev team)
+     - PatchCamelyon
+     - 96 @ 1.0
+     - `Ref <https://doi.org/10.1038/s43856-022-00186-5>`_
+   * - Lymphocyte detection
+     - til-negative, til-positive
+     - InceptionV4 (without batchnorm)
+     - 23 TCGA studies
+     - 100 @ 0.5
+     - `Ref <https://doi.org/10.3389/fonc.2021.806603>`_
+   * - Pancreatic adenocarcinoma detection
+     - tumor-positive
+     - Preactivation ResNet34
+     - TCGA PAAD
+     - 350 @ 1.5
+     - `Ref <https://doi.org/10.1007/978-3-030-32239-7_60>`_
+   * - Prostate adenocarcinoma detection
+     - grade3, grade4or5, benign
+     - ResNet34
+     - TCGA PRAD
+     - 175 @ 0.5
+     - `Ref <https://github.com/SBU-BMI/quip_prad_cancer_detection>`_
+
+WSInsight-native models
+~~~~~~~~~~~~~~~~~~~~~~~
+
+
 
 
 
