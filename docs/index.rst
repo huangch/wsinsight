@@ -79,6 +79,10 @@ Visual overview
 Integrative patch-level and single-cell inference
 -------------------------------------------------
 
+.. image:: _static/roi-hne.png
+  :alt: Original H&E ROI
+  :align: center
+
 .. |img-roi-lympho-immune| image:: _static/roi-lympho-immune.png
   :alt: Immune cells in lymphoid regions
 .. |img-roi-lympho-neoplastic| image:: _static/roi-lympho-neoplastic.png
@@ -89,7 +93,7 @@ Integrative patch-level and single-cell inference
   :alt: Neoplastic cells in tumor regions
 
 +----------------------------------------------+-----------------------------------------------+
-| Immune Cells / Lymphoid Regions              | Neoplastic Cells / Lymphoid Regions           |
+| Immune Cells / Lympho Regions                | Neoplastic Cells / Lympho Regions             |
 +==============================================+===============================================+
 | |img-roi-lympho-immune|                      | |img-roi-lympho-neoplastic|                   |
 +----------------------------------------------+-----------------------------------------------+
