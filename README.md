@@ -25,16 +25,10 @@ Heatmap of Dead Cell Probability                      |Heatmap of Connective Cel
 
 ## Integrative Patch-Level and Single-Cell Inference
 
-Original H&E ROI
-
-<p align="center">
-  <img src="docs/_static/roi-hne.png"
-       alt="original H&amp;E"
-       width="50%">
-</p>
-
-Immune Cells/Lympho Regions                                         |Neoplastic Cells/Lympho Regions
+Original H&E ROI                                                    |
 :------------------------------------------------------------------:|:------------------------------------------------------------------:
+![original H&amp;E](docs/_static/roi-hne.png)  |
+Immune Cells/Lympho Regions                                         |Neoplastic Cells/Lympho Regions
 ![immune cells/lympho regions](docs/_static/roi-lympho-immune.png)  | ![neoplastic cells/lympho regions](docs/_static/roi-lympho-neoplastic.png)
 Immune Cells/Tumor Regions                                      |Neoplastic Cells/Tumor Regions
 ![immune cells/tumor regions](docs/_static/roi-tumor-immune.png)|![neoplastic cells/tumor regions](docs/_static/roi-tumor-neoplastic.png)
