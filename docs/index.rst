@@ -104,7 +104,7 @@ Visual overview
 
 +------------------------+------------------------------+
 | Original H&E           | Heatmap of Tumor Probability |
-+========================+==============================+
++------------------------+------------------------------+
 | |img-tissue|           | |img-heatmap-tumor|          |
 +------------------------+------------------------------+
 | Heatmap of Dead Cells  | Heatmap of Connective Cells  |
