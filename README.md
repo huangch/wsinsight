@@ -84,11 +84,11 @@ WSInsight adds cell-centric Vision Transformer and HoverNet variants that are no
 
 4. Review the outputs in `results-cellvit/model-outputs-*` and downstream GeoJSON artifacts just like the compatible workflow.
 
-| **Method** | **Architecture & Key Features** | **mPQ** | **bPQ** |
-|-----------|----------------------------------|--------|--------|
-| **CellViT** [C1] | Vision Transformer encoder with U-Net style decoder;<br>trained on multi-tissue datasets (e.g., PanNuke);<br>supports multi-class nuclear instance segmentation & classification. | 0.4980 | 0.6793 |
-| **HoVer-Net** [C2] | ResNet50 CNN backbone with dual-branch decoder;<br>predicts nuclear masks + horizontal/vertical (HoVer) distance maps;<br>improves instance separation. | 0.4629 | 0.6596 |
-| **StarDist–ResNet50** [C3, C4] | ResNet50 backbone + star-convex polygon representation;<br>predicts radial distances for nuclei delineation along fixed rays. | 0.4796 | 0.6692 |
+| **Method** | **Architecture & Key Features** | **mPQ** | **bPQ** | **Reference** |
+|-----------|----------------------------------|--------|--------|-----------|
+| **CellViT** [C1] | Vision Transformer encoder with U-Net style decoder;<br>trained on multi-tissue datasets (e.g., PanNuke);<br>supports multi-class nuclear instance segmentation & classification. | 0.4980 | 0.6793 | Ref |
+| **HoVer-Net** [C2] | ResNet50 CNN backbone with dual-branch decoder;<br>predicts nuclear masks + horizontal/vertical (HoVer) distance maps;<br>improves instance separation. | 0.4629 | 0.6596 | Ref |
+| **StarDist–ResNet50** [C3, C4] | ResNet50 backbone + star-convex polygon representation;<br>predicts radial distances for nuclei delineation along fixed rays. | 0.4796 | 0.6692 | Ref, Ref |
 
 Available WSInsight model names:
 
