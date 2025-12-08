@@ -158,6 +158,39 @@ not part of upstream WSInfer. To run them:
 4. Review the outputs in ``results-cellvit/model-outputs-*`` and downstream
   GeoJSON artifacts just like the compatible workflow.
 
+Cell-level model comparison
+~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. list-table::
+   :header-rows: 1
+
+   * - Method
+     - Architecture & Key Features
+     - mPQ
+     - bPQ
+     - Reference
+   * - **CellViT**
+     - Vision Transformer encoder with U-Net style decoder; trained on
+       multi-tissue datasets (e.g., PanNuke); supports multi-class nuclear
+       instance segmentation & classification.
+     - 0.4980
+     - 0.6793
+     - `Ref <https://doi.org/10.1016/j.media.2024.103143>`_
+   * - **HoVer-Net**
+     - ResNet50 CNN backbone with dual-branch decoder; predicts nuclear masks
+       + horizontal/vertical (HoVer) distance maps; improves instance
+       separation.
+     - 0.4629
+     - 0.6596
+     - `Ref <https://doi.org/10.1016/j.media.2019.101563>`_
+   * - **StarDist–ResNet50**
+     - ResNet50 backbone + star-convex polygon representation; predicts
+       radial distances for nuclei delineation along fixed rays.
+     - 0.4796
+     - 0.6692
+     - `Ref1 <https://link.springer.com/chapter/10.1007/978-3-030-00934-2_30>`_,
+       `Ref2 <https://openaccess.thecvf.com/content_cvpr_2016/html/He_Deep_Residual_Learning_CVPR_2016_paper.html>`_
+
 All commands understand local filesystem paths, ``s3://`` URIs, and
 ``gdc://`` manifests for ``--wsi-dir``. Outputs such as ``--results-dir``,
 GeoJSON, and OME-CSV artifacts can be written to local disks or S3 using the
@@ -196,65 +229,8 @@ GitHub issue <https://github.com/SBU-BMI/wsinsight/issues/new>`_.
 Available models
 ----------------
 
-After installing :code:`wsinsight`, use the following command to list the most up-to-date
-WSInfer-compatible models: ::
-
-  wsinfer-zoo ls
-
 WSInsight also publishes native CellViT/HoverNet identifiers that appear only in our
 registry. A non-exhaustive list is provided below.
-
-.. list-table::
-   :header-rows: 1
-
-   * - Classification task
-     - Output classes
-     - Architecture
-     - Dataset
-     - Resolution (px @ um/px)
-     - Reference
-   * - Breast adenocarcinoma detection
-     - no-tumor, tumor
-     - ResNet34
-     - TCGA BRCA
-     - 350 @ 0.25
-     - `Ref <https://doi.org/10.1016%2Fj.ajpath.2020.03.012>`_
-   * - Colorectal tissue classification
-     - background, normal_colon_mucosa, debris, colorectal_adenocarcinoma_epithelium, adipose, mucus, smooth_muscle, cancer_associated_stroma, lymphocytes
-     - ResNet50 (trained by TIAToolbox dev team)
-     - NCT-CRC-HE-100K
-     - 224 @ 0.5
-     - `Ref <https://doi.org/10.1038/s43856-022-00186-5>`_
-   * - Lung adenocarcinoma detection
-     - lepidic, benign, acinar, micropapillary, mucinous, solid
-     - ResNet34
-     - TCGA LUAD
-     - 350 @ 0.5
-     - `Ref <https://github.com/SBU-BMI/quip_lung_cancer_detection>`_
-   * - Lymph node metastasis detection in breast cancer
-     - nomets, mets
-     - ResNet50 (trained via TIAToolbox dev team)
-     - PatchCamelyon
-     - 96 @ 1.0
-     - `Ref <https://doi.org/10.1038/s43856-022-00186-5>`_
-   * - Lymphocyte detection
-     - til-negative, til-positive
-     - InceptionV4 (without batchnorm)
-     - 23 TCGA studies
-     - 100 @ 0.5
-     - `Ref <https://doi.org/10.3389/fonc.2021.806603>`_
-   * - Pancreatic adenocarcinoma detection
-     - tumor-positive
-     - Preactivation ResNet34
-     - TCGA PAAD
-     - 350 @ 1.5
-     - `Ref <https://doi.org/10.1007/978-3-030-32239-7_60>`_
-   * - Prostate adenocarcinoma detection
-     - grade3, grade4or5, benign
-     - ResNet34
-     - TCGA PRAD
-     - 175 @ 0.5
-     - `Ref <https://github.com/SBU-BMI/quip_prad_cancer_detection>`_
 
 WSInsight-native models
 ~~~~~~~~~~~~~~~~~~~~~~~
