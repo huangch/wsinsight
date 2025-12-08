@@ -252,17 +252,17 @@ WSInsight as a cloud-native pipeline for single-cell pathology inference on whol
 
 ```bibtex
 @article{kaczmarzyk2024open,
-  title={Open and reusable deep learning for pathology with WSInfer and QuPath},
-  author={Kaczmarzyk, Jakub R. and O'Callaghan, Alan and Inglis, Fiona and Gat, Swarad and Kurc, Tahsin and Gupta, Rajarsi and Bremer, Erich and Bankhead, Peter and Saltz, Joel H.},
-  journal={npj Precision Oncology},
-  volume={8},
-  number={1},
-  pages={9},
-  year={2024},
-  month={Jan},
-  day=10,
-  doi={10.1038/s41698-024-00499-9},
-  issn={2397-768X},
-  url={https://doi.org/10.1038/s41698-024-00499-9}
+  title   = {Open and reusable deep learning for pathology with WSInfer and QuPath},
+  author  = {Kaczmarzyk, Jakub R. and O'Callaghan, Alan and Inglis, Fiona and Gat, Swarad and Kurc, Tahsin and Gupta, Rajarsi and Bremer, Erich and Bankhead, Peter and Saltz, Joel H.},
+  journal = {npj Precision Oncology},
+  volume  = {8},
+  number  = {1},
+  pages   = {9},
+  year    = {2024},
+  month   = {Jan},
+  day     = 10,
+  doi     = {10.1038/s41698-024-00499-9},
+  issn    = {2397-768X},
+  url     = {https://doi.org/10.1038/s41698-024-00499-9}
 }
 ```
