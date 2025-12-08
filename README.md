@@ -78,22 +78,22 @@ WSInsight adds cell-centric Vision Transformer and HoverNet variants that are no
 
 4. Review the outputs in `results-cellvit/model-outputs-*` and downstream GeoJSON artifacts just like the compatible workflow.
 
-| **Method** | **Architecture & Key Features**             | **mPQ** | **bPQ** | **Reference** |
-|-----------------------|----------------------------------|---------|---------|---------------|
-| **CellViT**           | Vision Transformer encoder with U-Net style decoder;<br>trained on multi-tissue datasets (e.g., PanNuke);<br>supports multi-class nuclear instance segmentation & classification. | 0.4980 | 0.6793 | [Ref](https://doi.org/10.1016/j.media.2024.103143) |
-| **HoVer-Net**         | ResNet50 CNN backbone with dual-branch decoder;<br>predicts nuclear masks + horizontal/vertical (HoVer) distance maps;<br>improves instance separation. | 0.4629 | 0.6596 | [Ref](https://doi.org/10.1016/j.media.2019.101563) |
-| **StarDist–ResNet50** | ResNet50 backbone + star-convex polygon representation;<br>predicts radial distances for nuclei delineation along fixed rays. | 0.4796 | 0.6692 | [Ref](https://link.springer.com/chapter/10.1007/978-3-030-00934-2_30), [Ref](https://openaccess.thecvf.com/content_cvpr_2016/html/He_Deep_Residual_Learning_CVPR_2016_paper.html) |
+| **Method**            | **Architecture & Key Features**                                                                                                                                                   | **mPQ** | **bPQ** | **Reference**                                                                                                                                                                     |
+|-----------------------|-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|---------|---------|-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| **CellViT**           | Vision Transformer encoder with U-Net style decoder;<br>trained on multi-tissue datasets (e.g., PanNuke);<br>supports multi-class nuclear instance segmentation & classification. | 0.4980  | 0.6793  | [Ref](https://doi.org/10.1016/j.media.2024.103143)                                                                                                                                |
+| **HoVer-Net**         | ResNet50 CNN backbone with dual-branch decoder;<br>predicts nuclear masks + horizontal/vertical (HoVer) distance maps;<br>improves instance separation.                           | 0.4629  | 0.6596  | [Ref](https://doi.org/10.1016/j.media.2019.101563)                                                                                                                                |
+| **StarDist–ResNet50** | ResNet50 backbone + star-convex polygon representation;<br>predicts radial distances for nuclei delineation along fixed rays.                                                     | 0.4796  | 0.6692  | [Ref](https://link.springer.com/chapter/10.1007/978-3-030-00934-2_30), [Ref](https://openaccess.thecvf.com/content_cvpr_2016/html/He_Deep_Residual_Learning_CVPR_2016_paper.html) |
 
 Available WSInsight model names:
 
-- `[CellViT-256-x20](https://huggingface.co/huangch/CellViT-256-x20)` 
-- `[CellViT-256-x40](https://huggingface.co/huangch/CellViT-256-x40)` 
-- `[CellViT-256-x40-AMP](https://huggingface.co/huangch/CellViT-256-x40-AMP)` 
-- `[CellViT-SAM-H-x20](https://huggingface.co/huangch/CellViT-SAM-H-x20)` 
-- `[CellViT-SAM-H-x40](https://huggingface.co/huangch/CellViT-SAM-H-x40)` 
-- `[CellViT-SAM-H-x40-AMP](https://huggingface.co/huangch/CellViT-SAM-H-x40-AMP)` 
-- `[CellViT-Virchow-x40-AMP](https://huggingface.co/huangch/CellViT-Virchow-x40-AMP)` 
-- `[hovernet_fast_pannuke](https://huggingface.co/huangch/hovernet_fast_pannuke)` 
+- [`CellViT-256-x20`](https://huggingface.co/huangch/CellViT-256-x20)
+- [`CellViT-256-x40`](https://huggingface.co/huangch/CellViT-256-x40)
+- [`CellViT-256-x40-AMP`](https://huggingface.co/huangch/CellViT-256-x40-AMP)
+- [`CellViT-SAM-H-x20`](https://huggingface.co/huangch/CellViT-SAM-H-x20)
+- [`CellViT-SAM-H-x40`](https://huggingface.co/huangch/CellViT-SAM-H-x40)
+- [`CellViT-SAM-H-x40-AMP`](https://huggingface.co/huangch/CellViT-SAM-H-x40-AMP)
+- [`CellViT-Virchow-x40-AMP`](https://huggingface.co/huangch/CellViT-Virchow-x40-AMP)
+- [`hovernet_fast_pannuke`](https://huggingface.co/huangch/hovernet_fast_pannuke)
 
 > [!TIP]
 > Use `CUDA_VISIBLE_DEVICES=… wsinsight run …` to pin execution to specific GPUs. The command prints an environment summary before inference begins.
@@ -174,9 +174,9 @@ The editable install enables rapid iteration on CLI commands, model definitions,
 
 ## CLI Overview
 
-Command | Purpose
---- | ---
-`wsinsight run` | Segment tissue, extract patches, execute model inference, and emit CSV/GeoJSON/OME-CSV outputs (one-shot orchestration of the two commands below).
+Command           | Purpose
+----------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+`wsinsight run`   | Segment tissue, extract patches, execute model inference, and emit CSV/GeoJSON/OME-CSV outputs (one-shot orchestration of the two commands below).
 `wsinsight patch` | Perform tissue segmentation, cache/crop patches to HDF5, and prepare metadata for later inference runs; safe to rerun to resume interrupted jobs.
 `wsinsight infer` | Load cached patches, run the selected model, and export QuPath/GeoJSON/OME-CSV artifacts.
 
