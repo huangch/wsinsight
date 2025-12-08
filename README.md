@@ -17,21 +17,21 @@ WSInsight is a fork of [WSInfer](https://github.com/SBU-BMI/wsinfer) that delive
 
 ## Visual Overview
 
-|Original H&E                                          |Heatmap of Tumor Probability                                          |
-|:----------------------------------------------------:|:--------------------------------------------------------------------:|
-|![H&E example](docs/_static/brca-tissue.png)          |![Tumor probability heatmap](docs/_static/brca-heatmap-neoplastic.png)|
-|Heatmap of Dead Cell Probability                      |Heatmap of Connective Cell Probability                                |
-|![Necrotic region](docs/_static/brca-heatmap-dead.png)|![Connectivity heatmap](docs/_static/brca-heatmap-connective.png)     |
+| Original H&E                                           | Heatmap of Tumor Probability                                           |
+|:------------------------------------------------------:|:----------------------------------------------------------------------:|
+| ![H&E example](docs/_static/brca-tissue.png)           | ![Tumor probability heatmap](docs/_static/brca-heatmap-neoplastic.png) |
+| Heatmap of Dead Cell Probability                       | Heatmap of Connective Cell Probability                                 |
+| ![Necrotic region](docs/_static/brca-heatmap-dead.png) | ![Connectivity heatmap](docs/_static/brca-heatmap-connective.png)      |
 
 ## Integrative Patch-Level and Single-Cell Inference
 
-|Original H&E ROI                                                   |                                                                           |
-|:-----------------------------------------------------------------:|:-------------------------------------------------------------------------:|
-|![original H&amp;E](docs/_static/roi-hne.png)                      |                                                                           |
-|Immune Cells (green) / Lympho Regions (blue)                       |Neoplastic Cells (yellow) / Lympho Regions (blue)                          |
-|![immune cells/lympho regions](docs/_static/roi-lympho-immune.png) |![neoplastic cells/lympho regions](docs/_static/roi-lympho-neoplastic.png) |
-|Immune Cells (green) / Tumor Regions (red)                         |Neoplastic Cells (yellow) / Tumor Regions (red)                            |
-|![immune cells/tumor regions](docs/_static/roi-tumor-immune.png)   |![neoplastic cells/tumor regions](docs/_static/roi-tumor-neoplastic.png)   |
+| Original H&E ROI                                                   | Description                                                                                                                                                |
+|:------------------------------------------------------------------:|:----------------------------------------------------------------------------------------------------------------------------------------------------------:|
+| ![original H&amp;E](docs/_static/roi-hne.png)                      | The models used in this experiment include:<br>`CellViT-SAM-H-x40`,<br>`breast-tumor-resnet34.tcga-brca`, and<br>`pancancer-lymphocytes-inceptionv4.tcga`. |
+| Immune Cells (green) / Lympho Regions (blue)                       | Neoplastic Cells (yellow) / Lympho Regions (blue)                                                                                                          |
+| ![immune cells/lympho regions](docs/_static/roi-lympho-immune.png) | ![neoplastic cells/lympho regions](docs/_static/roi-lympho-neoplastic.png)                                                                                 |
+| Immune Cells (green) / Tumor Regions (red)                         | Neoplastic Cells (yellow) / Tumor Regions (red)                                                                                                            |
+| ![immune cells/tumor regions](docs/_static/roi-tumor-immune.png)   | ![neoplastic cells/tumor regions](docs/_static/roi-tumor-neoplastic.png)                                                                                   |
 
 ## Documentation
 
