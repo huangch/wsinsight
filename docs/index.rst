@@ -175,8 +175,9 @@ GitHub issue <https://github.com/SBU-BMI/wsinsight/issues/new>`_.
   If you find our work useful, please cite our work in npj Precision Oncology
   and the original WSInfer paper.
 
-  Huang, C.H., Awosika, O.E., Fernandez, D. WSInsight as a cloud-native
-  pipeline for single-cell pathology inference on whole-slide images.
+  Huang, C.-H., Awosika, O. E., & Fernandez, D. (2025).
+  WSInsight as a cloud-native pipeline for single-cell pathology inference on whole-slide images. 
+  bioRxiv. https://doi.org/10.1101/2025.692260
 
   Kaczmarzyk, J.R., O'Callaghan, A., Inglis, F. et al. Open and reusable deep
   learning for pathology with WSInfer and QuPath. *npj Precis. Onc.* **8**, 9

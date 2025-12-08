@@ -229,9 +229,22 @@ WSInsight is released under the terms of the `LICENSE` file included with this r
 
 ## Citation
 
-If you find our work useful, please cite [WSInsight](https://doi.org/10.1038/s41698-024-00499-9) and [WSInfer](https://doi.org/10.1038/s41698-024-00499-9)!
+If you find our work useful, please cite [WSInsight](https://doi.org/10.1101/2025.692260ß) and [WSInfer](https://doi.org/10.1038/s41698-024-00499-9)!
 
-> Huang, C.H., Awosika, O.E., Fernandez, D. WSInsight as a cloud-native pipeline for single-cell pathology inference on whole-slide images.
+> Huang, C.-H., Awosika, O. E., & Fernandez, D. (2025).
+WSInsight as a cloud-native pipeline for single-cell pathology inference on whole-slide images. bioRxiv. https://doi.org/10.1101/2025.692260
+
+```bibtex
+@article{huang2025wsinsight,
+ title        = {WSInsight as a cloud-native pipeline for single-cell pathology inference on whole-slide images},
+ author       = {Huang, Chao-Hui and Awosika, Oluwamayowa E. and Fernandez, Diane},
+ year         = {2025},
+ journal      = {bioRxiv},
+ publisher    = {Cold Spring Harbor Laboratory},
+ doi          = {10.1101/2025.692260},
+ url          = {https://doi.org/10.1101/2025.692260}
+}
+```
 
 > Kaczmarzyk, J.R., O’Callaghan, A., Inglis, F. et al. Open and reusable deep learning for pathology with WSInfer and QuPath. *npj Precis. Onc.* **8**, 9 (2024). https://doi.org/10.1038/s41698-024-00499-9
 
