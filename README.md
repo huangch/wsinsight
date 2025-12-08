@@ -17,21 +17,21 @@ WSInsight is a fork of [WSInfer](https://github.com/SBU-BMI/wsinfer) that delive
 
 ## Visual Overview
 
-Original H&E                                          |Heatmap of Tumor Probability
-:----------------------------------------------------:|:----------------------------------------------------:
-![H&E example](docs/_static/brca-tissue.png)   | ![Tumor probability heatmap](docs/_static/brca-heatmap-neoplastic.png)
-Heatmap of Dead Cell Probability                      |Heatmap of Connective Cell Probability
-![Necrotic region](docs/_static/brca-heatmap-dead.png)|![Connectivity heatmap](docs/_static/brca-heatmap-connective.png)
+|Original H&E                                          |Heatmap of Tumor Probability                                          |
+|:----------------------------------------------------:|:--------------------------------------------------------------------:|
+|![H&E example](docs/_static/brca-tissue.png)          |![Tumor probability heatmap](docs/_static/brca-heatmap-neoplastic.png)|
+|Heatmap of Dead Cell Probability                      |Heatmap of Connective Cell Probability                                |
+|![Necrotic region](docs/_static/brca-heatmap-dead.png)|![Connectivity heatmap](docs/_static/brca-heatmap-connective.png)     |
 
 ## Integrative Patch-Level and Single-Cell Inference
 
-Original H&E ROI                                                    | |
-:------------------------------------------------------------------:|:------------------------------------------------------------------:|
-![original H&amp;E](docs/_static/roi-hne.png)  | |
-Immune Cells/Lympho Regions                                         |Neoplastic Cells/Lympho Regions |
-![immune cells/lympho regions](docs/_static/roi-lympho-immune.png) | ![neoplastic cells/lympho regions](docs/_static/roi-lympho-neoplastic.png) |
-Immune Cells/Tumor Regions                                      |Neoplastic Cells/Tumor Regions |
-![immune cells/tumor regions](docs/_static/roi-tumor-immune.png)|![neoplastic cells/tumor regions](docs/_static/roi-tumor-neoplastic.png) |
+|Original H&E ROI                                                   |                                                                           |
+|:-----------------------------------------------------------------:|:-------------------------------------------------------------------------:|
+|![original H&amp;E](docs/_static/roi-hne.png)                      |                                                                           |
+|Immune Cells/Lympho Regions                                        |Neoplastic Cells/Lympho Regions                                            |
+|![immune cells/lympho regions](docs/_static/roi-lympho-immune.png) |![neoplastic cells/lympho regions](docs/_static/roi-lympho-neoplastic.png) |
+|Immune Cells/Tumor Regions                                         |Neoplastic Cells/Tumor Regions                                             |
+|![immune cells/tumor regions](docs/_static/roi-tumor-immune.png)   |![neoplastic cells/tumor regions](docs/_static/roi-tumor-neoplastic.png)   |
 
 ## Documentation
 
@@ -78,22 +78,22 @@ WSInsight adds cell-centric Vision Transformer and HoverNet variants that are no
 
 4. Review the outputs in `results-cellvit/model-outputs-*` and downstream GeoJSON artifacts just like the compatible workflow.
 
-| **Method** | **Architecture & Key Features** | **mPQ** | **bPQ** | **Reference** |
-|-----------|----------------------------------|--------|--------|-----------|
-| **CellViT** | Vision Transformer encoder with U-Net style decoder;<br>trained on multi-tissue datasets (e.g., PanNuke);<br>supports multi-class nuclear instance segmentation & classification. | 0.4980 | 0.6793 | [Ref](https://doi.org/10.1016/j.media.2024.103143) |
-| **HoVer-Net** | ResNet50 CNN backbone with dual-branch decoder;<br>predicts nuclear masks + horizontal/vertical (HoVer) distance maps;<br>improves instance separation. | 0.4629 | 0.6596 | [Ref](https://doi.org/10.1016/j.media.2019.101563) |
+| **Method** | **Architecture & Key Features**             | **mPQ** | **bPQ** | **Reference** |
+|-----------------------|----------------------------------|---------|---------|---------------|
+| **CellViT**           | Vision Transformer encoder with U-Net style decoder;<br>trained on multi-tissue datasets (e.g., PanNuke);<br>supports multi-class nuclear instance segmentation & classification. | 0.4980 | 0.6793 | [Ref](https://doi.org/10.1016/j.media.2024.103143) |
+| **HoVer-Net**         | ResNet50 CNN backbone with dual-branch decoder;<br>predicts nuclear masks + horizontal/vertical (HoVer) distance maps;<br>improves instance separation. | 0.4629 | 0.6596 | [Ref](https://doi.org/10.1016/j.media.2019.101563) |
 | **StarDist–ResNet50** | ResNet50 backbone + star-convex polygon representation;<br>predicts radial distances for nuclei delineation along fixed rays. | 0.4796 | 0.6692 | [Ref](https://link.springer.com/chapter/10.1007/978-3-030-00934-2_30), [Ref](https://openaccess.thecvf.com/content_cvpr_2016/html/He_Deep_Residual_Learning_CVPR_2016_paper.html) |
 
 Available WSInsight model names:
 
-- `CellViT-256-x20`
-- `CellViT-256-x40`
-- `CellViT-256-x40-AMP`
-- `CellViT-SAM-H-x20`
-- `CellViT-SAM-H-x40`
-- `CellViT-SAM-H-x40-AMP`
-- `CellViT-Virchow-x40-AMP`
-- `hovernet_fast_pannuke`
+- `CellViT-256-x20` [HF Link](https://huggingface.co/huangch/CellViT-256-x20)
+- `CellViT-256-x40` [HF Link](https://huggingface.co/huangch/CellViT-256-x40)
+- `CellViT-256-x40-AMP` [HF Link](https://huggingface.co/huangch/CellViT-256-x40-AMP)
+- `CellViT-SAM-H-x20` [HF Link](https://huggingface.co/huangch/CellViT-SAM-H-x20)
+- `CellViT-SAM-H-x40` [HF Link](https://huggingface.co/huangch/CellViT-SAM-H-x40)
+- `CellViT-SAM-H-x40-AMP` [HF Link](https://huggingface.co/huangch/CellViT-SAM-H-x40-AMP)
+- `CellViT-Virchow-x40-AMP` [HF Link](https://huggingface.co/huangch/CellViT-Virchow-x40-AMP)
+- `hovernet_fast_pannuke` [HF Link](https://huggingface.co/huangch/hovernet_fast_pannuke)
 
 > [!TIP]
 > Use `CUDA_VISIBLE_DEVICES=… wsinsight run …` to pin execution to specific GPUs. The command prints an environment summary before inference begins.
