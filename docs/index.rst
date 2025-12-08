@@ -39,6 +39,34 @@ can be explored in QuPath, GeoJSON-aware viewers, OMERO+, or bespoke notebooks.
   :align: center
   :class: workflow-diagram
 
+Quick start
+-----------
+
+Running inference on whole slide images is done with a single command-line
+entry point:
+
+::
+
+  wsinsight run \
+    --wsi-dir slides/ \
+    --results-dir results/ \
+    --model breast-tumor-resnet34.tcga-brca \
+    --batch-size 32 \
+    --num-workers 4
+
+Prefer a staged workflow for large cohorts? Use ``wsinsight patch`` to extract
+patches and cache intermediate HDF5 files, then ``wsinsight infer`` to reuse
+that cache for one or multiple models. The ``wsinsight run`` command simply
+orchestrates those two steps back to back for convenience.
+
+WSInsight accepts both WSInfer-compatible model IDs and WSInsight-native
+models. List the registered WSInfer identifiers with ::
+
+  wsinfer-zoo ls
+
+To discover the WSInsight-native CellViT/HoverNet variants, see
+:ref:`available-models`.
+
 Highlights
 ----------
 
@@ -105,34 +133,6 @@ Original H&E ROI
 | |img-roi-tumor-immune|                       | |img-roi-tumor-neoplastic|                    |
 +----------------------------------------------+-----------------------------------------------+
 
-Quick start
------------
-
-Running inference on whole slide images is done with a single command-line
-entry point:
-
-::
-
-  wsinsight run \
-    --wsi-dir slides/ \
-    --results-dir results/ \
-    --model breast-tumor-resnet34.tcga-brca \
-    --batch-size 32 \
-    --num-workers 4
-
-Prefer a staged workflow for large cohorts? Use ``wsinsight patch`` to extract
-patches and cache intermediate HDF5 files, then ``wsinsight infer`` to reuse
-that cache for one or multiple models. The ``wsinsight run`` command simply
-orchestrates those two steps back to back for convenience.
-
-WSInsight accepts both WSInfer-compatible model IDs and WSInsight-native
-models. List the registered WSInfer identifiers with ::
-
-  wsinfer-zoo ls
-
-To discover the WSInsight-native CellViT/HoverNet variants, see
-:ref:`available-models`.
-
 WSInsight-native workflow (CellViT models)
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
@@ -157,39 +157,6 @@ not part of upstream WSInfer. To run them:
 
 4. Review the outputs in ``results-cellvit/model-outputs-*`` and downstream
   GeoJSON artifacts just like the compatible workflow.
-
-Cell-level model comparison
-~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-.. list-table::
-   :header-rows: 1
-
-   * - Method
-     - Architecture & Key Features
-     - mPQ
-     - bPQ
-     - Reference
-   * - **CellViT**
-     - Vision Transformer encoder with U-Net style decoder; trained on
-       multi-tissue datasets (e.g., PanNuke); supports multi-class nuclear
-       instance segmentation & classification.
-     - 0.4980
-     - 0.6793
-     - `Ref <https://doi.org/10.1016/j.media.2024.103143>`_
-   * - **HoVer-Net**
-     - ResNet50 CNN backbone with dual-branch decoder; predicts nuclear masks
-       + horizontal/vertical (HoVer) distance maps; improves instance
-       separation.
-     - 0.4629
-     - 0.6596
-     - `Ref <https://doi.org/10.1016/j.media.2019.101563>`_
-   * - **StarDist–ResNet50**
-     - ResNet50 backbone + star-convex polygon representation; predicts
-       radial distances for nuclei delineation along fixed rays.
-     - 0.4796
-     - 0.6692
-     - `Ref1 <https://link.springer.com/chapter/10.1007/978-3-030-00934-2_30>`_,
-       `Ref2 <https://openaccess.thecvf.com/content_cvpr_2016/html/He_Deep_Residual_Learning_CVPR_2016_paper.html>`_
 
 All commands understand local filesystem paths, ``s3://`` URIs, and
 ``gdc://`` manifests for ``--wsi-dir``. Outputs such as ``--results-dir``,
@@ -225,6 +192,39 @@ GitHub issue <https://github.com/SBU-BMI/wsinsight/issues/new>`_.
   CLI <cli>
 
 .. _available-models:
+
+Cell-level model comparison
+~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. list-table::
+   :header-rows: 1
+
+   * - Method
+     - Architecture & Key Features
+     - mPQ
+     - bPQ
+     - Reference
+   * - **CellViT**
+     - Vision Transformer encoder with U-Net style decoder; trained on
+       multi-tissue datasets (e.g., PanNuke); supports multi-class nuclear
+       instance segmentation & classification.
+     - 0.4980
+     - 0.6793
+     - `Ref <https://doi.org/10.1016/j.media.2024.103143>`_
+   * - **HoVer-Net**
+     - ResNet50 CNN backbone with dual-branch decoder; predicts nuclear masks
+       + horizontal/vertical (HoVer) distance maps; improves instance
+       separation.
+     - 0.4629
+     - 0.6596
+     - `Ref <https://doi.org/10.1016/j.media.2019.101563>`_
+   * - **StarDist–ResNet50**
+     - ResNet50 backbone + star-convex polygon representation; predicts
+       radial distances for nuclei delineation along fixed rays.
+     - 0.4796
+     - 0.6692
+     - `Ref1 <https://link.springer.com/chapter/10.1007/978-3-030-00934-2_30>`_,
+       `Ref2 <https://openaccess.thecvf.com/content_cvpr_2016/html/He_Deep_Residual_Learning_CVPR_2016_paper.html>`_
 
 Available models
 ----------------
@@ -297,13 +297,6 @@ WSInfer-compatible models: ::
      - TCGA PRAD
      - 175 @ 0.5
      - `Ref <https://github.com/SBU-BMI/quip_prad_cancer_detection>`_
-
-WSInsight-native models
-~~~~~~~~~~~~~~~~~~~~~~~
-
-
-
-
 
 Indices and tables
 ==================
