@@ -39,6 +39,14 @@ can be explored in QuPath, GeoJSON-aware viewers, OMERO+, or bespoke notebooks.
   :align: center
   :class: workflow-diagram
 
+.. toctree::
+  :maxdepth: 2
+  :caption: Contents:
+
+  Installing <installing>
+  User Guide <user_guide>
+  CLI <cli>
+
 Quick start
 -----------
 
@@ -66,14 +74,6 @@ models. List the registered WSInfer identifiers with ::
 
 To discover the WSInsight-native CellViT/HoverNet variants, see
 :ref:`available-models`.
-
-.. toctree::
-  :maxdepth: 2
-  :caption: Contents:
-
-  Installing <installing>
-  User Guide <user_guide>
-  CLI <cli>
 
 Highlights
 ----------
