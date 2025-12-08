@@ -1,3 +1,5 @@
 sphinx
-sphinx-rtd-theme
-sphinx-autodoc-typehints
+pydata-sphinx-theme
+sphinx-autoapi
+sphinx-click
+sphinx-copybutton
