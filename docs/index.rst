@@ -117,12 +117,15 @@ Integrative patch-level and single-cell inference
 
 The models used in this experiment include:`CellViT-SAM-H-x40`, `breast-tumor-resnet34.tcga-brca`, and `pancancer-lymphocytes-inceptionv4.tcga`.
 
-Original H&E ROI
-
-.. image:: _static/roi-hne.png
-  :alt: Original H&E ROI
+.. |img-roi-hne| image:: _static/roi-hne.png
   :align: center
   :scale: 50 %
+
++------------------+
+| Original H&E ROI |
++------------------+
+| |img-roi-hne|    |
++------------------+
 
 .. |img-roi-lympho-immune| image:: _static/roi-lympho-immune.png
   :alt: Immune cells in lymphoid regions
