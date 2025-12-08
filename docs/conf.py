@@ -8,7 +8,7 @@
 
 import os
 
-import wsinsight
+# import wsinsight
 
 project = "WSInsight"
 copyright = "Chao-Hui Huang (2025), Jakub Kaczmarzyk (2023)"
