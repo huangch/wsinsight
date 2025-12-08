@@ -27,7 +27,7 @@ WSInsight is a fork of [WSInfer](https://github.com/SBU-BMI/wsinfer) that delive
 
 The models used in this experiment include: `CellViT-SAM-H-x40`, `breast-tumor-resnet34.tcga-brca`, and `pancancer-lymphocytes-inceptionv4.tcga`.
 
-| Original H&E ROI                                                   | Description                                                                |
+| Original H&E ROI                                                   |                                                                            |
 |:------------------------------------------------------------------:|:--------------------------------------------------------------------------:|
 | ![original H&amp;E](docs/_static/roi-hne.png)                      |                                                                            |
 | Immune Cells (green) / Lympho Regions (blue)                       | Neoplastic Cells (yellow) / Lympho Regions (blue)                          |
