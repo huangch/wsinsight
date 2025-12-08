@@ -116,9 +116,10 @@ Integrative patch-level and single-cell inference
 -------------------------------------------------
 
 The models used in this experiment include: 
-* CellViT-SAM-H-x40
-* breast-tumor-resnet34.tcga-brca 
-* pancancer-lymphocytes-inceptionv4.tcga
+
+* ``CellViT-SAM-H-x40``
+* ``breast-tumor-resnet34.tcga-brca ``
+* ``pancancer-lymphocytes-inceptionv4.tcga``
 
 .. |img-roi-hne| image:: _static/roi-hne.png
   :alt: Original H&E ROI
