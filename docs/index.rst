@@ -118,20 +118,11 @@ Integrative patch-level and single-cell inference
 The models used in this experiment include: 
 
 * ``CellViT-SAM-H-x40``
-* ``breast-tumor-resnet34.tcga-brca ``
+* ``breast-tumor-resnet34.tcga-brca``
 * ``pancancer-lymphocytes-inceptionv4.tcga``
 
 .. |img-roi-hne| image:: _static/roi-hne.png
   :alt: Original H&E ROI
-  :align: center
-  :scale: 50 %
-
-+------------------+
-| Original H&E ROI |
-+------------------+
-| |img-roi-hne|    |
-+------------------+
-
 .. |img-roi-lympho-immune| image:: _static/roi-lympho-immune.png
   :alt: Immune cells in lymphoid regions
 .. |img-roi-lympho-neoplastic| image:: _static/roi-lympho-neoplastic.png
@@ -142,7 +133,12 @@ The models used in this experiment include:
   :alt: Neoplastic cells in tumor regions
 
 +----------------------------------------------+---------------------------------------------------+
-| Immune Cells (green) / Lympho Regions (blue) | Neoplastic Cells (yellow) / Lympho Regions (blue) |
+| Original H&E ROI                             | Description                                       |
++----------------------------------------------+---------------------------------------------------+
+| Immune Cells (green) / Lympho Regions (blue) | The models used in this experiment include:       |
+|                                              | * ``CellViT-SAM-H-x40``                           |
+|                                              | * ``breast-tumor-resnet34.tcga-brca``             |
+|                                              | * ``pancancer-lymphocytes-inceptionv4.tcga``      |
 +----------------------------------------------+---------------------------------------------------+
 | |img-roi-lympho-immune|                      | |img-roi-lympho-neoplastic|                       |
 +----------------------------------------------+---------------------------------------------------+
