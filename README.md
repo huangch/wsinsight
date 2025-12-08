@@ -29,7 +29,7 @@ Original H&E                                          |Heatmap of Tumor Probabil
 Heatmap of Dead Cell Probability                      |Heatmap of Connective Cell Probability
 ![Necrotic region](docs/_static/brca-heatmap-dead.png)|![Connectivity heatmap](docs/_static/brca-heatmap-connective.png)
 
-## Integrative Patch-Level and Single-Cell Inference on Breast Cancer H&E Tissue
+## Integrative Patch-Level and Single-Cell Inference
 
 Immune Cells/Lympho Regions                                         |Neoplastic Cells/Lympho Regions
 :------------------------------------------------------------------:|:------------------------------------------------------------------:
