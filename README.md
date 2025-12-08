@@ -1,10 +1,4 @@
-<h1>
-  <img src="docs/_static/logo.svg"
-       alt="WSInsight logo"
-       height="36"
-       style="vertical-align: middle; margin-right: 0.4em;">
-  WSInsight: Cloud-Native Single-Cell Pathology Inference on Whole Slide Images
-</h1>
+# ![WSInsight logo](docs/_static/logo48.png) WSInsight: Cloud-Native Single-Cell Pathology Inference on Whole Slide Images
 
 WSInsight is a fork of [WSInfer](https://github.com/SBU-BMI/wsinfer) that delivers end-to-end pathology inference for giga-pixel whole slide images. It scales from laptops to cloud clusters, orchestrates patch extraction/classification, cell detection/classification, model inference, and downstream analytics, and produces artifacts that can be explored in QuPath, GeoJSON-aware viewers, OMERO+, or bespoke notebooks.
 
