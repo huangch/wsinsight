@@ -23,7 +23,7 @@ import torch
 
 inceptionv4 = None
 try:
-    from wsinfer.modellib.inceptionv4_no_batchnorm import inceptionv4
+    from wsinsight.modellib.inceptionv4_no_batchnorm import inceptionv4
 except ImportError:
     pass
 

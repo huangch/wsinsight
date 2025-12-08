@@ -1,56 +1,90 @@
 :html_theme.sidebar_secondary.remove:
 
-WSInfer: blazingly fast inference on whole slide images
-=======================================================
+WSInsight: cell-aware inference on whole slide images
+=====================================================
 
 
-.. image:: https://github.com/kaczmarj/wsinfer/actions/workflows/ci.yml/badge.svg
+.. image:: https://github.com/huangch/wsinsight/actions/workflows/ci.yml/badge.svg
    :alt: GitHub workflow status
-   :target: https://github.com/kaczmarj/wsinfer/actions/workflows/ci.yml
-.. image:: https://readthedocs.org/projects/wsinfer/badge/?version=latest
+   :target: https://github.com/huangch/wsinsight/actions/workflows/ci.yml
+.. image:: https://readthedocs.org/projects/wsinsight/badge/?version=latest
   :alt: Documentation build status
-  :target: https://wsinfer.readthedocs.io/en/latest/?badge=latest
-.. image:: https://img.shields.io/pypi/v/wsinfer.svg
+  :target: https://wsinsight.readthedocs.io/en/latest/?badge=latest
+.. image:: https://img.shields.io/pypi/v/wsinsight.svg
   :alt: PyPI version
-  :target: https://pypi.org/project/wsinfer/
-.. image:: https://img.shields.io/pypi/pyversions/wsinfer
+  :target: https://pypi.org/project/wsinsight/
+.. image:: https://img.shields.io/pypi/pyversions/wsinsight
   :alt: Supported Python versions
-  :target: https://pypi.org/project/wsinfer/
+  :target: https://pypi.org/project/wsinsight/
 
 |
 
-🔥 🚀 **WSInfer** is a blazingly fast pipeline to run patch-based classification models
-on whole slide images. It includes several built-in models, and it can be used with any
-PyTorch model as well. The built-in models :ref:`are listed below <available-models>`.
+🔥 🚀 **WSInsight** is a reproducible, cell-aware inference pipeline for giga-pixel slides.
+It stays compatible with the original WSInfer model zoo while adding WSInsight-native
+CellViT and HoverNet variants for single-cell analysis. Built-in and compatible models
+:ref:`are listed below <available-models>`.
 
 .. caution::
 
-  WSInfer is an academic project intended for research use only.
+  WSInsight is intended for research use only.
+
+.. image:: _static/diagram.drawio.png
+   :alt: WSInsight workflow overview
+   :align: center
+   :class: workflow-diagram
 
 Running inference on whole slide images is done with a single command line:
 
 ::
 
-   wsinfer run \
+   wsinsight run \
       --wsi-dir slides/ \
       --results-dir results/ \
       --model breast-tumor-resnet34.tcga-brca
 
-See all of the available trained models with ::
+WSInsight accepts both WSInfer-compatible model IDs and WSInsight-native models. List the
+registered WSInfer identifiers with ::
 
     wsinfer-zoo ls
 
-To get started, please :ref:`install WSInfer<installing>` and check out the :ref:`User Guide`.
+To discover the WSInsight-native CellViT/HoverNet variants, see :ref:`available-models`.
+
+Prefer a staged workflow for large cohorts? Use ``wsinsight patch`` to extract patches and
+cache intermediate HDF5 files, then ``wsinsight infer`` to reuse that cache for one or
+multiple models. The ``wsinsight run`` command simply orchestrates those two steps back to
+back for convenience.
+
+WSInsight-native models (CellViT/HoverNet) are run the same way—either via the one-shot
+``run`` command or in a two-step flow. For example:
+
+::
+
+  wsinsight run \
+    --wsi-dir slides/ \
+    --results-dir results-cellvit/ \
+    --model CellViT-SAM-H-x40 \
+    --batch-size 16 \
+    --num-workers 8
+
+The available identifiers are listed in :ref:`available-models`. They leverage the same
+CLI flags, QuPath integrations, and remote storage options as WSInfer-compatible models.
+
+All commands understand local filesystem paths, ``s3://`` URIs, and ``gdc://`` manifests
+for ``--wsi-dir``. Outputs such as ``--results-dir``, GeoJSON, and OME-CSV artifacts can
+be written to local disks or S3 using the same URI syntax, with caching controlled via
+``WSINSIGHT_REMOTE_CACHE_DIR``.
+
+To get started, please :ref:`install WSInsight<installing>` and check out the :ref:`User Guide`.
 To get help, report issues or request features, please
-`submit a new issue <https://github.com/SBU-BMI/wsinfer/issues/new>`_ on our GitHub
-repository. If you would like to make your patch classification model available in WSInfer, please
-get in touch with us! You can `submit a new GitHub issue <https://github.com/SBU-BMI/wsinfer/issues/new>`_.
+`submit a new issue <https://github.com/huangch/wsinsight/issues/new>`_ on our GitHub
+repository. If you would like to make your patch classification model available in WSInsight, please
+get in touch with us! You can `submit a new GitHub issue <https://github.com/SBU-BMI/wsinsight/issues/new>`_.
 
 .. admonition:: Citation
 
   If you find our work useful, please cite our paper https://doi.org/10.1038/s41698-024-00499-9.
 
-  Kaczmarzyk, J.R., O'Callaghan, A., Inglis, F. et al. Open and reusable deep learning for pathology with WSInfer and QuPath. *npj Precis. Onc.* **8**, 9 (2024). https://doi.org/10.1038/s41698-024-00499-9
+  Kaczmarzyk, J.R., O'Callaghan, A., Inglis, F. et al. Open and reusable deep learning for pathology with WSInsight and QuPath. *npj Precis. Onc.* **8**, 9 (2024). https://doi.org/10.1038/s41698-024-00499-9
 
 .. |img-tissue| image:: _static/brca-tissue.png
   :alt: TCGA BRCA sample slide
@@ -64,24 +98,25 @@ get in touch with us! You can `submit a new GitHub issue <https://github.com/SBU
 +----------------+------------------------------+
 
 .. toctree::
-   :maxdepth: 2
-   :caption: Contents:
+  :maxdepth: 2
+  :caption: Contents:
 
-   Installing <installing>
-   User Guide <user_guide>
-   CLI <cli>
-   QuPath Extension <qupath_ext>
+  Installing <installing>
+  User Guide <user_guide>
+  CLI <cli>
 
 .. _available-models:
 
 Available models
 ----------------
 
-After installing :code:`wsinfer`, use the following command to list the most up-to-date models: ::
+After installing :code:`wsinsight`, use the following command to list the most up-to-date
+WSInfer-compatible models: ::
 
-    wsinfer-zoo ls
+  wsinfer-zoo ls
 
-The table below may be incomplete.
+WSInsight also publishes native CellViT/HoverNet identifiers that appear only in our
+registry. A non-exhaustive list is provided below.
 
 .. list-table::
    :header-rows: 1
@@ -134,6 +169,20 @@ The table below may be incomplete.
      - TCGA PRAD
      - 175 @ 0.5
      - `Ref <https://github.com/SBU-BMI/quip_prad_cancer_detection>`_
+
+WSInsight-native models
+~~~~~~~~~~~~~~~~~~~~~~~
+
+Cell-level and hybrid models shipped exclusively with WSInsight:
+
+* ``CellViT-256-x20``
+* ``CellViT-256-x40``
+* ``CellViT-256-x40-AMP``
+* ``CellViT-SAM-H-x20``
+* ``CellViT-SAM-H-x40``
+* ``CellViT-SAM-H-x40-AMP``
+* ``CellViT-Virchow-x40-AMP``
+* ``hovernet_fast_pannuke``
 
 
 

@@ -1,5 +1,236 @@
 from __future__ import annotations
 
+import concurrent.futures as cf
+import gzip
+import json
+from pathlib import Path
+
+import pandas as pd
+import pytest
+
+import wsinsight.write_geojson as write_geojson_module
+import wsinsight.write_omecsv as write_omecsv_module
+from wsinsight.cli.infer import _coerce_number, _csv_to_list
+from wsinsight.write_geojson import (
+    _build_geojson_dict_from_csv,
+    _dataframe_to_geojson_box_fast,
+    _dataframe_to_geojson_polygon_fast,
+    _make_distinct_colors,
+)
+from wsinsight.write_omecsv import make_omecsv, write_omecsvs
+
+
+class InlineExecutor:
+    """Run executor work immediately inside the current process."""
+
+    def __init__(self, *args, **kwargs) -> None:
+        self._futures: list[cf.Future] = []
+
+    def __enter__(self) -> InlineExecutor:
+        return self
+
+    def __exit__(self, exc_type, exc, tb) -> bool:
+        return False
+
+    def submit(self, fn, *args, **kwargs) -> cf.Future:
+        fut: cf.Future = cf.Future()
+        try:
+            result = fn(*args, **kwargs)
+        except Exception as exc:  # pragma: no cover - surfaced when tests fail
+            fut.set_exception(exc)
+        else:
+            fut.set_result(result)
+        self._futures.append(fut)
+        return fut
+
+
+def _write_minimal_csv(path: Path) -> None:
+    df = pd.DataFrame(
+        {
+            "minx": [0, 10],
+            "miny": [0, 10],
+            "width": [20, 20],
+            "height": [20, 20],
+            "prob_background": [0.3, 0.6],
+            "prob_tumor": [0.7, 0.4],
+        }
+    )
+    path.parent.mkdir(parents=True, exist_ok=True)
+    df.to_csv(path, index=False)
+
+
+def test_make_distinct_colors_unique_hex() -> None:
+    colors = _make_distinct_colors(5, seed=123, shuffle=False)
+    assert len(colors) == 5
+    assert len({c["hex"] for c in colors}) == 5
+    for color in colors:
+        assert color["hex"].startswith("#") and len(color["hex"]) == 7
+        assert all(0 <= channel <= 255 for channel in color["rgb"])
+
+
+def test_dataframe_to_geojson_box_fast_sets_properties() -> None:
+    df = pd.DataFrame(
+        {
+            "minx": [0, 20],
+            "miny": [0, 20],
+            "width": [10, 10],
+            "height": [10, 10],
+            "prob_background": [0.25, 0.75],
+            "prob_tumor": [0.75, 0.25],
+        }
+    )
+    result = _dataframe_to_geojson_box_fast(
+        df,
+        prob_cols=["prob_background", "prob_tumor"],
+        overlap=0.0,
+        set_classification=True,
+    )
+
+    assert result["type"] == "FeatureCollection"
+    assert len(result["features"]) == len(df)
+    for feature in result["features"]:
+        props = feature["properties"]
+        assert set(props["measurements"].keys()) == {"prob_background", "prob_tumor"}
+        assert props["classification"]["name"].startswith("prob_")
+        assert feature["geometry"]["type"] == "Polygon"
+
+
+def test_dataframe_to_geojson_polygon_fast_handles_wkt() -> None:
+    df = pd.DataFrame(
+        {
+            "polygon_wkt": [
+                "POLYGON ((0 0, 1 0, 1 1, 0 1, 0 0))",
+                "POLYGON ((0 0, 2 0, 0 2, 0 0))",
+            ],
+            "prob_background": [0.4, 0.8],
+            "prob_tumor": [0.6, 0.2],
+        }
+    )
+
+    geojson = _dataframe_to_geojson_polygon_fast(
+        df,
+        prob_cols=["prob_background", "prob_tumor"],
+        set_classification=True,
+        crs="EPSG:4326",
+    )
+
+    assert geojson["type"] == "FeatureCollection"
+    assert len(geojson["features"]) == 2
+    assert geojson["features"][0]["geometry"]["type"] == "Polygon"
+
+
+def test_build_geojson_dict_from_csv_box(tmp_path: Path) -> None:
+    results_dir = tmp_path / "results"
+    csv_path = results_dir / "model-outputs-csv" / "sample.csv"
+    _write_minimal_csv(csv_path)
+
+    out_path, geojson = _build_geojson_dict_from_csv(
+        csv_path,
+        overlap=0.0,
+        results_dir=results_dir,
+        output_dir=Path("geojson"),
+        prefix="prob",
+        object_type="tile",
+        set_classification=True,
+        annotation_shape="box",
+    )
+
+    assert out_path == results_dir / "geojson" / "sample.geojson"
+    assert geojson["type"] == "FeatureCollection"
+    assert len(geojson["features"]) == 2
+
+
+def test_write_geojsons_creates_output(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    results_dir = tmp_path / "results"
+    csv_dir = results_dir / "model-outputs-csv"
+    _write_minimal_csv(csv_dir / "slide_a.csv")
+    _write_minimal_csv(csv_dir / "slide_b.csv")
+
+    monkeypatch.setattr(write_geojson_module, "ProcessPoolExecutor", InlineExecutor)
+
+    write_geojson_module.write_geojsons(
+        csvs=sorted(csv_dir.glob("*.csv")),
+        overlap=0.0,
+        results_dir=results_dir,
+        output_dir=Path("geojson-out"),
+        prefix="prob",
+        num_workers=1,
+        object_type="tile",
+        set_classification=True,
+        show_progress=False,
+        print_timings=False,
+    )
+
+    for slide in ("slide_a", "slide_b"):
+        geojson_file = results_dir / "geojson-out" / f"{slide}.geojson"
+        assert geojson_file.exists()
+        data = json.loads(geojson_file.read_text())
+        assert data["features"], "GeoJSON should contain features"
+
+
+def test_make_omecsv_produces_compressed_file(tmp_path: Path) -> None:
+    results_dir = tmp_path / "results"
+    csv_path = results_dir / "model-outputs-csv" / "slide.csv"
+    _write_minimal_csv(csv_path)
+
+    make_omecsv(
+        csv=csv_path,
+        results_dir=results_dir,
+        output_dir=Path("omecsv"),
+        overlap=0.0,
+        prefix="prob",
+        usecols=None,
+        dtype=None,
+    )
+
+    output_file = results_dir / "omecsv" / "slide.ome.csv.gz"
+    assert output_file.exists()
+    with gzip.open(output_file, "rt", encoding="utf-8") as f:
+        header = f.readline().strip()
+        assert header.startswith("object,secondary_object,polygon")
+
+
+def test_write_omecsvs_runs_inline(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    results_dir = tmp_path / "results"
+    csv_dir = results_dir / "model-outputs-csv"
+    csv_paths = [csv_dir / "slide_a.csv", csv_dir / "slide_b.csv"]
+    for path in csv_paths:
+        _write_minimal_csv(path)
+
+    monkeypatch.setattr(write_omecsv_module, "ProcessPoolExecutor", InlineExecutor)
+
+    write_omecsvs(
+        csvs=csv_paths,
+        h5s=[],
+        overlap=0.0,
+        results_dir=results_dir,
+        output_dir=Path("omecsv-out"),
+        prefix="prob",
+        num_workers=2,
+    )
+
+    outputs = list((results_dir / "omecsv-out").glob("*.ome.csv.gz"))
+    assert len(outputs) == 2
+
+
+def test_coerce_number_handles_int_float_and_text() -> None:
+    assert _coerce_number("42") == 42
+    assert _coerce_number("  3.14  ") == pytest.approx(3.14)
+    assert _coerce_number("NaN") == "nan"
+    assert _coerce_number("Tumor") == "tumor"
+
+
+def test_csv_to_list_parses_values() -> None:
+    values = _csv_to_list(None, None, "1, 2, 3.5, tumor")
+    assert values == [1, 2, pytest.approx(3.5), "tumor"]
+
+    already_list = _csv_to_list(None, None, ["4", "5", "Other"])
+    assert already_list == [4, 5, "other"]
+
+
+LEGACY_TEST_SUITE = '''
+from __future__ import annotations  # updated header
+
 import json
 import os
 import platform
@@ -16,13 +247,13 @@ import tifffile
 import torch
 from click.testing import CliRunner
 
-from wsinfer.cli.cli import cli
-from wsinfer.cli.infer import _get_info_for_save
-from wsinfer.modellib.models import get_pretrained_torch_module
-from wsinfer.modellib.models import get_registered_model
-from wsinfer.modellib.run_inference import jit_compile
-from wsinfer.wsi import HAS_OPENSLIDE
-from wsinfer.wsi import HAS_TIFFSLIDE
+from wsinsight.cli.cli import cli
+from wsinsight.cli.infer import _get_info_for_save
+from wsinsight.modellib.models import get_pretrained_torch_module
+from wsinsight.modellib.models import get_registered_model
+from wsinsight.modellib.run_inference import jit_compile
+from wsinsight.wsi import HAS_OPENSLIDE
+from wsinsight.wsi import HAS_TIFFSLIDE
 
 
 @pytest.fixture
@@ -45,7 +276,7 @@ def tiff_image(tmp_path: Path) -> Path:
     return path
 
 
-# The reference data for this test was made using a patched version of wsinfer 0.3.6.
+# The reference data for this test was made using a patched version of wsinsight 0.3.6.
 # The patches fixed an issue when calculating strides and added padding to images.
 # Large-image (which was the backend in 0.3.6) did not pad images and would return
 # tiles that were not fully the requested width and height.
@@ -84,7 +315,7 @@ def test_cli_run_with_registered_models(
     tiff_image: Path,
     tmp_path: Path,
 ) -> None:
-    """A regression test of the command 'wsinfer run'."""
+    """A regression test of the command 'wsinsight run'."""
 
     reference_csv = Path(__file__).parent / "reference" / model / "purple.csv"
     if not reference_csv.exists():
@@ -332,7 +563,7 @@ def test_patch_cli(
     tmp_path: Path,
     tiff_image: Path,
 ) -> None:
-    """Test of 'wsinfer patch'."""
+    """Test of 'wsinsight patch'."""
     orig_slide_size = 4096
     orig_slide_spacing = 0.25
 
@@ -557,3 +788,5 @@ def test_issue_214(tmp_path: Path, tiff_image: Path) -> None:
     assert result.exit_code == 0
     assert (results_dir / "patches" / link.with_suffix(".h5").name).exists()
     assert (results_dir / "model-outputs-csv" / link.with_suffix(".csv").name).exists()
+
+'''

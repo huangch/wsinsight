@@ -1,0 +1,830 @@
+"""Patch extraction and tissue segmentation routines for wsinsight."""
+
+from __future__ import annotations
+
+import os
+from imagecodecs import NONE
+os.environ["TF_CPP_MIN_LOG_LEVEL"] = "2"   # 0=all, 1=filter INFO, 2=filter INFO+WARNING, 3=only ERROR
+# optional: if you still see oneDNN/CPU feature chatter, keep "2" or use "3"
+
+import logging
+import tensorflow as tf
+tf.get_logger().setLevel(logging.ERROR)
+# absl (used by TF) — silence its INFO too
+from absl import logging as absl_logging
+absl_logging.set_verbosity(absl_logging.ERROR)
+
+# from pathlib import Path
+from typing import Sequence, List, Tuple
+import itertools
+import os.path
+import tqdm 
+import cv2 as cv
+import h5py
+import numpy as np
+import numpy.typing as npt
+from PIL import Image
+import pandas as pd
+import geopandas as gpd
+from tifffile import imread
+from stardist.models import StarDist2D
+from csbdeep.utils import normalize
+from shapely.geometry import Polygon, MultiPolygon
+from shapely.ops import unary_union
+from shapely import set_precision
+# from shapely import speedups                
+
+from ..wsi import _validate_wsi_directory
+from ..wsi import get_avg_mpp
+from ..wsi import get_wsi_cls
+from ..uri_path import URIPathType, URIPath
+from .patch import get_multipolygon_from_binary_arr
+from .patch import get_patch_coordinates_within_polygon
+from .patch import get_object_coordinates_within_polygon
+from .segment import segment_tissue
+
+logger = logging.getLogger(__name__)
+
+# if hasattr(speedups, "enable"):
+#     speedups.enable()
+
+MASKS_DIR = "masks"
+PATCHES_DIR = "patches"
+
+    
+def segment_and_patch_one_slide(
+    slide_path: URIPath,
+    save_dir: URIPath,
+    qupath_detection_dir: URIPath,
+    qupath_geojson_detection_dir: URIPath,
+    qupath_geojson_annotation_dir: URIPath,
+    patch_size_px: int,
+    patch_spacing_um_px: float,
+    halo_size_px: int=0,
+    histoqc_dir: str | URIPath=None,
+    thumbsize: tuple[int, int]=(2048, 2048),
+    median_filter_size: int=7,
+    binary_threshold: int=7,
+    closing_kernel_size: int=6,
+    min_object_size_um2: float=200 ** 2,
+    min_hole_size_um2: float=190 ** 2,
+    overlap: float=0.0,
+    object_based: bool=False,
+    object_detection: str=None,
+    # red_threshold: int=0,
+    stardist_normalization_pmin: float=1.0,
+    stardist_normalization_pmax: float=99.8,
+    cache_image_patches: bool = False,
+) -> None:
+    """Get non-overlapping patch coordinates in tissue regions of a whole slide image.
+
+    Patch coordinates are saved to an HDF5 file in `{save_dir}/patches/`, and a tissue
+    detection image is saved to `{save_dir}/masks/` for quality control.
+
+    In general, this function takes the following steps:
+
+    1. Get a low-resolution thumbnail of the image.
+    2. Binarize the image to identify tissue regions.
+    3. Process this binary image to remove artifacts.
+    4. Create a regular grid of non-overlapping patches of specified size.
+    5. Keep patches whose centroids are in tissue regions.
+
+    Parameters
+    ----------
+    slide_path : str or Path
+        The path to the whole slide image file.
+    save_dir : str or Path
+        The directory in which to save patching results.
+    patch_size_px : int
+        The length of one side of a square patch in pixels.
+    patch_spacing_um_px : float
+        The physical spacing of patches in micrometers per pixels. This value multiplied
+        by patch_size_px gives the physical length of a patch in micrometers.
+    thumbsize : tuple of two integers
+        The size of the thumbnail to use for tissue detection. This specifies the
+        largest possible bounding box of the thumbnail, and a thumbnail is taken to fit
+        this space while maintaining the original aspect ratio of the whole slide image.
+        Larger thumbnails will take longer to process but will result in better tissue
+        masks.
+    median_filter_size : int
+        The size of the kernel for median filtering. This value must be odd and greater
+        than one. This is in units of pixels in the thumbnail.
+    binary_threshold: int
+        The value at which the image in binarized. A higher value will keep less tissue.
+    closing_kernel_size : int
+        The size of the kernel for a morphological closing operation. This is in units
+        of pixels in the thumbnail.
+    min_object_size_um2 : float
+        The minimum area of an object to keep, in units of micrometers squared. Any
+        disconnected objects smaller than this area will be removed.
+    min_hole_size_um2 : float
+        The minimum size of a hole to keep, in units of micrometers squared. Any hole
+        smaller than this area will be filled and be considered tissue.
+    overlap: float
+        Ratio that a patch is overlayed.
+    object_based: bool
+        Is the task object based
+    red_threshold : int
+        The threshold for the red channel of the image. If the red channel is greater
+        than this value, the pixel is considered to be tissue. (Default: 0) (0 <= red_threshold <= 255)
+    stardist_normalization_pmin : float
+        Minimal percentile for stardist based cell detection.
+    stardist_normalization_pmax : float
+        Maximal percentile for stardist based cell detection.
+           
+    Returns
+    -------
+    None
+    """
+
+    # slide_path = URIPath(slide_path)
+    # save_dir = Path(save_dir)
+    slide_prefix = slide_path.stem
+
+    logger.info(f"Segmenting and patching slide {slide_path}")
+    logger.info(f"Using prefix as slide ID: {slide_prefix}")
+
+    patch_path = save_dir / PATCHES_DIR / f"{slide_prefix}.h5"
+    mask_path = save_dir / MASKS_DIR / f"{slide_prefix}.jpg"
+
+    # End early if outputs exist.
+    if patch_path.exists() and mask_path.exists():
+        logger.info("Patch output and mask output files already exist")
+        logger.info(f"patch_path={patch_path}")
+        logger.info(f"mask_path={mask_path}")
+        return None
+
+    slide = get_wsi_cls()(slide_path)
+    mpp = get_avg_mpp(slide_path)
+    logger.info(f"Slide has WxH {slide.dimensions} and MPP={mpp}")
+
+    logger.info(
+        f"Requested patch size of {patch_size_px} px at {patch_spacing_um_px} um/px"
+    )
+    logger.info(
+        f"Scaling patch size by {patch_spacing_um_px / mpp} for patch coordinates at"
+        f" level 0 (MPP={mpp}) | patch_spacing_um_px / mpp"
+        f" ({patch_spacing_um_px} / {mpp})"
+        # f" Red threshold is {red_threshold}"
+    )
+    patch_size = int(round(patch_size_px * patch_spacing_um_px / mpp))
+    
+    logger.info(f"Final patch size is {patch_size}")
+
+    # Segment tissue into a binary mask.
+    if len(thumbsize) != 2:
+        raise ValueError(f"Length of 'thumbsize' must be 2 but got {len(thumbsize)}")
+    thumb: Image.Image = slide.get_thumbnail(thumbsize)
+    if thumb.mode != "RGB":
+        logger.warning(f"Converting mode of thumbnail from {thumb.mode} to RGB")
+        thumb = thumb.convert("RGB")
+
+    # thumb has ~12 MPP.
+    thumb_mpp = (mpp * (np.array(slide.dimensions) / thumb.size)).mean()
+    logger.info(f"Thumbnail has WxH {thumb.size} and MPP={thumb_mpp}")
+    thumb_mpp_squared: float = thumb_mpp ** 2
+
+    # (pixels2 / micron2) * micron2 = pixels2
+    min_object_size_px: int = round(min_object_size_um2 / thumb_mpp_squared)
+    min_hole_size_px: int = round(min_hole_size_um2 / thumb_mpp_squared)
+
+    logger.info(
+        f"Transformed minimum object size to {min_object_size_px} pixel area in"
+        " thumbnail"
+    )
+    logger.info(
+        f"Transformed minimum hole size to {min_hole_size_px} pixel area in thumbnail"
+    )
+
+    if histoqc_dir:
+        histoqc_mask_use_file_path = histoqc_dir / slide_path.name / slide_path.name + '_mask_use.png'
+
+        histoqc_mask_use = Image.open(histoqc_mask_use_file_path)
+
+        thumb_ratio = np.min((
+            thumbsize[0] / histoqc_mask_use.size[0],
+            thumbsize[1] / histoqc_mask_use.size[1]
+        ))
+
+        histoqc_thumb_size = (
+            int(np.round(thumb_ratio * histoqc_mask_use.size[0])),
+            int(np.round(thumb_ratio * histoqc_mask_use.size[1]))
+        )
+
+        histoqc_thumb = histoqc_mask_use.resize(
+            histoqc_thumb_size,
+            Image.Resampling.NEAREST
+        )
+
+        arr = np.array(
+            np.asarray(histoqc_thumb),
+            dtype=bool
+        )
+    else:
+        arr = segment_tissue(
+            np.asarray(thumb),
+            median_filter_size=median_filter_size,
+            binary_threshold=binary_threshold,
+            closing_kernel_size=closing_kernel_size,
+            min_object_size_px=min_object_size_px,
+            min_hole_size_px=min_hole_size_px,
+            # red_threshold=red_threshold,
+        )
+        
+    if not np.issubdtype(arr.dtype, np.bool_):
+        raise TypeError(
+            f"expected the segmentation array to be boolean dtype but got {arr.dtype}"
+        )
+        
+    # Create a polygon of the binary tissue mask.
+    scale: tuple[float, float] = (
+        slide.dimensions[0] / thumb.size[0],
+        slide.dimensions[1] / thumb.size[1],
+    )
+    _res = get_multipolygon_from_binary_arr(arr.astype("uint8") * 255, scale=scale)
+    if _res is None:
+        logger.warning(f"No tissue was found in slide {slide_path}")
+        return None
+    polygon, contours, hierarchy = _res
+        
+    if object_based \
+        and qupath_detection_dir is not None \
+        and qupath_geojson_detection_dir is None \
+        and qupath_geojson_annotation_dir is None:
+        
+        patch_size = patch_size_px
+        half_patch_size = round(patch_size / 2)
+        
+        # read & prefilter once
+        slide_det = qupath_detection_dir / f"{slide_prefix}.txt"
+        
+        if not slide_det.exists():
+            logger.info(f"Skipping because detection file not found: {slide_det}")
+            coords = np.zeros((0, 2), dtype=np.int32)
+            polygons = None
+            tile_dim = None
+        else:
+            qpdet_df = pd.read_csv(slide_det, delimiter='\t')
+            
+            # constants
+            
+            xs = np.rint(qpdet_df["Centroid X µm"] / mpp - half_patch_size).astype(np.int32)
+            ys = np.rint(qpdet_df["Centroid Y µm"] / mpp - half_patch_size).astype(np.int32)
+            
+            # shape: (N, 4)
+            coords = np.column_stack([xs, ys])
+            
+            polygons = np.asarray([[[x-half_patch_size, y-half_patch_size],
+                                    [x-half_patch_size, y+half_patch_size],
+                                    [x+half_patch_size, y+half_patch_size],
+                                    [x+half_patch_size, y-half_patch_size],
+                                    [x-half_patch_size, y-half_patch_size]] for x, y in zip(xs, ys)])
+            
+            tile_dim = None
+           
+        
+    elif object_based \
+        and qupath_detection_dir is None \
+        and qupath_geojson_detection_dir is not None \
+        and qupath_geojson_annotation_dir is None: 
+        
+        patch_size = patch_size_px
+        half_patch_size = round(patch_size / 2)
+        
+        # read & prefilter once
+        slide_geojson = qupath_geojson_detection_dir / f"{slide_prefix}.geojson"
+        
+        if not slide_geojson.exists():
+            logger.info(f"Skipping because geojson file not found: {slide_geojson}")
+        else:            
+            gdf = gpd.read_file(slide_geojson)
+            gdf.set_crs(None, allow_override=True)
+            # constants
+            
+            x = (gdf.geometry.centroid.x / mpp)-half_patch_size
+            y = (gdf.geometry.centroid.y / mpp)-half_patch_size
+            
+            x = x.to_numpy().round().astype(np.int32)
+            y = y.to_numpy().round().astype(np.int32)
+            
+            # shape: (N, 4)
+            coords = np.column_stack([x, y])
+            
+            # Keep only polygonal geometries and explode MultiPolygons → Polygons
+            gdf = gdf[gdf.geometry.notnull()]
+            gdf = gdf[gdf.geometry.geom_type.isin(["Polygon", "MultiPolygon"])]
+            if gdf.empty:
+                return None
+        
+            gdf = gdf.explode(index_parts=False, ignore_index=True)
+        
+            polygons: List[Tuple[np.ndarray, np.ndarray]] = []
+        
+            for geom in gdf.geometry:
+                if geom.is_empty:
+                    continue
+                if isinstance(geom, Polygon):
+                    polys = [geom]
+                elif isinstance(geom, MultiPolygon):
+                    polys = [p for p in geom.geoms if not p.is_empty]
+                else:
+                    continue
+        
+                for poly in polys:
+                    # exterior ring
+                    ex = np.asarray(poly.exterior.coords, dtype=np.float64)
+                    # polygons.append((ex[:, 0].astype(np.float32), ex[:, 1].astype(np.float32)))
+                    xy = np.column_stack([ex[:, 0], ex[:, 1]]).astype(np.float32)
+                    polygons.append(xy)
+        
+                    # optional holes
+                    # if include_holes and poly.interiors:
+                    #     for ring in poly.interiors:
+                    #         rr = np.asarray(ring.coords, dtype=np.float64)
+                    #         polygons.append((rr[:, 0].astype(np.float32), rr[:, 1].astype(np.float32)))
+        
+            tile_dim = None
+            
+        
+    elif object_based \
+        and qupath_detection_dir is None \
+        and qupath_geojson_detection_dir is None \
+        and qupath_geojson_annotation_dir is None \
+        and object_detection == "end2end":    
+        # Get the coordinates of patches inside the tissue polygon.
+        slide_width, slide_height = slide.dimensions
+        half_patch_size = round(patch_size / 2)
+
+        overlap = (2*halo_size_px/patch_size_px)
+        
+        # Nx4 --> N x (minx, miny, width, height)
+        coords = get_patch_coordinates_within_polygon(
+            slide_width=slide_width,
+            slide_height=slide_height,
+            patch_size=patch_size,
+            half_patch_size=half_patch_size,
+            polygon=polygon,
+            overlap=overlap,
+        )
+
+        step_size = round((1 - overlap) * patch_size)
+        tile_centroids_arr: npt.NDArray[np.int_] = np.array(
+            list(
+                itertools.product(
+                    range(0 + half_patch_size, slide_width, step_size),
+                    range(0 + half_patch_size, slide_height, step_size),
+                )
+            )
+        )
+
+        tile_dim = ((tile_centroids_arr - half_patch_size) / step_size).max(axis=0).astype(np.int32) + 1
+        polygons = None
+            
+        logger.info(f"Found {len(coords)} patches within tissue")
+        
+    elif object_based \
+        and qupath_detection_dir is None \
+        and qupath_geojson_detection_dir is None \
+        and qupath_geojson_annotation_dir is None \
+        and object_detection != "end2end":
+        
+        img = imread(slide_path)
+        img = normalize(img, stardist_normalization_pmin, stardist_normalization_pmax, axis=(0, 1))
+        
+        model = StarDist2D.from_pretrained('2D_versatile_he')
+        _, polys = model.predict_instances_big(img, axes='YXC', block_size=4096, min_overlap=128, context=128,
+                                               n_tiles=(4, 4, 1))
+                
+        N = len(polys['coord'])
+        
+        object_centroids_arr = np.zeros((N, 2), dtype=np.int32)  # [x,y] per object
+        # object_wkts: list[str] = []
+        polygons: list[np.ndarray] = []  # each entry is array shape (Ni, 2): [x,y]
+        
+        for n in range(N):
+            ys = np.asarray(polys['coord'][n][0], dtype=np.float32)  # StarDist: y first
+            xs = np.asarray(polys['coord'][n][1], dtype=np.float32)  # then x
+            xy = np.column_stack([xs, ys])                            # shape (Ni, 2) as [x,y]
+        
+            # ensure ring is closed (first vertex == last vertex)
+            if xy.shape[0] > 0 and not np.allclose(xy[0], xy[-1]):
+                xy = np.vstack([xy, xy[0]])
+        
+            # keep raw coordinates list
+            polygons.append(xy)
+        
+            # build polygon (fix minor self-intersections if any)
+            poly = Polygon(xy)
+            if not poly.is_valid:
+                poly = poly.buffer(0)
+        
+            # WKT
+            # object_wkts.append(poly.wkt)
+        
+            # centroid (x,y) → round to int pixels if you want integer centers
+            cx, cy = poly.centroid.coords[0]
+            object_centroids_arr[n] = np.rint([cx, cy]).astype(np.int32)
+ 
+        # Get the coordinates of patches inside the tissue polygon.
+        slide_width, slide_height = slide.dimensions
+        half_patch_size = int(round(patch_size / 2))
+
+        # Nx4 --> N x (minx, miny, width, height)
+        coords = get_object_coordinates_within_polygon(
+            object_centroids_arr=object_centroids_arr,
+            half_patch_size=half_patch_size,
+            polygon=polygon,
+        )
+        
+        tile_dim = None
+        
+    else:
+        # Get the coordinates of patches inside the tissue polygon.
+        slide_width, slide_height = slide.dimensions
+        half_patch_size = round(patch_size / 2)
+
+        # Nx4 --> N x (minx, miny, width, height)
+        coords = get_patch_coordinates_within_polygon(
+            slide_width=slide_width,
+            slide_height=slide_height,
+            patch_size=patch_size,
+            half_patch_size=half_patch_size,
+            polygon=polygon,
+            overlap=overlap,
+        )
+
+        step_size = round((1 - overlap) * patch_size)
+        tile_centroids_arr: npt.NDArray[np.int_] = np.array(
+            list(
+                itertools.product(
+                    range(0 + half_patch_size, slide_width, step_size),
+                    range(0 + half_patch_size, slide_height, step_size),
+                )
+            )
+        )
+
+        tile_dim = ((tile_centroids_arr - half_patch_size) / step_size).max(axis=0).astype(np.int32) + 1
+
+        # polygons = np.empty((len(coords), 2, 4), dtype=np.float64)
+        polygons = []
+        
+        for c in range(len(coords)):
+            tile_minx = coords[c][0]
+            tile_miny = coords[c][1]
+            tile_maxx = tile_minx + patch_size - 1
+            tile_maxy = tile_miny + patch_size - 1
+            # tile_polygon = np.asarray([[tile_minx, tile_maxx, tile_maxx, tile_minx], [tile_miny, tile_miny, tile_maxy, tile_maxy]])
+            tile_polygon = np.asarray([[tile_minx, tile_miny], [tile_maxx, tile_miny], [tile_maxx, tile_maxy], [tile_minx, tile_maxy], [tile_minx, tile_miny]])
+            polygons.append(tile_polygon)
+            
+        logger.info(f"Found {len(coords)} patches within tissue")
+
+    
+    patch_path.parent.mkdir(exist_ok=True, parents=True)
+    if coords.size > 0:
+        logger.info(
+            f"Extracting {coords.shape[0]} patches of size {patch_size}x{patch_size} "
+            f"for slide {slide_prefix}"
+        )
+        
+        images = extract_patches_from_slide(slide, coords, patch_size) if cache_image_patches else None
+    
+        mpp = get_avg_mpp(slide_path)
+        slide = get_wsi_cls()(slide_path)
+        slide_width, slide_height = slide.dimensions    
+    
+        logger.info(f"Writing coordinates and images to {patch_path}")
+        save_hdf5(
+            path=patch_path,
+            coords=coords,
+            polygons=polygons,
+            tile_dim=tile_dim,
+            patch_size=patch_size,
+            patch_spacing_um_px=patch_spacing_um_px,
+            compression="gzip",
+            images=images,
+            slide_path=str(slide_path),
+            slide_mpp=mpp,
+            slide_width=slide_width,
+            slide_height=slide_height,
+        )
+    else:
+        logger.warning(f"No patches found for slide {slide_path}")
+
+
+    # Save thumbnail with drawn contours.
+    logger.info(f"Writing tissue thumbnail with contours to disk: {mask_path}")
+    mask_path.parent.mkdir(exist_ok=True, parents=True)
+    img = draw_contours_on_thumbnail(thumb, contours=contours, hierarchy=hierarchy)
+    img.thumbnail((1024, 1024), resample=Image.Resampling.LANCZOS)
+    # img.save(mask_path)
+    with URIPath(mask_path).open("wb") as fh:   # 本地缓存 + 自动上传
+        img.save(fh)
+    
+    return None
+
+
+def extract_patches_from_slide(
+    slide,
+    coords: npt.NDArray[np.int_],
+    patch_size: int,
+) -> npt.NDArray[np.uint8]:
+    """
+    Extract RGB patches from a WSI given top-left coordinates at level 0.
+
+    Parameters
+    ----------
+    slide : OpenSlide-like object
+        Must support slide.read_region(location=(x, y), level=0, size=(w, h)).
+    coords : array (N, 2)
+        Each row is (minx, miny) in level-0 pixels.
+    patch_size : int
+        Patch size in pixels at level 0.
+
+    Returns
+    -------
+    images : (N, patch_size, patch_size, 3) uint8
+        RGB patches.
+    """
+    coords = np.asarray(coords, dtype=np.int32)
+    if coords.ndim != 2 or coords.shape[1] != 2:
+        raise ValueError(f"coords must be (N, 2), got {coords.shape}")
+
+    n = coords.shape[0]
+    images = np.empty((n, patch_size, patch_size, 3), dtype=np.uint8)
+
+    for i, (x, y) in enumerate(coords):
+        x_int = int(x)
+        y_int = int(y)
+
+        # assuming OpenSlide-like API
+        region = slide.read_region(
+            location=(x_int, y_int),
+            level=0,
+            size=(patch_size, patch_size),
+        )
+
+        if region.mode != "RGB":
+            region = region.convert("RGB")
+
+        images[i] = np.asarray(region, dtype=np.uint8)
+
+    return images
+
+
+def save_hdf5(
+    path: str | URIPath,
+    coords: npt.NDArray[np.int_],
+    polygons: List[np.ndarray] | None,
+    tile_dim: npt.NDArray[np.int_] | None,
+    patch_size: int,
+    patch_spacing_um_px: float,
+    compression: str | None = "gzip",
+    images: npt.NDArray[np.uint8] | None = None,
+    slide_path: str = None,
+    slide_mpp: float = None,
+    slide_width: float = None,
+    slide_height: float = None,
+) -> None:
+    """Write patch coordinates, optional polygons, and optional image patches to HDF5."""
+    logger.info(f"Writing coordinates to disk: {path}")
+    logger.info(f"Coordinates have shape {coords.shape}")
+
+    coords = np.asarray(coords, dtype=np.int32)
+
+    if coords.ndim != 2:
+        raise ValueError(f"coords must have 2 dimensions but got {coords.ndim}")
+    if coords.shape[1] != 2:
+        raise ValueError(
+            f"length of coords second axis must be 2 but got {coords.shape[1]}"
+        )
+
+    if tile_dim is not None and tile_dim.shape != (2,):
+        raise ValueError(f"tile_dim must be (2,) but got {tile_dim.shape}")
+
+    if images is not None:
+        images = np.asarray(images, dtype=np.uint8)
+        if images.shape[0] != coords.shape[0]:
+            raise ValueError(
+                f"images and coords must have same length; "
+                f"got {images.shape[0]} vs {coords.shape[0]}"
+            )
+
+    with path.open("wb") as fh:      
+        with h5py.File(fh, "w") as f:
+            # --- 0) slide info
+            # d_slide = f.create_dataset("/slide", shape=(0,), dtype="float32")
+            g_slide = f.create_group("slide")
+            g_slide.attrs.create("slide_path", slide_path, dtype=h5py.string_dtype(encoding="utf-8"))
+            g_slide.attrs["slide_mpp"] = slide_mpp
+            g_slide.attrs["slide_width"] = slide_width
+            g_slide.attrs["slide_height"] = slide_height
+            
+            # --- 1) patch coordinates ---
+            d_coords = f.create_dataset("/coords", data=coords, compression=compression)
+            d_coords.attrs["patch_size"] = patch_size
+            d_coords.attrs["patch_level"] = 0
+            d_coords.attrs["patch_spacing_um_px"] = patch_spacing_um_px
+            if tile_dim is not None:
+                d_coords.attrs["tile_dim"] = tile_dim
+    
+            # --- 2) optional image patches ---
+            if images is not None:
+                logger.info(f"Writing images dataset with shape {images.shape}")
+                f.create_dataset(
+                    "/images",
+                    data=images,
+                    compression=compression,
+                    chunks=True,
+                )
+    
+            # --- 3) optional polygons as ragged array ---
+            if polygons is not None and len(polygons) > 0:
+                # polygons: list of (Ni, 2) arrays
+                lengths = np.array([xy.shape[0] for xy in polygons], dtype=np.int64)
+                offsets = np.concatenate(([0], np.cumsum(lengths)))
+                poly_coords = (
+                    np.vstack(polygons).astype(np.float32)
+                    if lengths.sum() > 0
+                    else np.zeros((0, 2), np.float32)
+                )
+    
+                g = f.create_group("/polygons")
+                d_poly = g.create_dataset(
+                    "coords",
+                    data=poly_coords,
+                    dtype="float32",
+                    compression=compression,
+                    shuffle=True,
+                    chunks=True,
+                )
+                g.create_dataset("offsets", data=offsets, dtype="int64")
+    
+                g.attrs["layout"] = "ragged_offsets"
+                d_poly.attrs["columns"] = np.array(["x", "y"], dtype="S1")
+
+
+def draw_contours_on_thumbnail(
+    thumb: Image.Image,
+    contours: Sequence[npt.NDArray[np.int_]],
+    hierarchy: npt.NDArray[np.int_],
+) -> Image.Image:
+    """Draw contours onto an image.
+
+    Parameters
+    ----------
+    thumb : Image.Image
+        The thumbnail of the whole slide of the same size as the binary image used
+        during contour detection.
+    contours : sequence of arrays
+        The contours result of `cv.findContours`.
+    hierarchy : array
+        The hierarchy result of `cv.findContours`.
+
+    Returns
+    -------
+    Image.Image
+        An image with contours burned in.
+    """
+    assert hierarchy.ndim == 3
+    assert hierarchy.shape[0] == 1
+    assert hierarchy.shape[2] == 4
+    assert len(contours) == hierarchy.shape[1]
+
+    # We assume the hierarchy was made with RETR_CCOMP.
+    contour_is_external = (hierarchy[0,:, 3] < 0).tolist()
+    external = [c for c, external in zip(contours, contour_is_external) if external]
+    hole = [c for c, external in zip(contours, contour_is_external) if not external]
+
+    img = np.array(thumb)
+    # Colors are BGR.
+    cv.drawContours(img, external, -1, (0, 255, 255), 7)
+    cv.drawContours(img, hole, -1, (255, 255, 0), 7)
+
+    return Image.fromarray(img).convert("RGB")
+
+
+def segment_and_patch_directory_of_slides(
+    wsi_dir: URIPath,
+    slide_paths: List[URIPath],
+    save_dir: URIPath,
+    qupath_detection_dir: str | URIPath,
+    qupath_geojson_detection_dir: str | URIPath,
+    qupath_geojson_annotation_dir: str | URIPath,
+    patch_size_px: int,
+    patch_spacing_um_px: float,
+    halo_size_px: int=0,
+    histoqc_dir: str | URIPath=None,
+    thumbsize: tuple[int, int]=(2048, 2048),
+    median_filter_size: int=7,
+    binary_threshold: int=7,
+    closing_kernel_size: int=6,
+    min_object_size_um2: float=200 ** 2,
+    min_hole_size_um2: float=190 ** 2,
+    overlap: float=0.0,
+    object_based: bool=False,
+    object_detection: str=None,
+    # red_threshold: int=0,
+    stardist_normalization_pmin: float=1.0,
+    stardist_normalization_pmax: float=99.8,
+    cache_image_patches: bool = False,
+) -> None:
+    """Get non-overlapping patch coordinates in tissue regions for a directory of whole
+    slide images.
+
+    Patch coordinates are saved to HDF5 files in `{save_dir}/patches/`, and tissue
+    detection images are saved to `{save_dir}/masks/` for quality control.
+
+    In general, this function takes the following steps for each whole slide image:
+
+    1. Get a low-resolution thumbnail of the image.
+    2. Binarize the image to identify tissue regions.
+    3. Process this binary image to remove artifacts.
+    4. Create a regular grid of non-overlapping patches of specified size.
+    5. Keep patches whose centroids are in tissue regions.
+
+    Parameters
+    ----------
+    wsi_dir : str or Path
+        The directory of whole slide images. This must only contain whole slide images.
+    save_dir : str or Path
+        The directory in which to save patching results.
+    patch_size_px : int
+        The length of one side of a square patch in pixels.
+    patch_spacing_um_px : float
+        The physical spacing of patches in micrometers per pixels. This value multiplied
+        by patch_size_px gives the physical length of a patch in micrometers.
+    mask : str or Path
+        The mask image file.
+    thumbsize : tuple of two integers
+        The size of the thumbnail to use for tissue detection. This specifies the
+        largest possible bounding box of the thumbnail, and a thumbnail is taken to fit
+        this space while maintaining the original aspect ratio of the whole slide image.
+        Larger thumbnails will take longer to process but will result in better tissue
+        masks.
+    median_filter_size : int
+        The size of the kernel for median filtering. This value must be odd and greater
+        than one. This is in units of pixels in the thumbnail.
+    binary_threshold: int
+        The value at which the image in binarized. A higher value will keep less tissue.
+    closing_kernel_size : int
+        The size of the kernel for a morphological closing operation. This is in units
+        of pixels in the thumbnail.
+    min_object_size_um2 : float
+        The minimum area of an object to keep, in units of micrometers squared. Any
+        disconnected objects smaller than this area will be removed.
+    min_hole_size_um2 : float
+        The minimum size of a hole to keep, in units of micrometers squared. Any hole
+        smaller than this area will be filled and be considered tissue.
+    red_threshold : int
+        The threshold for the red channel of the image. If the red channel is greater
+        than this value, the pixel is considered to be tissue. (Default: 0) (0 <= red_threshold <= 255)
+    stardist_normalization_pmin : float
+        Minimal percentile for stardist based cell detection.
+    stardist_normalization_pmax : float
+        Maximal percentile for stardist based cell detection.
+        
+    Returns
+    -------
+    None
+    """
+
+    wsi_dir = URIPath(wsi_dir)
+
+    _validate_wsi_directory(wsi_dir)
+
+    # slide_paths = sorted([p for p in tqdm.tqdm(wsi_dir.iterdir()) if p.is_file()])
+
+    # NOTE: we could use multi-processing here but then the logs would get
+    # discombobulated.
+    for i, slide_path in enumerate(slide_paths):
+        logger.info(f"Slide {i+1} of {len(slide_paths)} ({(i+1)/len(slide_paths):.2%})")
+        try:
+            segment_and_patch_one_slide(
+                slide_path=slide_path,
+                save_dir=save_dir,
+                qupath_detection_dir=qupath_detection_dir,
+                qupath_geojson_detection_dir=qupath_geojson_detection_dir,
+                qupath_geojson_annotation_dir=qupath_geojson_annotation_dir,
+                patch_size_px=patch_size_px,
+                patch_spacing_um_px=patch_spacing_um_px,
+                halo_size_px=halo_size_px,
+                histoqc_dir=histoqc_dir,
+                thumbsize=thumbsize,
+                median_filter_size=median_filter_size,
+                binary_threshold=binary_threshold,
+                closing_kernel_size=closing_kernel_size,
+                min_object_size_um2=min_object_size_um2,
+                min_hole_size_um2=min_hole_size_um2,
+                overlap=overlap,
+                object_based=object_based,
+				object_detection=object_detection,
+                # red_threshold=red_threshold,
+                stardist_normalization_pmin=stardist_normalization_pmin,
+                stardist_normalization_pmax=stardist_normalization_pmax,
+                cache_image_patches=cache_image_patches,
+            )
+        except Exception as e:
+            logger.error(f"Failed to segment and patch slide\n{slide_path}", exc_info=e)
+
+    return None

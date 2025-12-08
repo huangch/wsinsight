@@ -3,153 +3,145 @@
 Installing and getting started
 ==============================
 
-Prerequisites
--------------
+WSInsight supports Python 3.10+ and has been tested on Linux, macOS, and Windows. Two
+installation paths are maintained:
 
-WSInfer supports Python 3.8+ and has been tested on Windows, macOS, and Linux.
+* a **reproducible conda workflow** that mirrors the automation used by the core team; and
+* a **manual installation** for users who already manage their own environments.
 
-WSInfer can be installed using :code:`pip` or :code:`conda`. WSInfer will install PyTorch automatically
-if it is not installed, but this may not install GPU-enabled PyTorch even if a GPU is available.
-For this reason, *install PyTorch before installing WSInfer*.
+Both methods deliver the :code:`wsinsight` CLI and Python package.
 
-Install PyTorch first
-^^^^^^^^^^^^^^^^^^^^^
+Reproducible conda workflow
+---------------------------
 
-Please see `PyTorch's installation instructions <https://pytorch.org/get-started/locally/>`_
-for help installing PyTorch. The installation instructions differ based on your operating system
-and choice of :code:`pip` or :code:`conda`. Thankfully, the instructions provided
-by PyTorch also install the appropriate version of CUDA. We refrain from including code
-examples of installation commands because these commands can change over time. Please
-refer to `PyTorch's installation instructions <https://pytorch.org/get-started/locally/>`_
-for the most up-to-date instructions.
+This option recreates the reference environment used for development and publications.
+Run the commands below from the repository root. Adjust the path to :code:`conda.sh` and
+the environment name if needed.
 
-You will need a new-enough driver for your NVIDIA GPU. Please see
-`this version compatibility table <https://docs.nvidia.com/deploy/cuda-compatibility/#minor-version-compatibility>`_
-for the minimum versions required for different CUDA versions.
+.. code-block:: bash
 
-To test whether PyTorch can detect your GPU, check that this code snippet prints :code:`True` ::
+   # reset any previous environment (optional but recommended)
+   source /opt/anaconda3/etc/profile.d/conda.sh
+   conda deactivate || true
+   conda env remove -n wsinsight -y || true
 
-    python -c 'import torch; print(torch.cuda.is_available())'
+   # create a clean env with Python 3.11 and GDAL 3.11.3
+   conda create -n wsinsight python=3.11 gdal=3.11.3 -c conda-forge -y
+   conda activate wsinsight
+   python -m pip install --upgrade pip
 
-If your GPU is not available but you have a GPU, you can test if you installed a GPU-enabled PyTorch ::
+   # pin numpy across every install step via constraints.txt
+   python -m pip install -c ./wsinsight/constraints.txt "numpy<2"
 
-    python -c 'import torch; print(torch.version.cuda)'
+   # install heavy ML stacks first so CUDA dependencies settle early
+   python -m pip install -c ./wsinsight/constraints.txt \
+     torch torchvision torch-geometric tensorflow keras stardist
 
-If that command does not print a version string (e.g., 11.7, 12.1), then you probably installed a CPU-only PyTorch.
-Re-install PyTorch with CUDA support.
+   # HistomicsTK wheels live on girder.github.io; keep numpy pinned for ABI safety
+   python -m pip install --no-cache-dir --trusted-host github.com \
+     --trusted-host raw.githubusercontent.com --trusted-host girder.github.io \
+     --find-links https://girder.github.io/large_image_wheels --upgrade \
+     "numpy<2" histomicstk
 
-Another thing to test is that the environment variable :code:`CUDA_VISIBLE_DEVICES` is set. I (Jakub) have mine set to "0"
-because I have one GPU on my machine. If it is set to something other than "0", then PyTorch will not be able to
-detect the GPU.
+   # finally, install WSInsight itself in editable mode with the same constraints
+   python -m pip install -c ./wsinsight/constraints.txt -e ./wsinsight
 
-Install WSInfer
-----------------
+Smoke-test the CLI (optional) with representative environment variables:
 
-WSInfer can be installed with :code:`pip` or :code:`conda` (from :code:`conda-forge`). In both cases, you get
-the :code:`wsinfer` command line tool and Python package.
+.. code-block:: bash
 
-Pip
-^^^
+   S3_STORAGE_OPTIONS='{"profile":"saml"}' \
+   WSINFER_ZOO_REGISTRY_PATH='/workspace/wsinsight/wsinsight/zoo/wsinfer-zoo-registry.json' \
+   WSINSIGHT_REMOTE_CACHE_DIR='/tmp' \
+   KERAS_HOME='/workspace/wsinsight/wsinsight/keras' \
+   wsinsight --help
 
-To install the latest stable version of WSInfer, use ::
+Manual installation
+-------------------
 
-    python -m pip install wsinfer
+If you already maintain project environments, follow these steps.
 
-To check the installation, type ::
+1. **Install GPU-enabled PyTorch (and optionally TensorFlow/Keras).**
 
-    wsinfer --help
+   Follow `PyTorch's install guide <https://pytorch.org/get-started/locally/>`_ for your OS
+   and CUDA driver version. Verify GPU visibility with ::
 
-To install the latest *unstable* version of WSInfer, use ::
+       python -c "import torch; print(torch.cuda.is_available())"
 
-    python -m pip install git+https://github.com/SBU-BMI/wsinfer
+   For CUDA driver compatibility, consult the
+   `official matrix <https://docs.nvidia.com/deploy/cuda-compatibility/>`_.
 
-Conda
-^^^^^
+2. **Install WSInsight from PyPI, Git, or conda-forge.**
 
-To install the latest stable version of WSInfer with :code:`conda`, use ::
+   .. code-block:: bash
 
-    conda install -c conda-forge wsinfer
+      # latest stable
+      python -m pip install wsinsight
 
-If you use :code:`mamba`, replace :code:`conda install` with :code:`mamba install`.
+      # or latest main branch
+      python -m pip install git+https://github.com/huangch/wsinsight.git
 
-To check the installation, type ::
+      # or via conda/mamba
+      conda install -c conda-forge wsinsight
 
-    wsinfer --help
+   Validate the install with ::
 
-Developers
-^^^^^^^^^^
+       wsinsight --help
 
-Clone the GitHub repository and install the package in editable mode with the :code:`dev` extras ::
+3. **Developers:** install editable mode + tooling ::
 
-    git clone https://github.com/SBU-BMI/wsinfer.git
-    cd wsinfer
-    python -m pip install --editable .[dev]
-    pre-commit install
-
-We use :code:`pre-commit` to automatically run various checks during :code:`git commit`.
-
+       git clone https://github.com/huangch/wsinsight.git
+       cd wsinsight
+       python -m pip install --editable .[dev]
+       pre-commit install
 
 Supported slide backends
 ------------------------
 
-WSInfer supports two backends for reading whole slide images: `OpenSlide <https://openslide.org/>`_
-and `TiffSlide <https://github.com/Bayer-Group/tiffslide>`_. When you install WSInfer, TiffSlide is also
-installed. To install OpenSlide, install the compiled OpenSlide library and the Python package
-:code:`openslide-python`. To choose the backend on the command line, use
-:code:`wsinfer --backend=tiffslide ...` or :code:`wsinfer --backend=openslide ...`. In a Python script,
-use :code:`wsinfer.wsi.set_backend`.
+WSInsight supports `OpenSlide <https://openslide.org/>`_ and
+`TiffSlide <https://github.com/Bayer-Group/tiffslide>`_. TiffSlide ships automatically;
+install OpenSlide (library + :code:`openslide-python`) if you need it. Select the backend via
+:code:`wsinsight --backend=tiffslide` or :code:`wsinsight --backend=openslide`, or from Python
+with :func:`wsinsight.wsi.set_backend`.
 
 Containers
 ----------
 
-See https://hub.docker.com/u/kaczmarj/wsinfer/ for available Docker images. These Docker images
-can be used with Docker, Apptainer, or Singularity.
+Prebuilt images live at https://hub.docker.com/u/huangch/wsinsight/ and work with Docker,
+Apptainer, or Singularity.
 
-Docker:
+.. code-block:: bash
 
-::
-
-    docker pull kaczmarj/wsinfer
-
-Apptainer:
-
-::
-
-    apptainer pull docker://kaczmarj/wsinfer
-
-Singularity:
-
-::
-
-    singularity pull docker://kaczmarj/wsinfer
-
-
-Developers
-----------
-
-Clone the repository from https://github.com/SBU-BMI/wsinfer and install it in editable mode. ::
-
-    git clone https://github.com/SBU-BMI/wsinfer.git
-    cd wsinfer
-    python -m pip install --editable .[dev,openslide]
-    wsinfer --help
+   docker pull huangch/wsinsight
+   apptainer pull docker://huangch/wsinsight
+   singularity pull docker://huangch/wsinsight
 
 Getting started
 ---------------
 
-The :code:`wsinfer` command line program is the main interface to WSInfer. Use the :code:`--help`
-flag to show more information. ::
+The :code:`wsinsight` CLI is the primary interface. Common commands:
 
-    wsinfer --help
+.. code-block:: bash
 
-To list the available trained models: ::
+   wsinsight --help
+   wsinfer-zoo ls                     # WSInfer-compatible models
+   wsinsight run --wsi-dir slides/ \
+       --results-dir results/ \
+       --model CellViT-SAM-H-x40
 
-    wsinfer-zoo ls
+Remote data configuration
+-------------------------
 
-To run inference on whole slide images: ::
+After installation, set the following environment variables (optionally via your shell
+profile or job scheduler) to enable seamless access to cloud storage and manifests:
 
-    wsinfer run --wsi-dir slides/ --results-dir results/ --model breast-tumor-resnet34.tcga-brca
+* ``S3_STORAGE_OPTIONS`` — JSON passed directly to ``fsspec`` (examples: ``{"profile": "research"}``, ``{"key": "…", "secret": "…"}``). This unlocks reading WSIs from
+   ``s3://`` URIs and writing ``--results-dir`` outputs back to S3.
+* ``WSINSIGHT_REMOTE_CACHE_DIR`` — Directory used to cache remote assets locally. Defaults
+   to ``~/.cache/wsinsight``; point it at a fast SSD for tera-scale slides.
+* ``WSINFER_ZOO_REGISTRY_PATH`` — Optional path/URI for a custom copy of the WSInfer model
+   registry (local file, ``s3://…``, etc.).
 
-To convert model outputs to GeoJSON, for example to view in QuPath: ::
-
-    wsinfer togeojson results/ model-outputs-geojson/
+With these variables in place, all CLI commands accept local paths, ``s3://`` URIs, or
+``gdc://`` manifests for ``--wsi-dir`` and can write outputs to either local disks or S3
+without code changes.

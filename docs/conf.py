@@ -8,11 +8,11 @@
 
 import os
 
-import wsinfer
+import wsinsight
 
-project = "WSInfer"
-copyright = "2023, Jakub Kaczmarzyk"
-author = "Jakub Kaczmarzyk"
+project = "WSInsight"
+copyright = "Chao-Hui Huang (2025), Jakub Kaczmarzyk (2023)"
+author = "Chao-Hui Huang and Jakub Kaczmarzyk"
 
 # -- General configuration ---------------------------------------------------
 # https://www.sphinx-doc.org/en/master/usage/configuration.html#general-configuration
@@ -21,7 +21,7 @@ extensions = [
     "sphinx.ext.intersphinx",  # for links
     "sphinx.ext.napoleon",  # for google style docstrings
     "sphinx.ext.viewcode",  # add links to code
-    "autoapi.extension",  # to document the wsinfer api
+    "autoapi.extension",  # to document the wsinsight api
     "sphinx_click",  # to document click command line
     "sphinx_copybutton",  # add copy button to top-right of code blocks
 ]
@@ -31,7 +31,7 @@ language = "en"
 
 # AutoAPI options.
 autoapi_type = "python"
-autoapi_dirs = ["../wsinfer"]
+autoapi_dirs = ["../wsinsight"]
 autoapi_options = [
     "members",
     "undoc-members",
@@ -55,8 +55,8 @@ intersphinx_mapping = {
 
 # For editing the pages.
 html_context = {
-    "github_user": "SBU-BMI",
-    "github_repo": "wsinfer",
+    "github_user": "huangch",
+    "github_repo": "wsinsight",
     "github_version": "main",
     "doc_path": "docs",
 }
@@ -65,7 +65,7 @@ html_context = {
 # https://www.sphinx-doc.org/en/master/usage/configuration.html#options-for-html-output
 
 # Define the json_url for our version switcher.
-json_url = "https://wsinfer.readthedocs.io/en/latest/_static/switcher.json"
+json_url = "https://wsinsight.readthedocs.io/en/latest/_static/switcher.json"
 
 # Copied (with love) from conf.py of pydata-sphinx-theme.
 # Define the version we use for matching in the version switcher.
@@ -74,7 +74,7 @@ version_match = os.environ.get("READTHEDOCS_VERSION")
 # If it is an integer, we're in a PR build and the version isn't correct.
 if not version_match or version_match.isdigit():
     # For local development, infer the version to match from the package.
-    release = wsinfer.__version__
+    release = wsinsight.__version__
     if "dev" in release or "rc" in release:
         version_match = "dev"
         # We want to keep the relative reference if we are in dev mode
@@ -93,15 +93,15 @@ html_static_path = ["_static"]
 # Many of these options are copied directly from pydata-sphinx-theme's conf.py.
 html_theme_options = {
     "logo": {
-        "text": "WSInfer",
+        "text": "WSInsight",
         "image_light": "_static/logo.svg",
         "image_dark": "_static/logo.svg",
-        "alt_text": "WSInfer Logo",
+        "alt_text": "WSInsight Logo",
     },
     "use_edit_page_button": True,
     "show_toc_level": 1,
     "navbar_align": "left",
-    "github_url": "https://github.com/SBU-BMI/wsinfer",
+    "github_url": "https://github.com/huangch/wsinsight",
     "navbar_end": ["version-switcher", "theme-switcher", "navbar-icon-links"],
     "show_version_warning_banner": True,
     "switcher": {
@@ -109,7 +109,7 @@ html_theme_options = {
         "version_match": version_match,
     },
     "external_links": [
-        {"name": "GitHub Repository", "url": "https://github.com/SBU-BMI/wsinfer"},
+        {"name": "GitHub Repository", "url": "https://github.com/huangch/wsinsight"},
     ],
     "header_links_before_dropdown": 6,
 }

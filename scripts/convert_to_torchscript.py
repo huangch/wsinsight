@@ -1,10 +1,10 @@
-"""Convert wsinfer models to torchscript."""
+"""Convert wsinsight models to torchscript."""
 
 import hashlib
 from pathlib import Path
 
 import torch
-from wsinfer import get_model_weights, list_all_models_and_weights
+from wsinsight import get_model_weights, list_all_models_and_weights
 
 
 def sha256sum(path) -> str:
@@ -20,7 +20,7 @@ def sha256sum(path) -> str:
 
 
 def get_torchscript_frozen(arch: str, name: str):
-    """Convert a wsinfer pytorch model to a frozen TorchScript model."""
+    """Convert a wsinsight pytorch model to a frozen TorchScript model."""
 
     print("Loading model...")
     weights_obj = get_model_weights(architecture=arch, name=name)
