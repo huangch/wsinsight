@@ -86,14 +86,14 @@ WSInsight adds cell-centric Vision Transformer and HoverNet variants that are no
 
 Available WSInsight model names:
 
-- `CellViT-256-x20` [`CellViT-256-x20`](https://huggingface.co/huangch/CellViT-256-x20)
-- `CellViT-256-x40` [HF Link](https://huggingface.co/huangch/CellViT-256-x40)
-- `CellViT-256-x40-AMP` [HF Link](https://huggingface.co/huangch/CellViT-256-x40-AMP)
-- `CellViT-SAM-H-x20` [HF Link](https://huggingface.co/huangch/CellViT-SAM-H-x20)
-- `CellViT-SAM-H-x40` [HF Link](https://huggingface.co/huangch/CellViT-SAM-H-x40)
-- `CellViT-SAM-H-x40-AMP` [HF Link](https://huggingface.co/huangch/CellViT-SAM-H-x40-AMP)
-- `CellViT-Virchow-x40-AMP` [HF Link](https://huggingface.co/huangch/CellViT-Virchow-x40-AMP)
-- `hovernet_fast_pannuke` [HF Link](https://huggingface.co/huangch/hovernet_fast_pannuke)
+- `[CellViT-256-x20](https://huggingface.co/huangch/CellViT-256-x20)` 
+- `[CellViT-256-x40](https://huggingface.co/huangch/CellViT-256-x40)` 
+- `[CellViT-256-x40-AMP](https://huggingface.co/huangch/CellViT-256-x40-AMP)` 
+- `[CellViT-SAM-H-x20](https://huggingface.co/huangch/CellViT-SAM-H-x20)` 
+- `[CellViT-SAM-H-x40](https://huggingface.co/huangch/CellViT-SAM-H-x40)` 
+- `[CellViT-SAM-H-x40-AMP](https://huggingface.co/huangch/CellViT-SAM-H-x40-AMP)` 
+- `[CellViT-Virchow-x40-AMP](https://huggingface.co/huangch/CellViT-Virchow-x40-AMP)` 
+- `[hovernet_fast_pannuke](https://huggingface.co/huangch/hovernet_fast_pannuke)` 
 
 > [!TIP]
 > Use `CUDA_VISIBLE_DEVICES=… wsinsight run …` to pin execution to specific GPUs. The command prints an environment summary before inference begins.
