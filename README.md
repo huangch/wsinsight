@@ -17,8 +17,8 @@ WSInsight is a fork of [WSInfer](https://github.com/SBU-BMI/wsinfer) that delive
 
 ## Visual Overview
 
-Original H&E                                          |Heatmap of Tumor Probability
 :----------------------------------------------------:|:----------------------------------------------------:
+Original H&E                                          |Heatmap of Tumor Probability
 ![H&E example](docs/_static/brca-tissue.png)   | ![Tumor probability heatmap](docs/_static/brca-heatmap-neoplastic.png)
 Heatmap of Dead Cell Probability                      |Heatmap of Connective Cell Probability
 ![Necrotic region](docs/_static/brca-heatmap-dead.png)|![Connectivity heatmap](docs/_static/brca-heatmap-connective.png)
