@@ -86,7 +86,7 @@ WSInsight adds cell-centric Vision Transformer and HoverNet variants that are no
 
 Available WSInsight model names:
 
-- `CellViT-256-x20` [HF Link](https://huggingface.co/huangch/CellViT-256-x20)
+- `CellViT-256-x20` [`CellViT-256-x20`](https://huggingface.co/huangch/CellViT-256-x20)
 - `CellViT-256-x40` [HF Link](https://huggingface.co/huangch/CellViT-256-x40)
 - `CellViT-256-x40-AMP` [HF Link](https://huggingface.co/huangch/CellViT-256-x40-AMP)
 - `CellViT-SAM-H-x20` [HF Link](https://huggingface.co/huangch/CellViT-SAM-H-x20)
