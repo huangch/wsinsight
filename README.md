@@ -25,13 +25,15 @@ WSInsight is a fork of [WSInfer](https://github.com/SBU-BMI/wsinfer) that delive
 
 ## Integrative Patch-Level and Single-Cell Inference
 
-| Original H&E ROI                                                   | Description                                                                                                                                                |
-|:------------------------------------------------------------------:|:----------------------------------------------------------------------------------------------------------------------------------------------------------:|
-| ![original H&amp;E](docs/_static/roi-hne.png)                      | The models used in this experiment include:<br>`CellViT-SAM-H-x40`,<br>`breast-tumor-resnet34.tcga-brca`, and<br>`pancancer-lymphocytes-inceptionv4.tcga`. |
-| Immune Cells (green) / Lympho Regions (blue)                       | Neoplastic Cells (yellow) / Lympho Regions (blue)                                                                                                          |
-| ![immune cells/lympho regions](docs/_static/roi-lympho-immune.png) | ![neoplastic cells/lympho regions](docs/_static/roi-lympho-neoplastic.png)                                                                                 |
-| Immune Cells (green) / Tumor Regions (red)                         | Neoplastic Cells (yellow) / Tumor Regions (red)                                                                                                            |
-| ![immune cells/tumor regions](docs/_static/roi-tumor-immune.png)   | ![neoplastic cells/tumor regions](docs/_static/roi-tumor-neoplastic.png)                                                                                   |
+The models used in this experiment include: `CellViT-SAM-H-x40`, `breast-tumor-resnet34.tcga-brca`, and `pancancer-lymphocytes-inceptionv4.tcga`.
+
+| Original H&E ROI                                                   | Description                                                                |
+|:------------------------------------------------------------------:|:--------------------------------------------------------------------------:|
+| ![original H&amp;E](docs/_static/roi-hne.png)                      |                                                                            |
+| Immune Cells (green) / Lympho Regions (blue)                       | Neoplastic Cells (yellow) / Lympho Regions (blue)                          |
+| ![immune cells/lympho regions](docs/_static/roi-lympho-immune.png) | ![neoplastic cells/lympho regions](docs/_static/roi-lympho-neoplastic.png) |
+| Immune Cells (green) / Tumor Regions (red)                         | Neoplastic Cells (yellow) / Tumor Regions (red)                            |
+| ![immune cells/tumor regions](docs/_static/roi-tumor-immune.png)   | ![neoplastic cells/tumor regions](docs/_static/roi-tumor-neoplastic.png)   |
 
 ## Documentation
 
