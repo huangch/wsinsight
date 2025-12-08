@@ -133,6 +133,31 @@ models. List the registered WSInfer identifiers with ::
 To discover the WSInsight-native CellViT/HoverNet variants, see
 :ref:`available-models`.
 
+WSInsight-native workflow (CellViT models)
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+WSInsight adds cell-centric Vision Transformer and HoverNet variants that are
+not part of upstream WSInfer. To run them:
+
+1. Stage your WSIs as before and ensure the conda environment includes the
+  CellViT dependencies (installed automatically via the standard
+  installation instructions).
+2. Pick one of the WSInsight-native model identifiers (see list in
+  :ref:`available-models`) from the registry.
+3. Launch inference, for example with ``CellViT-SAM-H-x40``:
+
+  ::
+
+    wsinsight run \
+     --wsi-dir slides/ \
+     --results-dir results-cellvit/ \
+     --model CellViT-SAM-H-x40 \
+     --batch-size 16 \
+     --num-workers 8
+
+4. Review the outputs in ``results-cellvit/model-outputs-*`` and downstream
+  GeoJSON artifacts just like the compatible workflow.
+
 All commands understand local filesystem paths, ``s3://`` URIs, and
 ``gdc://`` manifests for ``--wsi-dir``. Outputs such as ``--results-dir``,
 GeoJSON, and OME-CSV artifacts can be written to local disks or S3 using the
