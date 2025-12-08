@@ -178,19 +178,6 @@ GitHub repository. If you would like to make your patch classification model
 available in WSInsight, please get in touch with us! You can `submit a new
 GitHub issue <https://github.com/SBU-BMI/wsinsight/issues/new>`_.
 
-.. admonition:: Citation
-
-  If you find our work useful, please cite our work in npj Precision Oncology
-  and the original WSInfer paper.
-
-  Huang, C.-H., Awosika, O. E., & Fernandez, D. (2025).
-  WSInsight as a cloud-native pipeline for single-cell pathology inference on whole-slide images. 
-  bioRxiv. https://doi.org/10.1101/2025.692260
-
-  Kaczmarzyk, J.R., O'Callaghan, A., Inglis, F. et al. Open and reusable deep
-  learning for pathology with WSInfer and QuPath. *npj Precis. Onc.* **8**, 9
-  (2024). https://doi.org/10.1038/s41698-024-00499-9
-
 Cell-level model comparison
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
@@ -295,6 +282,19 @@ WSInfer-compatible models: ::
      - TCGA PRAD
      - 175 @ 0.5
      - `Ref <https://github.com/SBU-BMI/quip_prad_cancer_detection>`_
+
+.. admonition:: Citation
+
+  If you find our work useful, please cite our work in npj Precision Oncology
+  and the original WSInfer paper.
+
+  Huang, C.-H., Awosika, O. E., & Fernandez, D. (2025).
+  WSInsight as a cloud-native pipeline for single-cell pathology inference on whole-slide images. 
+  bioRxiv. https://doi.org/10.1101/2025.692260
+
+  Kaczmarzyk, J.R., O'Callaghan, A., Inglis, F. et al. Open and reusable deep
+  learning for pathology with WSInfer and QuPath. *npj Precis. Onc.* **8**, 9
+  (2024). https://doi.org/10.1038/s41698-024-00499-9
 
 Indices and tables
 ==================
