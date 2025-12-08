@@ -67,6 +67,14 @@ models. List the registered WSInfer identifiers with ::
 To discover the WSInsight-native CellViT/HoverNet variants, see
 :ref:`available-models`.
 
+.. toctree::
+  :maxdepth: 2
+  :caption: Contents:
+
+  Installing <installing>
+  User Guide <user_guide>
+  CLI <cli>
+
 Highlights
 ----------
 
@@ -182,16 +190,6 @@ GitHub issue <https://github.com/SBU-BMI/wsinsight/issues/new>`_.
   Kaczmarzyk, J.R., O'Callaghan, A., Inglis, F. et al. Open and reusable deep
   learning for pathology with WSInfer and QuPath. *npj Precis. Onc.* **8**, 9
   (2024). https://doi.org/10.1038/s41698-024-00499-9
-
-.. toctree::
-  :maxdepth: 2
-  :caption: Contents:
-
-  Installing <installing>
-  User Guide <user_guide>
-  CLI <cli>
-
-.. _available-models:
 
 Cell-level model comparison
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~
