@@ -1,7 +1,12 @@
 :html_theme.sidebar_secondary.remove:
 
-![WSInsight logo](_static/logo48.png) WSInsight: Cloud-Native Single-Cell Pathology Inference on Whole Slide Images
-=================================================================================================================
+.. image:: _static/logo.svg
+  :alt: WSInsight logo
+  :align: left
+  :height: 36px
+
+WSInsight: Cloud-Native Single-Cell Pathology Inference on Whole Slide Images
+=============================================================================
 
 .. image:: https://github.com/huangch/wsinsight/actions/workflows/ci.yml/badge.svg
   :alt: GitHub workflow status
