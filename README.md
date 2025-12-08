@@ -213,7 +213,9 @@ WSInsight is released under the terms of the `LICENSE` file included with this r
 
 ## Citation
 
-If you find our work useful, please cite [WSInfer paper](https://doi.org/10.1038/s41698-024-00499-9)!
+If you find our work useful, please cite [WSInsight](https://doi.org/10.1038/s41698-024-00499-9) and [WSInfer](https://doi.org/10.1038/s41698-024-00499-9)!
+
+> Huang, C.H., Awosika, O.E., Fernandez, D. WSInsight as a cloud-native pipeline for single-cell pathology inference on whole-slide images.
 
 > Kaczmarzyk, J.R., O’Callaghan, A., Inglis, F. et al. Open and reusable deep learning for pathology with WSInfer and QuPath. *npj Precis. Onc.* **8**, 9 (2024). https://doi.org/10.1038/s41698-024-00499-9
 
