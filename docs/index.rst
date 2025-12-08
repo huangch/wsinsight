@@ -79,6 +79,8 @@ Visual overview
 Integrative patch-level and single-cell inference
 -------------------------------------------------
 
+Original H&E ROI
+
 .. image:: _static/roi-hne.png
   :alt: Original H&E ROI
   :align: center
