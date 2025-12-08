@@ -84,6 +84,7 @@ Original H&E ROI
 .. image:: _static/roi-hne.png
   :alt: Original H&E ROI
   :align: center
+  :scale: 50 %
 
 .. |img-roi-lympho-immune| image:: _static/roi-lympho-immune.png
   :alt: Immune cells in lymphoid regions
