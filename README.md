@@ -1,6 +1,6 @@
 # ![WSInsight logo](docs/_static/logo48.png) WSInsight: Cloud-Native Single-Cell Pathology Inference on Whole Slide Images
 
-WSInsight is a fork of WSInfer that delivers end-to-end pathology inference for giga-pixel whole slide images. It scales from laptops to cloud clusters, orchestrates patch extraction/classification, cell detection/classification, model inference, and downstream analytics, and produces artifacts that can be explored in QuPath, GeoJSON-aware viewers, OMERO+, or bespoke notebooks.
+WSInsight is a fork of [WSInfer](https://github.com/SBU-BMI/wsinfer) that delivers end-to-end pathology inference for giga-pixel whole slide images. It scales from laptops to cloud clusters, orchestrates patch extraction/classification, cell detection/classification, model inference, and downstream analytics, and produces artifacts that can be explored in QuPath, GeoJSON-aware viewers, OMERO+, or bespoke notebooks.
 
 > [!IMPORTANT]
 > WSInsight is a research tool. It is not cleared for clinical workflows or patient-facing decisions.
@@ -20,9 +20,7 @@ WSInsight is a fork of WSInfer that delivers end-to-end pathology inference for 
 Original H&E                                          |Heatmap of Tumor Probability
 :----------------------------------------------------:|:----------------------------------------------------:
 ![H&E example](docs/_static/brca-tissue.png)   | ![Tumor probability heatmap](docs/_static/brca-heatmap-neoplastic.png)
-:----------------------------------------------------:|:----------------------------------------------------:
 Heatmap of Dead Cell Probability                      |Heatmap of Connective Cell Probability
-:----------------------------------------------------:|:----------------------------------------------------:
 ![Necrotic region](docs/_static/brca-heatmap-dead.png)|![Connectivity heatmap](docs/_static/brca-heatmap-connective.png)
 
 ## Documentation
@@ -212,3 +210,26 @@ WSInsight is released under the terms of the `LICENSE` file included with this r
 [![Supported Python versions](https://img.shields.io/pypi/pyversions/wsinsight)](https://pypi.org/project/wsinsight/)
 [![Published in npj Precision Oncology](https://img.shields.io/badge/Published-npj_Precision_Oncology-blue)](https://doi.org/10.1038/s41698-024-00499-9)
 -->
+
+## Citation
+
+If you find our work useful, please cite [WSInfer paper](https://doi.org/10.1038/s41698-024-00499-9)!
+
+> Kaczmarzyk, J.R., O’Callaghan, A., Inglis, F. et al. Open and reusable deep learning for pathology with WSInfer and QuPath. *npj Precis. Onc.* **8**, 9 (2024). https://doi.org/10.1038/s41698-024-00499-9
+
+```bibtex
+@article{kaczmarzyk2024open,
+  title={Open and reusable deep learning for pathology with WSInfer and QuPath},
+  author={Kaczmarzyk, Jakub R. and O'Callaghan, Alan and Inglis, Fiona and Gat, Swarad and Kurc, Tahsin and Gupta, Rajarsi and Bremer, Erich and Bankhead, Peter and Saltz, Joel H.},
+  journal={npj Precision Oncology},
+  volume={8},
+  number={1},
+  pages={9},
+  year={2024},
+  month={Jan},
+  day=10,
+  doi={10.1038/s41698-024-00499-9},
+  issn={2397-768X},
+  url={https://doi.org/10.1038/s41698-024-00499-9}
+}
+```
