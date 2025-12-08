@@ -1,12 +1,11 @@
 :html_theme.sidebar_secondary.remove:
 
-WSInsight: cell-aware inference on whole slide images
-=====================================================
-
+![WSInsight logo](_static/logo48.png) WSInsight: Cloud-Native Single-Cell Pathology Inference on Whole Slide Images
+=================================================================================================================
 
 .. image:: https://github.com/huangch/wsinsight/actions/workflows/ci.yml/badge.svg
-   :alt: GitHub workflow status
-   :target: https://github.com/huangch/wsinsight/actions/workflows/ci.yml
+  :alt: GitHub workflow status
+  :target: https://github.com/huangch/wsinsight/actions/workflows/ci.yml
 .. image:: https://readthedocs.org/projects/wsinsight/badge/?version=latest
   :alt: Documentation build status
   :target: https://wsinsight.readthedocs.io/en/latest/?badge=latest
@@ -19,83 +18,132 @@ WSInsight: cell-aware inference on whole slide images
 
 |
 
-🔥 🚀 **WSInsight** is a reproducible, cell-aware inference pipeline for giga-pixel slides.
-It stays compatible with the original WSInfer model zoo while adding WSInsight-native
-CellViT and HoverNet variants for single-cell analysis. Built-in and compatible models
-:ref:`are listed below <available-models>`.
+WSInsight is a fork of `WSInfer <https://github.com/SBU-BMI/wsinfer>`_ that delivers
+end-to-end pathology inference for giga-pixel whole slide images. It scales from laptops
+to cloud clusters, orchestrates patch extraction/classification, cell detection/
+classification, model inference, and downstream analytics, and produces artifacts that
+can be explored in QuPath, GeoJSON-aware viewers, OMERO+, or bespoke notebooks.
 
 .. caution::
 
-  WSInsight is intended for research use only.
+  WSInsight is a research tool. It is not cleared for clinical workflows or
+  patient-facing decisions.
 
 .. image:: _static/diagram.drawio.png
-   :alt: WSInsight workflow overview
-   :align: center
-   :class: workflow-diagram
+  :alt: WSInsight workflow overview
+  :align: center
+  :class: workflow-diagram
 
-Running inference on whole slide images is done with a single command line:
+Highlights
+----------
 
-::
+- GPU-accelerated inference for registered models from the WSInfer Model Zoo or
+  custom TorchScript weights
+- Automated tissue segmentation, patch extraction, and batched inference with
+  resumable runs
+- First-class support for QuPath projects, GeoJSON/OME-CSV exports, and remote
+  slides (S3, GDC manifests)
+- Transparent URI handling lets you read WSIs from local disks, S3 buckets, or
+  GDC manifests and write inference outputs back to either local paths or S3
+  using the same CLI options
+- Built for reproducibility: metadata capture, deterministic configuration, and
+  container-friendly execution
 
-   wsinsight run \
-      --wsi-dir slides/ \
-      --results-dir results/ \
-      --model breast-tumor-resnet34.tcga-brca
+Visual overview
+---------------
 
-WSInsight accepts both WSInfer-compatible model IDs and WSInsight-native models. List the
-registered WSInfer identifiers with ::
+.. |img-tissue| image:: _static/brca-tissue.png
+  :alt: TCGA BRCA sample slide
+.. |img-heatmap-tumor| image:: _static/brca-heatmap-neoplastic.png
+  :alt: Heatmap of tumor probability
+.. |img-heatmap-dead| image:: _static/brca-heatmap-dead.png
+  :alt: Heatmap of dead cell probability
+.. |img-heatmap-connective| image:: _static/brca-heatmap-connective.png
+  :alt: Heatmap of connective cell probability
 
-    wsinfer-zoo ls
++------------------------+------------------------------+
+| Original H&E           | Heatmap of Tumor Probability |
++========================+==============================+
+| |img-tissue|           | |img-heatmap-tumor|          |
++------------------------+------------------------------+
+| Heatmap of Dead Cells  | Heatmap of Connective Cells  |
++------------------------+------------------------------+
+| |img-heatmap-dead|     | |img-heatmap-connective|     |
++------------------------+------------------------------+
 
-To discover the WSInsight-native CellViT/HoverNet variants, see :ref:`available-models`.
+Integrative patch-level and single-cell inference
+-------------------------------------------------
 
-Prefer a staged workflow for large cohorts? Use ``wsinsight patch`` to extract patches and
-cache intermediate HDF5 files, then ``wsinsight infer`` to reuse that cache for one or
-multiple models. The ``wsinsight run`` command simply orchestrates those two steps back to
-back for convenience.
+.. |img-roi-lympho-immune| image:: _static/roi-lympho-immune.png
+  :alt: Immune cells in lymphoid regions
+.. |img-roi-lympho-neoplastic| image:: _static/roi-lympho-neoplastic.png
+  :alt: Neoplastic cells in lymphoid regions
+.. |img-roi-tumor-immune| image:: _static/roi-tumor-immune.png
+  :alt: Immune cells in tumor regions
+.. |img-roi-tumor-neoplastic| image:: _static/roi-tumor-neoplastic.png
+  :alt: Neoplastic cells in tumor regions
 
-WSInsight-native models (CellViT/HoverNet) are run the same way—either via the one-shot
-``run`` command or in a two-step flow. For example:
++----------------------------------------------+-----------------------------------------------+
+| Immune Cells / Lymphoid Regions              | Neoplastic Cells / Lymphoid Regions           |
++==============================================+===============================================+
+| |img-roi-lympho-immune|                      | |img-roi-lympho-neoplastic|                   |
++----------------------------------------------+-----------------------------------------------+
+| Immune Cells / Tumor Regions                 | Neoplastic Cells / Tumor Regions              |
++----------------------------------------------+-----------------------------------------------+
+| |img-roi-tumor-immune|                       | |img-roi-tumor-neoplastic|                    |
++----------------------------------------------+-----------------------------------------------+
+
+Quick start
+-----------
+
+Running inference on whole slide images is done with a single command-line
+entry point:
 
 ::
 
   wsinsight run \
     --wsi-dir slides/ \
-    --results-dir results-cellvit/ \
-    --model CellViT-SAM-H-x40 \
-    --batch-size 16 \
-    --num-workers 8
+    --results-dir results/ \
+    --model breast-tumor-resnet34.tcga-brca \
+    --batch-size 32 \
+    --num-workers 4
 
-The available identifiers are listed in :ref:`available-models`. They leverage the same
-CLI flags, QuPath integrations, and remote storage options as WSInfer-compatible models.
+Prefer a staged workflow for large cohorts? Use ``wsinsight patch`` to extract
+patches and cache intermediate HDF5 files, then ``wsinsight infer`` to reuse
+that cache for one or multiple models. The ``wsinsight run`` command simply
+orchestrates those two steps back to back for convenience.
 
-All commands understand local filesystem paths, ``s3://`` URIs, and ``gdc://`` manifests
-for ``--wsi-dir``. Outputs such as ``--results-dir``, GeoJSON, and OME-CSV artifacts can
-be written to local disks or S3 using the same URI syntax, with caching controlled via
-``WSINSIGHT_REMOTE_CACHE_DIR``.
+WSInsight accepts both WSInfer-compatible model IDs and WSInsight-native
+models. List the registered WSInfer identifiers with ::
 
-To get started, please :ref:`install WSInsight<installing>` and check out the :ref:`User Guide`.
-To get help, report issues or request features, please
-`submit a new issue <https://github.com/huangch/wsinsight/issues/new>`_ on our GitHub
-repository. If you would like to make your patch classification model available in WSInsight, please
-get in touch with us! You can `submit a new GitHub issue <https://github.com/SBU-BMI/wsinsight/issues/new>`_.
+  wsinfer-zoo ls
+
+To discover the WSInsight-native CellViT/HoverNet variants, see
+:ref:`available-models`.
+
+All commands understand local filesystem paths, ``s3://`` URIs, and
+``gdc://`` manifests for ``--wsi-dir``. Outputs such as ``--results-dir``,
+GeoJSON, and OME-CSV artifacts can be written to local disks or S3 using the
+same URI syntax, with caching controlled via ``WSINSIGHT_REMOTE_CACHE_DIR``.
+
+To get started, please :ref:`install WSInsight<installing>` and check out the
+:ref:`User Guide`. To get help, report issues or request features, please
+`submit a new issue <https://github.com/huangch/wsinsight/issues/new>`_ on our
+GitHub repository. If you would like to make your patch classification model
+available in WSInsight, please get in touch with us! You can `submit a new
+GitHub issue <https://github.com/SBU-BMI/wsinsight/issues/new>`_.
 
 .. admonition:: Citation
 
-  If you find our work useful, please cite our paper https://doi.org/10.1038/s41698-024-00499-9.
+  If you find our work useful, please cite our work in npj Precision Oncology
+  and the original WSInfer paper.
 
-  Kaczmarzyk, J.R., O'Callaghan, A., Inglis, F. et al. Open and reusable deep learning for pathology with WSInsight and QuPath. *npj Precis. Onc.* **8**, 9 (2024). https://doi.org/10.1038/s41698-024-00499-9
+  Huang, C.H., Awosika, O.E., Fernandez, D. WSInsight as a cloud-native
+  pipeline for single-cell pathology inference on whole-slide images.
 
-.. |img-tissue| image:: _static/brca-tissue.png
-  :alt: TCGA BRCA sample slide
-.. |img-heatmap| image:: _static/brca-heatmap.png
-  :alt: Heatmap of breast cancer detection
-
-+----------------+------------------------------+
-| Original H&E   | Heatmap of Tumor Probability |
-+================+==============================+
-| |img-tissue|   | |img-heatmap|                |
-+----------------+------------------------------+
+  Kaczmarzyk, J.R., O'Callaghan, A., Inglis, F. et al. Open and reusable deep
+  learning for pathology with WSInfer and QuPath. *npj Precis. Onc.* **8**, 9
+  (2024). https://doi.org/10.1038/s41698-024-00499-9
 
 .. toctree::
   :maxdepth: 2
