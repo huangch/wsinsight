@@ -40,66 +40,6 @@ The models used in this experiment include: `CellViT-SAM-H-x40`, `breast-tumor-r
 - [Latest user and API guides](https://wsinsight.readthedocs.io)
 - [Change history and issue reporting](https://github.com/huangch/wsinsight)
 
-## Quick Start
-
-### WSInfer-compatible workflow
-
-1. Prepare a directory of whole slide images, for example the sample data under `tests/reference`.
-2. Choose a registered model name from `wsinfer-zoo ls` or provide a custom configuration.
-3. Run inference (one-shot workflow that performs patch extraction + inference):
-
-   ```bash
-   wsinsight run \
-     --wsi-dir slides/ \
-     --results-dir results/ \
-     --model breast-tumor-resnet34.tcga-brca \
-     --batch-size 32 \
-     --num-workers 4
-   ```
-
-4. Inspect outputs in `results/model-outputs-*`, open the GeoJSON artifacts in QuPath or your preferred viewer, and review `run_metadata_*.json` for the captured environment details.
-
-Prefer an explicit two-step flow? Run `wsinsight patch` to generate cached patches/HDF5 metadata (idempotent and resumable), then invoke `wsinsight infer` against the same `--results-dir` to produce CSV/GeoJSON/OME-CSV outputs. Both commands expose the identical URI, segmentation, and QuPath options as `wsinsight run`.
-
-### WSInsight-native workflow (CellViT models)
-
-WSInsight adds cell-centric Vision Transformer and HoverNet variants that are not part of upstream WSInfer. To run them:
-
-1. Stage your WSIs as before and ensure the conda environment includes the CellViT dependencies (installed automatically via the instructions above).
-2. Pick one of the WSInsight-native model identifiers (see list below) from the registry.
-3. Launch inference, for example with `CellViT-SAM-H-x40`:
-
-   ```bash
-   wsinsight run \
-     --wsi-dir slides/ \
-     --results-dir results-cellvit/ \
-     --model CellViT-SAM-H-x40 \
-     --batch-size 16 \
-     --num-workers 8
-   ```
-
-4. Review the outputs in `results-cellvit/model-outputs-*` and downstream GeoJSON artifacts just like the compatible workflow.
-
-| **Method**            | **Architecture & Key Features**                                                                                                                                                   | **mPQ** | **bPQ** | **Reference**                                                                                                                                                                     |
-|-----------------------|-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|---------|---------|-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
-| **CellViT**           | Vision Transformer encoder with U-Net style decoder;<br>trained on multi-tissue datasets (e.g., PanNuke);<br>supports multi-class nuclear instance segmentation & classification. | 0.4980  | 0.6793  | [Ref](https://doi.org/10.1016/j.media.2024.103143)                                                                                                                                |
-| **HoVer-Net**         | ResNet50 CNN backbone with dual-branch decoder;<br>predicts nuclear masks + horizontal/vertical (HoVer) distance maps;<br>improves instance separation.                           | 0.4629  | 0.6596  | [Ref](https://doi.org/10.1016/j.media.2019.101563)                                                                                                                                |
-| **StarDist–ResNet50** | ResNet50 backbone + star-convex polygon representation;<br>predicts radial distances for nuclei delineation along fixed rays.                                                     | 0.4796  | 0.6692  | [Ref](https://link.springer.com/chapter/10.1007/978-3-030-00934-2_30), [Ref](https://openaccess.thecvf.com/content_cvpr_2016/html/He_Deep_Residual_Learning_CVPR_2016_paper.html) |
-
-Available WSInsight model names:
-
-- [`CellViT-256-x20`](https://huggingface.co/huangch/CellViT-256-x20)
-- [`CellViT-256-x40`](https://huggingface.co/huangch/CellViT-256-x40)
-- [`CellViT-256-x40-AMP`](https://huggingface.co/huangch/CellViT-256-x40-AMP)
-- [`CellViT-SAM-H-x20`](https://huggingface.co/huangch/CellViT-SAM-H-x20)
-- [`CellViT-SAM-H-x40`](https://huggingface.co/huangch/CellViT-SAM-H-x40)
-- [`CellViT-SAM-H-x40-AMP`](https://huggingface.co/huangch/CellViT-SAM-H-x40-AMP)
-- [`CellViT-Virchow-x40-AMP`](https://huggingface.co/huangch/CellViT-Virchow-x40-AMP)
-- [`hovernet_fast_pannuke`](https://huggingface.co/huangch/hovernet_fast_pannuke)
-
-> [!TIP]
-> Use `CUDA_VISIBLE_DEVICES=… wsinsight run …` to pin execution to specific GPUs. The command prints an environment summary before inference begins.
-
 ## Installation
 
 WSInsight supports both a fully reproducible conda workflow and lighter manual installs if you already manage your own environment.
@@ -173,6 +113,82 @@ pre-commit install
 ```
 
 The editable install enables rapid iteration on CLI commands, model definitions, and docs. `pre-commit` keeps formatting/lint guards active during `git commit`.
+
+## Quick Start
+
+### WSInfer-compatible workflow
+
+1. Prepare a directory of whole slide images, for example the sample data under `tests/reference`.
+2. Choose a registered model name from `wsinfer-zoo ls` or provide a custom configuration.
+3. Run inference (one-shot workflow that performs patch extraction + inference):
+
+   ```bash
+   wsinsight run \
+     --wsi-dir slides/ \
+     --results-dir results/ \
+     --model breast-tumor-resnet34.tcga-brca \
+     --batch-size 32 \
+     --num-workers 4
+   ```
+
+4. Inspect outputs in `results/model-outputs-*`, open the GeoJSON artifacts in QuPath or your preferred viewer, and review `run_metadata_*.json` for the captured environment details.
+
+Prefer an explicit two-step flow? Run `wsinsight patch` to generate cached patches/HDF5 metadata (idempotent and resumable), then invoke `wsinsight infer` against the same `--results-dir` to produce CSV/GeoJSON/OME-CSV outputs. Both commands expose the identical URI, segmentation, and QuPath options as `wsinsight run`.
+
+### WSInsight-native workflow (CellViT models)
+
+WSInsight adds cell-centric Vision Transformer and HoverNet variants that are not part of upstream WSInfer. To run them:
+
+1. Stage your WSIs as before and ensure the conda environment includes the CellViT dependencies (installed automatically via the instructions above).
+2. Pick one of the WSInsight-native model identifiers (see list below) from the registry.
+3. Launch inference, for example with `CellViT-SAM-H-x40`:
+
+   ```bash
+   wsinsight run \
+     --wsi-dir slides/ \
+     --results-dir results-cellvit/ \
+     --model CellViT-SAM-H-x40 \
+     --batch-size 16 \
+     --num-workers 8
+   ```
+
+4. Review the outputs in `results-cellvit/model-outputs-*` and downstream GeoJSON artifacts just like the compatible workflow.
+
+> [!TIP]
+> Use `CUDA_VISIBLE_DEVICES=… wsinsight run …` to pin execution to specific GPUs. The command prints an environment summary before inference begins.
+
+## Available Models
+
+### WSInsight Nagtive Single-Cell Models
+
+| **Method**            | **Architecture & Key Features**                                                                                                                                                   | **mPQ** | **bPQ** | **Reference**                                                                                                                                                                     |
+|-----------------------|-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|---------|---------|-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| **CellViT**           | Vision Transformer encoder with U-Net style decoder;<br>trained on multi-tissue datasets (e.g., PanNuke);<br>supports multi-class nuclear instance segmentation & classification. | 0.4980  | 0.6793  | [Ref](https://doi.org/10.1016/j.media.2024.103143)                                                                                                                                |
+| **HoVer-Net**         | ResNet50 CNN backbone with dual-branch decoder;<br>predicts nuclear masks + horizontal/vertical (HoVer) distance maps;<br>improves instance separation.                           | 0.4629  | 0.6596  | [Ref](https://doi.org/10.1016/j.media.2019.101563)                                                                                                                                |
+| **StarDist–ResNet50** | ResNet50 backbone + star-convex polygon representation;<br>predicts radial distances for nuclei delineation along fixed rays.                                                     | 0.4796  | 0.6692  | [Ref](https://link.springer.com/chapter/10.1007/978-3-030-00934-2_30), [Ref](https://openaccess.thecvf.com/content_cvpr_2016/html/He_Deep_Residual_Learning_CVPR_2016_paper.html) |
+
+Available WSInsight model names:
+
+- [`CellViT-256-x20`](https://huggingface.co/huangch/CellViT-256-x20)
+- [`CellViT-256-x40`](https://huggingface.co/huangch/CellViT-256-x40)
+- [`CellViT-256-x40-AMP`](https://huggingface.co/huangch/CellViT-256-x40-AMP)
+- [`CellViT-SAM-H-x20`](https://huggingface.co/huangch/CellViT-SAM-H-x20)
+- [`CellViT-SAM-H-x40`](https://huggingface.co/huangch/CellViT-SAM-H-x40)
+- [`CellViT-SAM-H-x40-AMP`](https://huggingface.co/huangch/CellViT-SAM-H-x40-AMP)
+- [`CellViT-Virchow-x40-AMP`](https://huggingface.co/huangch/CellViT-Virchow-x40-AMP)
+- [`hovernet_fast_pannuke`](https://huggingface.co/huangch/hovernet_fast_pannuke)
+
+### WSInfer Compatible Patch-Level Models
+
+| **Classification task**                          | **Output classes**                                                                                                                                  | **Architecture**                           | **Dataset**     | **Resolution (px @ µm/px)** | **Reference**                                                |
+|--------------------------------------------------|-----------------------------------------------------------------------------------------------------------------------------------------------------|--------------------------------------------|-----------------|-----------------------------|--------------------------------------------------------------|
+| Breast adenocarcinoma detection                  | no-tumor, tumor                                                                                                                                     | ResNet34                                   | TCGA BRCA       | 350 @ 0.25                  | [Ref](https://doi.org/10.1016%2Fj.ajpath.2020.03.012)        |
+| Colorectal tissue classification                 | background, normal_colon_mucosa, debris, colorectal_adenocarcinoma_epithelium, adipose, mucus, smooth_muscle, cancer_associated_stroma, lymphocytes | ResNet50 (trained by TIAToolbox dev team)  | NCT-CRC-HE-100K | 224 @ 0.5                   | [Ref](https://doi.org/10.1038/s43856-022-00186-5)            |
+| Lung adenocarcinoma detection                    | lepidic, benign, acinar, micropapillary, mucinous, solid                                                                                            | ResNet34                                   | TCGA LUAD       | 350 @ 0.5                   | [Ref](https://github.com/SBU-BMI/quip_lung_cancer_detection) |
+| Lymph node metastasis detection in breast cancer | nomets, mets                                                                                                                                        | ResNet50 (trained via TIAToolbox dev team) | PatchCamelyon   | 96 @ 1.0                    | [Ref](https://doi.org/10.1038/s43856-022-00186-5)            |
+| Lymphocyte detection                             | til-negative, til-positive                                                                                                                          | InceptionV4 (without batchnorm)            | 23 TCGA studies | 100 @ 0.5                   | [Ref](https://doi.org/10.3389/fonc.2021.806603)              |
+| Pancreatic adenocarcinoma detection              | tumor-positive                                                                                                                                      | Preactivation ResNet34                     | TCGA PAAD       | 350 @ 1.5                   | [Ref](https://doi.org/10.1007/978-3-030-32239-7_60)          |
+| Prostate adenocarcinoma detection                | grade3, grade4or5, benign                                                                                                                           | ResNet34                                   | TCGA PRAD       | 175 @ 0.5                   | [Ref](https://github.com/SBU-BMI/quip_prad_cancer_detection) |
 
 ## CLI Overview
 
