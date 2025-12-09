@@ -8,18 +8,19 @@
 WSInsight: Cloud-Native Single-Cell Pathology Inference on Whole Slide Images
 =============================================================================
 
-.. image:: https://github.com/huangch/wsinsight/actions/workflows/ci.yml/badge.svg
-  :alt: GitHub workflow status
-  :target: https://github.com/huangch/wsinsight/actions/workflows/ci.yml
-.. image:: https://readthedocs.org/projects/wsinsight/badge/?version=latest
-  :alt: Documentation build status
-  :target: https://wsinsight.readthedocs.io/en/latest/?badge=latest
-.. image:: https://img.shields.io/pypi/v/wsinsight.svg
-  :alt: PyPI version
-  :target: https://pypi.org/project/wsinsight/
-.. image:: https://img.shields.io/pypi/pyversions/wsinsight
-  :alt: Supported Python versions
-  :target: https://pypi.org/project/wsinsight/
+..
+  .. image:: https://github.com/huangch/wsinsight/actions/workflows/ci.yml/badge.svg
+    :alt: GitHub workflow status
+    :target: https://github.com/huangch/wsinsight/actions/workflows/ci.yml
+  .. image:: https://readthedocs.org/projects/wsinsight/badge/?version=latest
+    :alt: Documentation build status
+    :target: https://wsinsight.readthedocs.io/en/latest/?badge=latest
+  .. image:: https://img.shields.io/pypi/v/wsinsight.svg
+    :alt: PyPI version
+    :target: https://pypi.org/project/wsinsight/
+  .. image:: https://img.shields.io/pypi/pyversions/wsinsight
+    :alt: Supported Python versions
+    :target: https://pypi.org/project/wsinsight/
 
 |
 

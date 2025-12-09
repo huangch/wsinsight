@@ -1,8 +1,10 @@
+<!-- 
 [![Continuous Integration](https://github.com/huangch/wsinsight/actions/workflows/ci.yml/badge.svg)](https://github.com/huangch/wsinsight/actions/workflows/ci.yml)
 [![Documentation Status](https://readthedocs.org/projects/wsinsight/badge/?version=latest)](https://wsinsight.readthedocs.io/en/latest/?badge=latest)
 [![Version on PyPI](https://img.shields.io/pypi/v/wsinsight.svg)](https://pypi.org/project/wsinsight/)
 [![Supported Python versions](https://img.shields.io/pypi/pyversions/wsinsight)](https://pypi.org/project/wsinsight/)
 [![Published in npj Precision Oncology](https://img.shields.io/badge/Published-npj_Precision_Oncology-blue)](https://doi.org/10.1038/s41698-024-00499-9)
+-->
 
 # ![WSInsight logo](docs/_static/logo48.png) WSInsight: Cloud-Native Single-Cell Pathology Inference on Whole Slide Images
 
