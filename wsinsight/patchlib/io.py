@@ -87,7 +87,7 @@ def save_hdf5(
                 f"got {images.shape[0]} vs {coords.shape[0]}"
             )
 
-    with URIPath(path).open("wb") as fh:
+    with URIPath(path).open("w+b") as fh:
         with h5py.File(fh, "w") as f:
             g_slide = f.create_group("slide")
             if slide_path is not None:
