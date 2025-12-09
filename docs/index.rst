@@ -216,11 +216,10 @@ Cell-level model comparison
      - `Ref1 <https://link.springer.com/chapter/10.1007/978-3-030-00934-2_30>`_,
        `Ref2 <https://openaccess.thecvf.com/content_cvpr_2016/html/He_Deep_Residual_Learning_CVPR_2016_paper.html>`_
 
-Available models
-----------------
+Available WSInsight native model weights
+----------------------------------------
 
-WSInsight publishes native CellViT/HoverNet identifiers that appear only in our
-registry. A non-exhaustive list is provided below.
+Available model weights (torchscript format) include:
 
 * ``CellViT-256-x20``
 * ``CellViT-256-x40``
