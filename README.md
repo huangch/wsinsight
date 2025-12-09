@@ -167,7 +167,7 @@ WSInsight adds cell-centric Vision Transformer and HoverNet variants that are no
 | **HoVer-Net**         | ResNet50 CNN backbone with dual-branch decoder;<br>predicts nuclear masks + horizontal/vertical (HoVer) distance maps;<br>improves instance separation.                           | 0.4629  | 0.6596  | [Ref](https://doi.org/10.1016/j.media.2019.101563)                                                                                                                                |
 | **StarDist–ResNet50** | ResNet50 backbone + star-convex polygon representation;<br>predicts radial distances for nuclei delineation along fixed rays.                                                     | 0.4796  | 0.6692  | [Ref](https://link.springer.com/chapter/10.1007/978-3-030-00934-2_30), [Ref](https://openaccess.thecvf.com/content_cvpr_2016/html/He_Deep_Residual_Learning_CVPR_2016_paper.html) |
 
-Available WSInsight model names:
+Available model weights (torchscript format) include:
 
 - [`CellViT-256-x20`](https://huggingface.co/huangch/CellViT-256-x20)
 - [`CellViT-256-x40`](https://huggingface.co/huangch/CellViT-256-x40)
