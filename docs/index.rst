@@ -294,8 +294,8 @@ WSInfer-compatible models: ::
 
   Huang, C.-H., Awosika, O. E., & Fernandez, D. (2025).
   WSInsight as a cloud-native pipeline for single-cell pathology inference on whole-slide images. 
-  bioRxiv. https://doi.org/10.1101/2025.692260
-
+  bioRxiv. https://doi.org/10.64898/2025.12.07.692260
+          
   Kaczmarzyk, J.R., O'Callaghan, A., Inglis, F. et al. Open and reusable deep
   learning for pathology with WSInfer and QuPath. *npj Precis. Onc.* **8**, 9
   (2024). https://doi.org/10.1038/s41698-024-00499-9

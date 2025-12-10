@@ -221,7 +221,7 @@ WSInsight is released under the terms of the `LICENSE` file included with this r
 
 ## Citation
 
-If you find our work useful, please cite [WSInsight](https://doi.org/10.1101/2025.692260ß) and [WSInfer](https://doi.org/10.1038/s41698-024-00499-9)!
+If you find our work useful, please cite [WSInsight](https://doi.org/10.64898/2025.12.07.692260) and [WSInfer](https://doi.org/10.1038/s41698-024-00499-9)!
 
 > Huang, C.-H., Awosika, O. E., & Fernandez, D. (2025).
 WSInsight as a cloud-native pipeline for single-cell pathology inference on whole-slide images. bioRxiv. https://doi.org/10.1101/2025.692260
@@ -233,8 +233,8 @@ WSInsight as a cloud-native pipeline for single-cell pathology inference on whol
  year         = {2025},
  journal      = {bioRxiv},
  publisher    = {Cold Spring Harbor Laboratory},
- doi          = {10.1101/2025.692260},
- url          = {https://doi.org/10.1101/2025.692260}
+ doi          = {10.64898/2025.12.07.692260},
+ url          = {https://doi.org/10.64898/2025.12.07.692260}
 }
 ```
 
