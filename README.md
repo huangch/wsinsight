@@ -17,11 +17,11 @@ WSInsight is a fork of [WSInfer](https://github.com/SBU-BMI/wsinfer) that delive
 
 ## Highlights
 
-- GPU-accelerated inference for registered models or custom TorchScript weights for single cell or patch level WSI analysis
-- 100% Compatible with [WSInfer](https://github.com/SBU-BMI/wsinfer) and its Model Zoo 
+- GPU-accelerated inference for single cell or patch level whole slide image analysis
+- First-class support for QuPath projects, GeoJSON/OME-CSV exports, and remote slides (S3, TCGA direct access)
 - Automated tissue segmentation, patch extraction, and batched inference with resumable runs
-- First-class support for QuPath projects, GeoJSON/OME-CSV exports, and remote slides (S3, GDC manifests)
-- Transparent URI handling lets you read WSIs from local disks, S3 buckets, or GDC manifests and write inference outputs back to either local paths or S3 using the same CLI options
+- Transparent URI handling lets you read WSIs from local disks, S3 buckets, or TCGA (via GDC manifest files) and write inference outputs back to either local paths or S3 using the same CLI options
+- 100% Compatible with [WSInfer](https://github.com/SBU-BMI/wsinfer) and its Model Zoo 
 - Built for reproducibility: metadata capture, deterministic configuration, and container-friendly execution
 
 ## Integrative Patch-Level and Single-Cell Inference
