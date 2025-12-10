@@ -8,7 +8,7 @@
 
 # ![WSInsight logo](docs/_static/logo48.png) WSInsight: Cloud-Native Single-Cell Pathology Inference on Whole Slide Images
 
-WSInsight is a fork of [WSInfer](https://github.com/SBU-BMI/wsinfer) that delivers end-to-end pathology inference for giga-pixel whole slide images. It scales from laptops to cloud clusters, orchestrates patch extraction/classification, cell detection/classification, model inference, and downstream analytics, and produces artifacts that can be explored in QuPath, GeoJSON-aware viewers, OMERO+, or bespoke notebooks.
+WSInsight is a fork of [WSInfer](https://github.com/SBU-BMI/wsinfer) that delivers end-to-end pathology inference for giga-pixel whole slide images. It scales from laptops to cloud clusters, orchestrates patch extraction/classification, cell detection/classification, model inference, and downstream analytics, and produces artifacts that can be explored in QuPath, GeoJSON-aware viewers or OMERO+.
 
 > [!IMPORTANT]
 > WSInsight is a research tool. It is not cleared for clinical workflows or patient-facing decisions.
@@ -17,7 +17,8 @@ WSInsight is a fork of [WSInfer](https://github.com/SBU-BMI/wsinfer) that delive
 
 ## Highlights
 
-- GPU-accelerated inference for registered models from the WSInfer Model Zoo or custom TorchScript weights
+- GPU-accelerated inference for registered models or custom TorchScript weights for single cell or patch level WSI analysis
+- 100% Compatible with [WSInfer](https://github.com/SBU-BMI/wsinfer) and its Model Zoo 
 - Automated tissue segmentation, patch extraction, and batched inference with resumable runs
 - First-class support for QuPath projects, GeoJSON/OME-CSV exports, and remote slides (S3, GDC manifests)
 - Transparent URI handling lets you read WSIs from local disks, S3 buckets, or GDC manifests and write inference outputs back to either local paths or S3 using the same CLI options
