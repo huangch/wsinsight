@@ -172,7 +172,7 @@ not part of upstream WSInfer. To run them:
   GeoJSON artifacts just like the compatible workflow.
 
 All commands understand local filesystem paths, ``s3://`` URIs, and
-``gdc://`` manifests for ``--wsi-dir``. Outputs such as ``--results-dir``,
+``gdc-manifest://`` manifests for ``--wsi-dir``. Outputs such as ``--results-dir``,
 GeoJSON, and OME-CSV artifacts can be written to local disks or S3 using the
 same URI syntax, with caching controlled via ``WSINSIGHT_REMOTE_CACHE_DIR``.
 
