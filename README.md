@@ -136,18 +136,8 @@ Pick `run` when you want a one-liner for single slides or small batches; switch 
    wsinsight run \
      --wsi-dir slides/ \
      --results-dir results/ \
-     --config /path/to/model/main/config.json --model-path /path/to/model/main/torchscript_model.pt \
-     --batch-size 32 \
-     --num-workers 4
-   ``` 
-
-   The --wsi-dir can be a s3 bucket:
-
-   ```bash
-   wsinsight run \
-     --wsi-dir s3://path/to/wsi/location/ \
-     --results-dir results/ \
-     --config /path/to/model/main/config.json --model-path /path/to/model/main/torchscript_model.pt \
+     --config /path/to/model/main/config.json \
+     --model-path /path/to/model/main/torchscript_model.pt \
      --batch-size 32 \
      --num-workers 4
    ``` 
@@ -158,7 +148,20 @@ Pick `run` when you want a one-liner for single slides or small batches; switch 
    wsinsight run \
      --wsi-dir gdc-manifest://path/to/manifest_file.txt \
      --results-dir results/ \
-     --config /path/to/model/main/config.json --model-path /path/to/model/main/torchscript_model.pt \
+     --config /path/to/model/main/config.json \
+     --model-path /path/to/model/main/torchscript_model.pt \
+     --batch-size 32 \
+     --num-workers 4
+   ``` 
+
+   The --wsi-dir can be a s3 bucket:
+
+   ```bash
+   wsinsight run \
+     --wsi-dir s3://path/to/wsi/location/ \
+     --results-dir results/ \
+     --config /path/to/model/main/config.json \
+     --model-path /path/to/model/main/torchscript_model.pt \
      --batch-size 32 \
      --num-workers 4
    ``` 
@@ -169,7 +172,8 @@ Pick `run` when you want a one-liner for single slides or small batches; switch 
    wsinsight run \
      --wsi-dir gdc-manifest://path/to/manifest_file.txt \
      --results-dir s3://path/to/results/ \
-     --config /path/to/model/main/config.json --model-path /path/to/model/main/torchscript_model.pt \
+     --config /path/to/model/main/config.json \
+     --model-path /path/to/model/main/torchscript_model.pt \
      --batch-size 32 \
      --n
    ``` 
