@@ -105,6 +105,16 @@ wsinsight --help
 
 ## Quick Start
 
+### CLI Overview
+
+Command           | Purpose
+----------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+`wsinsight run`   | Segment tissue, extract patches, execute model inference, and emit CSV/GeoJSON/OME-CSV outputs (one-shot orchestration of the two commands below).
+`wsinsight patch` | Perform tissue segmentation, cache/crop patches to HDF5, and prepare metadata for later inference runs; safe to rerun to resume interrupted jobs.
+`wsinsight infer` | Load cached patches, run the selected model, and export QuPath/GeoJSON/OME-CSV artifacts.
+
+Pick `run` when you want a one-liner for single slides or small batches; switch to the explicit `patch` → `infer` flow to resume large jobs, share patch caches across model variants, or parallelize stages on separate machines. All commands share global options such as `--backend` (`openslide` or `tiffslide`) and `--log-level`. Use `wsinsight <command> --help` for the full option list, including QuPath integration flags and segmentation controls.
+
 ### WSInfer-compatible workflow
 
 1. Prepare a directory of whole slide images, for example the sample data under `tests/reference`.
@@ -190,7 +200,7 @@ WSInsight adds cell-centric Vision Transformer and HoverNet variants that are no
    ```
 -->
 
-4. Review the outputs in `results-cellvit/model-outputs-*` and downstream GeoJSON artifacts just like the compatible workflow.
+5. Review the outputs in `results-cellvit/model-outputs-*` and downstream GeoJSON artifacts just like the compatible workflow.
 
 ## Available Models
 
@@ -226,16 +236,6 @@ Available model weights (torchscript format) include:
 | Lymphocyte detection                             | til-negative, til-positive                                                                                                                          | InceptionV4 (without batchnorm)            | 23 TCGA studies | 100 @ 0.5                   | [Ref](https://doi.org/10.3389/fonc.2021.806603)              |
 | Pancreatic adenocarcinoma detection              | tumor-positive                                                                                                                                      | Preactivation ResNet34                     | TCGA PAAD       | 350 @ 1.5                   | [Ref](https://doi.org/10.1007/978-3-030-32239-7_60)          |
 | Prostate adenocarcinoma detection                | grade3, grade4or5, benign                                                                                                                           | ResNet34                                   | TCGA PRAD       | 175 @ 0.5                   | [Ref](https://github.com/SBU-BMI/quip_prad_cancer_detection) |
-
-## CLI Overview
-
-Command           | Purpose
------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
-`wsinsight run`   | Segment tissue, extract patches, execute model inference, and emit CSV/GeoJSON/OME-CSV outputs (one-shot orchestration of the two commands below).
-`wsinsight patch` | Perform tissue segmentation, cache/crop patches to HDF5, and prepare metadata for later inference runs; safe to rerun to resume interrupted jobs.
-`wsinsight infer` | Load cached patches, run the selected model, and export QuPath/GeoJSON/OME-CSV artifacts.
-
-Pick `run` when you want a one-liner for single slides or small batches; switch to the explicit `patch` → `infer` flow to resume large jobs, share patch caches across model variants, or parallelize stages on separate machines. All commands share global options such as `--backend` (`openslide` or `tiffslide`) and `--log-level`. Use `wsinsight <command> --help` for the full option list, including QuPath integration flags and segmentation controls.
 
 ## Results Layout
 
