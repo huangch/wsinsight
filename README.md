@@ -120,7 +120,7 @@ wsinsight --help
      --num-workers 4
    ```
    
-   Or, it could be more than common that you have to assign the location of the model files:
+   Or, it could be more than common that you have to assign the locations of model configuration and torchscript files:
    
    ```bash
    wsinsight run \
