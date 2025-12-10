@@ -164,10 +164,14 @@ wsinsight --help
      --n
    ``` 
 
+    > [!TIP]
+    > Use `CUDA_VISIBLE_DEVICES=… wsinsight run …` to pin execution to specific GPUs. The command prints an environment summary before inference begins.
+
 4. Inspect outputs in `results/model-outputs-*`, open the GeoJSON artifacts in QuPath or your preferred viewer, and review `run_metadata_*.json` for the captured environment details.
 
 Prefer an explicit two-step flow? Run `wsinsight patch` to generate cached patches/HDF5 metadata (idempotent and resumable), then invoke `wsinsight infer` against the same `--results-dir` to produce CSV/GeoJSON/OME-CSV outputs. Both commands expose the identical URI, segmentation, and QuPath options as `wsinsight run`.
 
+<!--
 ### WSInsight-native workflow (CellViT models)
 
 WSInsight adds cell-centric Vision Transformer and HoverNet variants that are not part of upstream WSInfer. To run them:
@@ -184,11 +188,9 @@ WSInsight adds cell-centric Vision Transformer and HoverNet variants that are no
      --batch-size 16 \
      --num-workers 8
    ```
+-->
 
 4. Review the outputs in `results-cellvit/model-outputs-*` and downstream GeoJSON artifacts just like the compatible workflow.
-
-> [!TIP]
-> Use `CUDA_VISIBLE_DEVICES=… wsinsight run …` to pin execution to specific GPUs. The command prints an environment summary before inference begins.
 
 ## Available Models
 
