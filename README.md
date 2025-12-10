@@ -225,7 +225,7 @@ Pick `run` when you want a one-liner for single slides or small batches; switch 
 ## Remote and Large-Scale Data
 
 - S3 URIs are supported out of the box; configure credentials via `S3_STORAGE_OPTIONS`.
-- `--wsi-dir` can point to local folders, `s3://bucket/prefix` locations, or `gdc://path/to/manifest.tsv`; `--results-dir`, GeoJSON, and OME-CSV outputs can be written to local disks or S3 buckets with the same URI syntax.
+- `--wsi-dir` can point to local folders, `s3://bucket/prefix` locations, or `gdc-manifest://path/to/manifest.tsv`; `--results-dir`, GeoJSON, and OME-CSV outputs can be written to local disks or S3 buckets with the same URI syntax.
 - Every CLI that accepts `--wsi-dir`, `--results-dir`, `--references-dir`, or QuPath directories uses the same URI resolver as `wsinsight patch`/`infer`. Local paths require `exists=True`, while remote paths honor the `S3_STORAGE_OPTIONS` profile without checking for pre-existence—making it safe to point `--results-dir` at a brand-new bucket/key.
 - `WSINSIGHT_REMOTE_CACHE_DIR` determines where remote assets are materialized locally (default: `~/.cache/wsinsight`). Set it to a fast SSD mount when you process tera-scale cohorts.
 - GDC manifests can be referenced directly, and the downloaded tiles are cached via the same mechanism.

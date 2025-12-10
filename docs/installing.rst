@@ -144,5 +144,5 @@ profile or job scheduler) to enable seamless access to cloud storage and manifes
    registry (local file, ``s3://…``, etc.).
 
 With these variables in place, all CLI commands accept local paths, ``s3://`` URIs, or
-``gdc://`` manifests for ``--wsi-dir`` and can write outputs to either local disks or S3
+``gdc-manifest://`` manifests for ``--wsi-dir`` and can write outputs to either local disks or S3
 without code changes.

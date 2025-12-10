@@ -11,7 +11,8 @@ For the examples below we assume your slides sit in :code:`slides/`.
 
 .. admonition:: Citation
 
-   If you use WSInsight in research, please cite the WSInsight/QuPath paper
+   If you use WSInsight in research, please cite both the WSInsight and WSInfer papers
+   (bioRxiv, 2025; https://doi.org/10.1101/2025.692260),
    (npj Precision Oncology, 2024; https://doi.org/10.1038/s41698-024-00499-9).
 
 
@@ -25,7 +26,7 @@ and reproducible CLI workflows. Key features include:
 * 🔬 Cell-aware inference through WSInsight-native CellViT and HoverNet checkpoints
 * ⚙️ Compatibility with WSInfer configuration/schema for legacy models
 * 🧭 Deterministic output layouts (CSV + GeoJSON + OME-CSV)
-* ☁️ Unified URI handling for reading WSIs from local disks, ``s3://`` buckets, or ``gdc://`` manifests and writing outputs back to local paths or S3, plus resumable runs via cached patches
+* ☁️ Unified URI handling for reading WSIs from local disks, ``s3://`` buckets, or ``gdc-manifest://`` manifests and writing outputs back to local paths or S3, plus resumable runs via cached patches
 
 
 Getting help
@@ -58,7 +59,7 @@ Command            Purpose
 Pick ``run`` for one-shot processing. Switch to the explicit ``patch`` → ``infer`` flow
 for large cohorts, resumable jobs, or when you want to reuse the same patches across
 multiple model configurations. All commands share the same URI-aware options and support
-local folders, ``s3://`` buckets, and ``gdc://`` manifests.
+local folders, ``s3://`` buckets, and ``gdc-manifest://`` manifests.
 
 
 Model catalogs
@@ -161,7 +162,7 @@ Remote data sources and caching
 All CLI commands accept the same URI-aware options:
 
 * ``--wsi-dir`` may point to local folders, ``s3://bucket/prefix`` paths, or
-   ``gdc://`` manifests. GDC manifests stream WSIs through the built-in cache.
+   ``gdc-manifest://`` manifests. GDC manifests stream WSIs through the built-in cache.
 * ``--results-dir`` (and the derived GeoJSON/OME outputs) may target local disks or S3
    buckets. Remote destinations do **not** need to exist beforehand; they are created as
    needed.
