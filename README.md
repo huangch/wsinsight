@@ -52,15 +52,13 @@ The models used in this experiment include: `CellViT-SAM-H-x40`, `breast-tumor-r
 
 WSInsight supports both a fully reproducible conda workflow and lighter manual installs if you already manage your own environment.
 
-### Option A: Reproducible conda setup (recommended)
-
 Run the following commands from the repository root to recreate the tested environment. Adjust the environment name if you need to keep multiple copies side-by-side.
 
 ```bash
 # reset any previous environment
 source /opt/anaconda3/etc/profile.d/conda.sh  # adapt if conda lives elsewhere
-conda deactivate || true
-conda env remove -n wsinsight -y || true
+conda deactivate
+conda env remove -n wsinsight -y
 
 # create a clean env with Python 3.11 + GDAL 3.11.3
 conda create -n wsinsight python=3.11 gdal=3.11.3 -c conda-forge -y
@@ -97,31 +95,6 @@ wsinsight --help
 
 > [!TIP]
 > Every `python -m pip install …` line honors `constraints.txt`, keeping the dependency graph deterministic even as upstream wheels evolve.
-
-### Option B: Manual installation
-
-1. **Install deep learning backends**
-
-- Follow the [official PyTorch installation guide](https://pytorch.org/get-started/locally/) for your OS / CUDA stack.
-- (Optional) Bring in TensorFlow/Keras if you plan to convert models or run StarDist.
-- Verify CUDA visibility with `python -c 'import torch; print(torch.cuda.is_available())'` and confirm your driver matches the [CUDA compatibility matrix](https://docs.nvidia.com/deploy/cuda-compatibility/).
-
-1. **Install WSInsight**
-
-- Stable PyPI: `python -m pip install wsinsight`
-- Latest main: `python -m pip install git+https://github.com/huangch/wsinsight.git`
-- Conda-Forge: `conda install -c conda-forge wsinsight` (use `mamba install` for faster solving)
-
-1. **Install from source (development)**
-
-```bash
-git clone https://github.com/huangch/wsinsight.git
-cd wsinsight
-python -m pip install --editable .
-pre-commit install
-```
-
-The editable install enables rapid iteration on CLI commands, model definitions, and docs. `pre-commit` keeps formatting/lint guards active during `git commit`.
 
 ## Quick Start
 
