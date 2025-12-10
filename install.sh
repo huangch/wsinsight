@@ -7,11 +7,11 @@ conda env remove -n wsinsight -y
 conda create -n wsinsight python=3.11 gdal=3.11.3 -c conda-forge -y
 conda activate wsinsight
 pip install --upgrade pip
-pip uninstall -y pynvml || true
 pip install -c ./wsinsight/constraints.txt "numpy<2"
 
 # heavy stacks first (optional but speeds up):
 pip install -c ./wsinsight/constraints.txt torch torchvision torch-geometric tensorflow keras stardist nvidia-ml-py
+pip uninstall -y pynvml
 
 # histomicstk wheel source (same as before), still honoring constraints:
 # pip install -c ./wsinsight/constraints.txt "numpy<2" histomicstk --find-links https://girder.github.io/large_image_wheels
