@@ -24,7 +24,9 @@ WSInsight is a fork of [WSInfer](https://github.com/SBU-BMI/wsinfer) that delive
 - 100% Compatible with [WSInfer](https://github.com/SBU-BMI/wsinfer) and its Model Zoo 
 - Built for reproducibility: metadata capture, deterministic configuration, and container-friendly execution
 
-## Integrative Patch-Level and Single-Cell Inference
+## Use Cases
+
+### Integrative Single-Cell and Patch-Level Inference
 
 The models used in this experiment include: `CellViT-SAM-H-x40`, `breast-tumor-resnet34.tcga-brca`, and `pancancer-lymphocytes-inceptionv4.tcga`.
 
@@ -36,7 +38,7 @@ The models used in this experiment include: `CellViT-SAM-H-x40`, `breast-tumor-r
 | Immune Cells (green) / Tumor Regions (red)                         | Neoplastic Cells (yellow) / Tumor Regions (red)                            |
 | ![immune cells/tumor regions](docs/_static/roi-tumor-immune.png)   | ![neoplastic cells/tumor regions](docs/_static/roi-tumor-neoplastic.png)   |
 
-## Visual Overview of Whole Slide Insights
+### Overview of Single-Cell Density Estimation Maps
 
 | Original H&E                                           | Heatmap of Tumor Probability                                           |
 |:------------------------------------------------------:|:----------------------------------------------------------------------:|
@@ -62,19 +64,23 @@ conda deactivate
 conda env remove -n wsinsight -y
 
 # create a clean env with Python 3.11 + GDAL 3.11.3
+# Installing GDAL via pip seems not working (I don't know why)
 conda create -n wsinsight python=3.11 gdal=3.11.3 -c conda-forge -y
 conda activate wsinsight
 python -m pip install --upgrade pip
 
 # shared constraints keep numpy < 2 across every install step
+# for maximal compatibility for both pytorch and tensorflow
 python -m pip install -c ./wsinsight/constraints.txt "numpy<2"
 
 # install heavy ML stacks first so CUDA dependencies settle early
+# remove the automatically installed pynvml since it has been declared obsolete 
 python -m pip install -c ./wsinsight/constraints.txt \
   torch torchvision torch-geometric tensorflow keras stardist nvidia-ml-py
 python -m pip uninstall -y pynvml
 
 # HistomicsTK wheels are hosted externally; keep numpy pinned for ABI safety
+# ...the development environment has an issue with the normal installation procedure for histomicstk...
 python -m pip install --no-cache-dir --trusted-host github.com \
   --trusted-host raw.githubusercontent.com --trusted-host girder.github.io \
   --find-links https://girder.github.io/large_image_wheels --upgrade \
@@ -113,6 +119,50 @@ wsinsight --help
      --batch-size 32 \
      --num-workers 4
    ```
+   
+   Or, it could be more than common that you have to assign the location of the model files:
+   
+   ```bash
+   wsinsight run \
+     --wsi-dir slides/ \
+     --results-dir results/ \
+     --config /path/to/model/main/config.json --model-path /path/to/model/main/torchscript_model.pt \
+     --batch-size 32 \
+     --num-workers 4
+   ``` 
+
+  The --wsi-dir can be a s3 bucket:
+
+   ```bash
+   wsinsight run \
+     --wsi-dir s3://path/to/wsi/location/ \
+     --results-dir results/ \
+     --config /path/to/model/main/config.json --model-path /path/to/model/main/torchscript_model.pt \
+     --batch-size 32 \
+     --num-workers 4
+   ``` 
+
+  Or, a gdc-manifest file containing the desired whole slide images in TCGA repository:
+
+   ```bash
+   wsinsight run \
+     --wsi-dir gdc-manifest://path/to/manifest_file.txt \
+     --results-dir results/ \
+     --config /path/to/model/main/config.json --model-path /path/to/model/main/torchscript_model.pt \
+     --batch-size 32 \
+     --num-workers 4
+   ``` 
+
+  The results dir can point to a s3 bucket too:
+
+   ```bash
+   wsinsight run \
+     --wsi-dir gdc-manifest://path/to/manifest_file.txt \
+     --results-dir s3://path/to/results/ \
+     --config /path/to/model/main/config.json --model-path /path/to/model/main/torchscript_model.pt \
+     --batch-size 32 \
+     --n
+   ``` 
 
 4. Inspect outputs in `results/model-outputs-*`, open the GeoJSON artifacts in QuPath or your preferred viewer, and review `run_metadata_*.json` for the captured environment details.
 
