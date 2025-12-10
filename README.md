@@ -72,7 +72,7 @@ python -m pip install -c ./wsinsight/constraints.txt "numpy<2"
 
 # install heavy ML stacks first so CUDA dependencies settle early
 python -m pip install -c ./wsinsight/constraints.txt \
-  torch torchvision torch-geometric tensorflow keras stardist
+  torch torchvision torch-geometric tensorflow keras stardist nvidia-ml-py
 python -m pip uninstall -y pynvml
 
 # HistomicsTK wheels are hosted externally; keep numpy pinned for ABI safety

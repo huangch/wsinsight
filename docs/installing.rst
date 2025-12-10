@@ -35,7 +35,8 @@ the environment name if needed.
 
    # install heavy ML stacks first so CUDA dependencies settle early
    python -m pip install -c ./wsinsight/constraints.txt \
-     torch torchvision torch-geometric tensorflow keras stardist
+     torch torchvision torch-geometric tensorflow keras stardist nvidia-ml-py
+   pip uninstall -y pynvml
 
    # HistomicsTK wheels live on girder.github.io; keep numpy pinned for ABI safety
    python -m pip install --no-cache-dir --trusted-host github.com \
