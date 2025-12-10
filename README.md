@@ -35,7 +35,7 @@ The models used in this experiment include: `CellViT-SAM-H-x40`, `breast-tumor-r
 | Immune Cells (green) / Tumor Regions (red)                         | Neoplastic Cells (yellow) / Tumor Regions (red)                            |
 | ![immune cells/tumor regions](docs/_static/roi-tumor-immune.png)   | ![neoplastic cells/tumor regions](docs/_static/roi-tumor-neoplastic.png)   |
 
-## Whole Slide Insights (Visual Overview)
+## Visual Overview of Whole Slide Insights
 
 | Original H&E                                           | Heatmap of Tumor Probability                                           |
 |:------------------------------------------------------:|:----------------------------------------------------------------------:|
