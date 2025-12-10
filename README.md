@@ -131,7 +131,7 @@ wsinsight --help
      --num-workers 4
    ``` 
 
-  The --wsi-dir can be a s3 bucket:
+   The --wsi-dir can be a s3 bucket:
 
    ```bash
    wsinsight run \
@@ -142,7 +142,7 @@ wsinsight --help
      --num-workers 4
    ``` 
 
-  Or, a gdc-manifest file containing the desired whole slide images in TCGA repository:
+   Or, a gdc-manifest file containing the desired whole slide images in TCGA repository:
 
    ```bash
    wsinsight run \
@@ -153,7 +153,7 @@ wsinsight --help
      --num-workers 4
    ``` 
 
-  The results dir can point to a s3 bucket too:
+   The results dir can point to a s3 bucket too:
 
    ```bash
    wsinsight run \
