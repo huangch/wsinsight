@@ -23,14 +23,6 @@ WSInsight is a fork of [WSInfer](https://github.com/SBU-BMI/wsinfer) that delive
 - Transparent URI handling lets you read WSIs from local disks, S3 buckets, or GDC manifests and write inference outputs back to either local paths or S3 using the same CLI options
 - Built for reproducibility: metadata capture, deterministic configuration, and container-friendly execution
 
-## Visual Overview
-
-| Original H&E                                           | Heatmap of Tumor Probability                                           |
-|:------------------------------------------------------:|:----------------------------------------------------------------------:|
-| ![H&E example](docs/_static/brca-tissue.png)           | ![Tumor probability heatmap](docs/_static/brca-heatmap-neoplastic.png) |
-| Heatmap of Dead Cell Probability                       | Heatmap of Connective Cell Probability                                 |
-| ![Necrotic region](docs/_static/brca-heatmap-dead.png) | ![Connectivity heatmap](docs/_static/brca-heatmap-connective.png)      |
-
 ## Integrative Patch-Level and Single-Cell Inference
 
 The models used in this experiment include: `CellViT-SAM-H-x40`, `breast-tumor-resnet34.tcga-brca`, and `pancancer-lymphocytes-inceptionv4.tcga`.
@@ -42,6 +34,14 @@ The models used in this experiment include: `CellViT-SAM-H-x40`, `breast-tumor-r
 | ![immune cells/lympho regions](docs/_static/roi-lympho-immune.png) | ![neoplastic cells/lympho regions](docs/_static/roi-lympho-neoplastic.png) |
 | Immune Cells (green) / Tumor Regions (red)                         | Neoplastic Cells (yellow) / Tumor Regions (red)                            |
 | ![immune cells/tumor regions](docs/_static/roi-tumor-immune.png)   | ![neoplastic cells/tumor regions](docs/_static/roi-tumor-neoplastic.png)   |
+
+## Whole Slide Insights (Visual Overview)
+
+| Original H&E                                           | Heatmap of Tumor Probability                                           |
+|:------------------------------------------------------:|:----------------------------------------------------------------------:|
+| ![H&E example](docs/_static/brca-tissue.png)           | ![Tumor probability heatmap](docs/_static/brca-heatmap-neoplastic.png) |
+| Heatmap of Dead Cell Probability                       | Heatmap of Connective Cell Probability                                 |
+| ![Necrotic region](docs/_static/brca-heatmap-dead.png) | ![Connectivity heatmap](docs/_static/brca-heatmap-connective.png)      |
 
 ## Documentation
 
