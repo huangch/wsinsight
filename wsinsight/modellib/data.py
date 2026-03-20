@@ -179,7 +179,9 @@ class WholeSlideImagePatches(torch.utils.data.Dataset):
         self.W_est = W_est
         self.W_def = W_def
 
-        assert self.use_hdf5_images or self.wsi_path.exists(), "wsi path not found"
+        assert self.use_hdf5_images or (
+            self.wsi_path is not None and self.wsi_path.exists()
+        ), "wsi path not found"
         assert self.patch_path.exists(), "patch path not found"
 
         # coords: (N, 4) = [minx, miny, width, height]

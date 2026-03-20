@@ -16,13 +16,10 @@ from shapely import from_wkt  # shapely >= 2.0
 # from shapely.geometry import Polygon, MultiPolygon  # (imported only for typing)
 from concurrent.futures import ProcessPoolExecutor, as_completed
 from tqdm.auto import tqdm
-import multiprocessing
 
 from .uri_path import URIPath
 
 PathLike = Union[Path, URIPath]
-
-Lock = multiprocessing.Lock()
 
 # from .num_worker_optimizer import pick_workers_safe, throttle_when_busy
 

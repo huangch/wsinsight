@@ -83,6 +83,7 @@ def segment_and_patch_one_slide(
 
     slide = get_wsi_cls()(slide_path)
     mpp = get_avg_mpp(slide_path)
+    slide_width, slide_height = slide.dimensions
     logger.info(f"Slide has WxH {slide.dimensions} and MPP={mpp}")
 
     logger.info(
@@ -413,10 +414,6 @@ def segment_and_patch_one_slide(
             if cache_image_patches
             else None
         )
-
-        mpp = get_avg_mpp(slide_path)
-        slide = get_wsi_cls()(slide_path)
-        slide_width, slide_height = slide.dimensions
 
         logger.info(f"Writing coordinates and images to {patch_path}")
         save_hdf5(

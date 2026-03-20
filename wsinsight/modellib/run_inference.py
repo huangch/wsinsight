@@ -254,7 +254,7 @@ def run_inference(
                 )
                 
                 stain_normalization_batch_imgs, _ = next(iter(stain_normalization_loader))
-                stain_normalization_batch_imgs = np.concatenate(stain_normalization_batch_imgs.numpy().transpose((0,2,3,1)), axis=0)
+                stain_normalization_batch_imgs = stain_normalization_batch_imgs.numpy().transpose((0, 2, 3, 1)).reshape(-1, 3)
                 W_est = htk.preprocessing.color_deconvolution.rgb_separate_stains_macenko_pca(stain_normalization_batch_imgs+EPSILON, I_0)
                 stain_color_map = htk.preprocessing.color_deconvolution.stain_color_map
                 stains = ['eosin', 'hematoxylin', 'null']
@@ -311,7 +311,8 @@ def run_inference(
             # This lets us know where the probabiltiies map to in the slide.
             slide_coords: list[npt.NDArray[np.integer]] = []
             slide_probs: list[npt.NDArray[np.floating]] = []
-            
+            slide_superior_structure = None  # initialized here; set per-branch below
+
             if object_based \
                 and qupath_detection_dir is not None \
                 and qupath_geojson_detection_dir is None \
@@ -416,15 +417,27 @@ def run_inference(
             elif not object_based and qupath_geojson_annotation_dir:
                 patch_size = model_info.config.patch_size_pixels
                 half_patch_size = round(patch_size / 2)
-                
+
                 slide_geojson_name = wsi_path.with_suffix(".geojson").name
                 slide_geojson = qupath_geojson_annotation_dir / slide_geojson_name
-                
+
                 if not slide_geojson.exists():
                     failed_inference.append(wsi_path.stem)
+                    pbar.update(1)
                     continue
-                
-            
+
+                # TODO: annotation-guided inference is not yet implemented.
+                # When the annotation GeoJSON exists, inference results should be
+                # filtered to patches that intersect the annotated regions.
+                # For now we record the slide as failed so it is not silently skipped.
+                logger.warning(
+                    f"Annotation-guided inference is not implemented; "
+                    f"skipping slide {wsi_path.stem}"
+                )
+                failed_inference.append(wsi_path.stem)
+                pbar.update(1)
+                continue
+
             elif object_based and object_detection=="end2end":
                 stitcher = TileRemapStitcher(n_classes=len(model_info.config.class_names), 
                                              slide_width=slide_width,
@@ -730,6 +743,5 @@ def run_inference(
                 slide_df.to_csv(fh, index=False)
             # print("-" * 40)
             pbar.update(1)
-     
-    pbar.close()   
+
     return failed_patching, failed_inference

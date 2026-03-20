@@ -25,13 +25,15 @@ def get_registered_model(name: str) -> HFModelTorchScript:
     """Resolve a model name to the corresponding TorchScript handle."""
 
     # registry = wsinfer_zoo.client.load_registry(registry_file=Path.home() / ".wsinfer-zoo" if not os.getenv("WSINFER_ZOO_DIR", default=None) else Path(os.getenv("WSINFER_ZOO_DIR", default=None)) / "wsinfer-zoo-registry.json")
-    registry = wsinfer_zoo.client.load_registry(
-        registry_file=Path(os.getenv("WSINFER_ZOO_REGISTRY_PATH", default=None)) \
-            if Path(os.getenv("WSINFER_ZOO_REGISTRY_PATH", default=None)).exists() \
-            else Path(wsinfer_zoo.client.WSINFER_ZOO_REGISTRY_DEFAULT_PATH) \
-            if Path(wsinfer_zoo.client.WSINFER_ZOO_REGISTRY_DEFAULT_PATH).exists() \
-            else None)
-    
+    _reg_env = os.getenv("WSINFER_ZOO_REGISTRY_PATH")
+    _default_reg = Path(wsinfer_zoo.client.WSINFER_ZOO_REGISTRY_DEFAULT_PATH)
+    _registry_file = (
+        Path(_reg_env) if _reg_env and Path(_reg_env).exists()
+        else _default_reg if _default_reg.exists()
+        else None
+    )
+    registry = wsinfer_zoo.client.load_registry(registry_file=_registry_file)
+
     model = registry.get_model_by_name(name=name)
     return model.load_model_torchscript()
 
@@ -81,11 +83,10 @@ class TSPerDevice(torch.nn.Module):
                     if d is not None: return d
             return None
         dev = pick_device(args[0] if args else next(iter(kwargs.values())))
-        
-        torch.cuda.set_device(dev.index or 0)
-        torch.set_default_device(f"cuda:{dev.index or 0}")
-        
-        
+
+        if dev is not None and dev.type == "cuda":
+            torch.cuda.set_device(dev.index or 0)
+
         m = self._get(dev)
         return m(*args, **kwargs)
 
