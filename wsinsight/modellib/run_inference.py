@@ -652,7 +652,7 @@ def run_inference(
                 area = (annot_df["width"] * annot_df["height"]).to_numpy()
             
                 prob_cols = [c for c in annot_df.columns if c.startswith("prob_")]
-                # probs_mat = a[prob_cols].to_numpy(dtype=np.float32) if prob_cols else None
+                probs_mat = annot_df[prob_cols].to_numpy(dtype=np.float32) if prob_cols else None
                 # annot_prob_max = probs_mat.max(axis=1) if probs_mat is not None and probs_mat.size else None
 
                 # 3) containment predicate
@@ -718,12 +718,11 @@ def run_inference(
                     # build results for columns
                     results = {}
                     if prob_cols:
-                        # hit_rows = best >= 0
-                        # for j, c in enumerate(prob_cols):
-                        for c in prob_cols:
+                        hit_rows = best >= 0
+                        for j, c in enumerate(prob_cols):
                             vals = np.full(len(cx), np.nan, dtype=np.float32)
-                            # if hit_rows.any():
-                            #     vals[hit_rows] = probs_mat[best[hit_rows], j]
+                            if hit_rows.any() and probs_mat is not None:
+                                vals[hit_rows] = probs_mat[best[hit_rows], j]
                             results["annot_prob_" + c] = vals
             
                     return s, e, results
