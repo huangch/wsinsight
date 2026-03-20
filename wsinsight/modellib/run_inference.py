@@ -9,8 +9,6 @@ from __future__ import annotations
 
 import os
 # from pathlib import Path
-from typing import TYPE_CHECKING
-from typing import cast as type_cast
 import gc
 import numpy as np
 import numpy.typing as npt
@@ -37,7 +35,6 @@ from wsinsight.modellib.tilefuse import TileRemapStitcher
 from .data import WholeSlideImagePatches
 from .models import LocalModelTorchScript
 from .models import get_pretrained_torch_module
-from .models import jit_compile
 
 EPSILON = 1e-8
 I_0 = 255
@@ -55,7 +52,7 @@ def run_inference(
     halo_size_px: int = 46,
     batch_size: int = 32,
     num_workers: int = 4,
-    speedup: bool = False,
+    # speedup: bool = False,
     # patch_overlap_median_filter_size: int = 3,
     stain_normalization: bool = False,
     object_based: bool = False,

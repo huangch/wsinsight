@@ -88,12 +88,12 @@ def get_wsi_cls() -> type[openslide.OpenSlide] | type[tiffslide.TiffSlide]:
 
 # Set the slide backend based on the environment.
 # Prioritize TiffSlide if the user has it installed.
-if HAS_TIFFSLIDE:
-    set_backend("tiffslide")
-elif HAS_OPENSLIDE:
-    set_backend("openslide")
-else:
-    raise NoBackendException("No backend found! Please install openslide or tiffslide")
+# if HAS_TIFFSLIDE:
+#     set_backend("tiffslide")
+# elif HAS_OPENSLIDE:
+#     set_backend("openslide")
+# else:
+#     raise NoBackendException("No backend found! Please install openslide or tiffslide")
 
 
 # For typing an object that has a method `read_region`.

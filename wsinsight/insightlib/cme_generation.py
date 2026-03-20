@@ -6,7 +6,7 @@
 from __future__ import annotations
 import math, os
 import multiprocessing as mp
-from typing import Any, List, Dict, Iterable, Optional, Tuple # , Callable
+from typing import Any, List, Dict, Iterable, Optional, Sequence, Tuple # , Callable
 import numpy as np
 import pandas as pd
 from pathlib import Path
@@ -1013,7 +1013,7 @@ def _prepare_slide_graph_worker(i, wsi_path, csv_path, ds,
         
 def cme_generation(
     wsi_dir: str | URIPath | None,
-    wsi_paths: list[Path] | None,
+    wsi_paths: Sequence[Path | URIPath] | None,
     results_dir: str | Path,
     max_edge_len_um: float,
     max_cell_radius_um: float,
@@ -1057,17 +1057,33 @@ def cme_generation(
     print(f'Using device "{device}"')
     
     # Make sure required directories exist.
-    wsi_dir = URIPath(wsi_dir)
-    if not wsi_dir.exists():
-        raise errors.WholeSlideImageDirectoryNotFound(f"directory not found: {wsi_dir}")
-    wsi_paths = [p for p in wsi_dir.iterdir() if p.is_file()]
-    if not wsi_paths:
-        raise errors.WholeSlideImagesNotFound(wsi_dir)
+    wsi_dir_path = URIPath(wsi_dir) if wsi_dir is not None else None
+    if wsi_dir_path is not None and not wsi_dir_path.exists():
+        raise errors.WholeSlideImageDirectoryNotFound(f"directory not found: {wsi_dir_path}")
+
+    if wsi_paths is not None:
+        slide_paths = [p if isinstance(p, URIPath) else URIPath(p) for p in wsi_paths]
+    elif wsi_dir_path is not None:
+        slide_paths = [p for p in wsi_dir_path.iterdir() if p.is_file()]
+    else:
+        raise ValueError("wsi_paths must be provided when wsi_dir is None")
+
+    if not slide_paths:
+        context = wsi_dir_path or "provided slide paths"
+        raise errors.WholeSlideImagesNotFound(context)
+
     results_dir = Path(results_dir)
     if not results_dir.exists():
         raise errors.ResultsDirectoryNotFound(results_dir)
 
-    _validate_wsi_directory(wsi_dir)
+    if wsi_dir_path is not None:
+        _validate_wsi_directory(wsi_dir_path)
+    else:
+        stems = [p.stem for p in slide_paths]
+        if len(stems) != len(set(stems)):
+            raise errors.DuplicateFilePrefixesFound(
+                "A slide with the same prefix but different extensions has been found"
+            )
 
     # Check patches directory.
     model_output_dir = results_dir / "model-outputs-csv"
@@ -1077,9 +1093,9 @@ def cme_generation(
         )
     # Create the patch paths based on the whole slide image paths. In effect, only
     # create patch paths if the whole slide image patch exists.
-    model_output_paths = [model_output_dir / p.with_suffix(".csv").name for p in wsi_paths]
+    model_output_paths = [model_output_dir / p.with_suffix(".csv").name for p in slide_paths]
     
-    if len(model_output_paths) != len(wsi_paths):
+    if len(model_output_paths) != len(slide_paths):
         raise errors.ResultsDirectoryNotFound(
             "The 'model-outputs-csv' and image directory were mismatched."
         )
@@ -1107,8 +1123,8 @@ def cme_generation(
     else:
         click.secho("\nPhase 1/5: build slide graphs for CMEGCN.\n", fg="green")
     
-        # for i, (wsi_path, model_output_csv) in tqdm(enumerate(zip(wsi_paths, model_output_paths)), total=len(wsi_paths)):
-        #     # print(f"Slide {i+1} of {len(wsi_paths)}")
+        # for i, (wsi_path, model_output_csv) in tqdm(enumerate(zip(slide_paths, model_output_paths)), total=len(slide_paths)):
+        #     # print(f"Slide {i+1} of {len(slide_paths)}")
         #     # print(f" Slide path: {wsi_path}")
         #     # print(f" Model output path: {model_output_csv}")
         #
@@ -1148,12 +1164,12 @@ def cme_generation(
         
         
         
-        slides = [None] * len(wsi_paths)
+        slides = [None] * len(slide_paths)
         classes = None
         
         ctx = mp.get_context("spawn")  # safer with NumPy/pandas
         tasks = []
-        for i, (wsi_path, csv_path) in enumerate(zip(wsi_paths, model_output_paths)):
+        for i, (wsi_path, csv_path) in enumerate(zip(slide_paths, model_output_paths)):
             ds = None
             if use_hoptimus and patch_datasets is not None and i < len(patch_datasets):
                 ds = patch_datasets[i]
@@ -1246,7 +1262,7 @@ def cme_generation(
     click.secho("\nPhase 4/5: Perform cellular-level cme analysis per slide.\n", fg="green")
 
     if cme_cellular:
-        for i, (wsi_path, model_output_csv) in tqdm(enumerate(zip(wsi_paths, model_output_paths)), total=len(wsi_paths)):
+        for i, (wsi_path, model_output_csv) in tqdm(enumerate(zip(slide_paths, model_output_paths)), total=len(slide_paths)):
             cme_csv_name = Path(wsi_path).with_suffix(".csv").name
             cell_csv = cme_cells_output_dir / cme_csv_name
             cme_csv = cme_cmes_output_dir / cme_csv_name
@@ -1285,7 +1301,7 @@ def cme_generation(
     click.secho("\nPhase 5/5: Perform annotation-level cme analysis per slide.\n", fg="green")
    
     if cme_annotation:
-        for i, (wsi_path, model_output_csv) in tqdm(enumerate(zip(wsi_paths, model_output_paths)), total=len(wsi_paths)):
+        for i, (wsi_path, model_output_csv) in tqdm(enumerate(zip(slide_paths, model_output_paths)), total=len(slide_paths)):
             cme_csv_name = Path(wsi_path).with_suffix(".csv").name
             cell_csv = cme_cells_output_dir / cme_csv_name
             cme_csv = cme_cmes_output_dir / cme_csv_name

@@ -18,6 +18,7 @@ from typing import Any, List
 
 import click
 import geopandas as gpd
+import h5py
 import pandas as pd
 import tqdm
 from platformdirs import user_cache_dir
@@ -284,6 +285,84 @@ def _materialize_local_file(path: URIPath | Path | str) -> Path:
 def _materialize_local_files(paths: list[URIPath | Path | str]) -> list[Path]:
     """Materialize a series of URIPath objects while preserving order."""
     return [_materialize_local_file(p) for p in paths]
+
+
+_PATCH_DIR_MISSING_HINT = (
+    "No patches were created. Please see the logs above and check for errors. "
+    "It is possible that no tissue was detected in the slides. If that is the case,"
+    " please try to use different --seg-* parameters, which will change how the"
+    " segmentation is done. For example, a lower binary threshold may be set."
+)
+
+
+@dataclasses.dataclass(frozen=True)
+class SlidePatchRecord:
+    wsi_path: URIPath
+    patch_path: URIPath
+    slide_mpp: float | None = None
+    slide_width: float | None = None
+    slide_height: float | None = None
+
+
+def _decode_hdf5_str(value: object | None) -> str:
+    """Normalize HDF5 attribute values to plain Python strings."""
+    if value is None:
+        return ""
+    if isinstance(value, bytes):
+        return value.decode("utf-8")
+    return str(value)
+
+
+def _maybe_float(value: object | None) -> float | None:
+    try:
+        return None if value is None else float(value)
+    except (TypeError, ValueError):
+        return None
+
+
+def _load_slide_manifest_from_patches(results_dir: URIPath) -> list[SlidePatchRecord]:
+    """Load slide metadata stored inside each patch HDF5 file."""
+
+    patch_dir = results_dir / "patches"
+    if not patch_dir.exists():
+        raise click.ClickException(_PATCH_DIR_MISSING_HINT)
+
+    manifest: list[SlidePatchRecord] = []
+    for patch_path in sorted(patch_dir.iterdir(files_only=True), key=lambda p: p.name):
+        if patch_path.suffix.lower() != ".h5":
+            continue
+        try:
+            with h5py.File(patch_path, "r") as handle:
+                slide_group = handle["/slide"]
+                slide_path_token = _decode_hdf5_str(slide_group.attrs.get("slide_path"))
+                if not slide_path_token:
+                    raise KeyError("slide_path")
+                slide_mpp = _maybe_float(slide_group.attrs.get("slide_mpp"))
+                slide_width = _maybe_float(slide_group.attrs.get("slide_width"))
+                slide_height = _maybe_float(slide_group.attrs.get("slide_height"))
+        except KeyError as exc:  # pragma: no cover - surfaces corrupted artifacts to users
+            raise click.ClickException(
+                f"Patch file {patch_path.name} is missing required slide metadata"
+            ) from exc
+        except Exception as exc:  # pragma: no cover - IO/serialization issues bubble to CLI
+            raise click.ClickException(
+                f"Unable to read slide metadata from patch file {patch_path.name}"
+            ) from exc
+
+        manifest.append(
+            SlidePatchRecord(
+                wsi_path=URIPath(slide_path_token),
+                patch_path=patch_path,
+                slide_mpp=slide_mpp,
+                slide_width=slide_width,
+                slide_height=slide_height,
+            )
+        )
+
+    if not manifest:
+        raise errors.WholeSlideImagesNotFound(patch_dir)
+
+    return manifest
 
 
 def _optional_uri_paths(ctx: click.Context, param: click.Option, value):
@@ -763,8 +842,9 @@ def infer(
     """Execute WSInsight inference and optional post-processing on prepared patches.
 
     The command consumes an existing `results_dir` (typically produced by `wsinsight
-    patch` or `wsinsight run`) that already contains patch-level data plus a
-    `wsi_list.csv`. Depending on the arguments, it either loads a registered model,
+    patch` or `wsinsight run`) that already contains patch-level HDF5 data whose
+    metadata enumerates the processed slides. Depending on the arguments, it either
+    loads a registered model,
     a custom config/model-path pair, or synthesizes a pseudo-model from QuPath
     detections/annotations. After validating the requested patch geometry, the
     selected model is run via `run_inference`, producing CSV outputs under
@@ -821,6 +901,17 @@ def infer(
         print(f"{key} = {value}")
     print("----------------------\n")
 
+    slide_manifest: list[SlidePatchRecord] | None = None
+
+    def _selected_slide_manifest() -> list[SlidePatchRecord]:
+        nonlocal slide_manifest
+        if slide_manifest is None:
+            slide_manifest = _load_slide_manifest_from_patches(results_dir)
+        return slide_manifest
+
+    def _selected_wsi_paths() -> list[URIPath]:
+        return [record.wsi_path for record in _selected_slide_manifest()]
+
     # --- Resolve model or pseudo-model -------------------------------------
     # Track runtime flags populated once we know which model/config we're using.
     stain_normalization = False 
@@ -849,22 +940,11 @@ def infer(
         
         
     elif qupath_detection_dir is not None:
-        try:
-            with (results_dir / "wsi_list.csv").open("r", encoding="utf-8") as manifest_fp:
-                manifest_df = pd.read_csv(manifest_fp)
-        except Exception as exc:  # pragma: no cover - IO error surface for users
-            raise click.ClickException(f"Unable to read wsi_list.csv") from exc
-    
-        if "wsi_path" not in manifest_df.columns:
-            raise click.ClickException(
-                f"wsi_paths must contain a 'wsi_path' column."
-            )
-    
-        wsi_paths = [URIPath(str(path)) for path in manifest_df["wsi_path"].dropna().tolist()]
-        
+        wsi_paths = _selected_wsi_paths()
+
         if not wsi_paths:
-            raise errors.WholeSlideImagesNotFound("wsi_list.csv")
-        
+            raise errors.WholeSlideImagesNotFound(results_dir / "patches")
+
         if not results_dir.exists():
             raise errors.ResultsDirectoryNotFound(results_dir)
 
@@ -904,30 +984,18 @@ def infer(
         stain_normalization = None
         object_detection = None
         halo_size_px = 0
-   
-        
+
     elif qupath_geojson_detection_dir is not None:
-        try:
-            with (results_dir / "wsi_list.csv").open("r", encoding="utf-8") as manifest_fp:
-                manifest_df = pd.read_csv(manifest_fp)
-        except Exception as exc:  # pragma: no cover - IO error surface for users
-            raise click.ClickException(f"Unable to read wsi_list.csv") from exc
-    
-        if "wsi_path" not in manifest_df.columns:
-            raise click.ClickException(
-                f"wsi_paths must contain a 'wsi_path' column."
-            )
-    
-        wsi_paths = [URIPath(str(path)) for path in manifest_df["wsi_path"].dropna().tolist()]
-        
+        wsi_paths = _selected_wsi_paths()
+
         if not wsi_paths:
-            raise errors.WholeSlideImagesNotFound("wsi_list.csv")
-        
+            raise errors.WholeSlideImagesNotFound(results_dir / "patches")
+
         if not results_dir.exists():
             raise errors.ResultsDirectoryNotFound(results_dir)
-        
+
         class_names = []
-            
+
         print("\nLoading pseudo model data...\n")
         for wsi_path in tqdm.tqdm(wsi_paths):
             slide_geojson_name = _materialize_local_file(wsi_path).with_suffix(".geojson").name
@@ -942,8 +1010,8 @@ def infer(
                     else qpgeojson_gdf.classification.str.strip().str.replace(" ", "_", regex=False).str.lower().unique().tolist()
                 )
                 class_names.extend(qpgeojson_class_names)
-                class_names = list(set(class_names))                
-                    
+                class_names = list(set(class_names))
+
         model_obj = Model(
             ModelConfiguration(
                 architecture='qupath.geojson',
@@ -955,32 +1023,21 @@ def infer(
             ),
             "",
         )
-        
-        patch_size_px=model_obj.config.patch_size_pixels
+
+        patch_size_px = model_obj.config.patch_size_pixels
         object_based = True
         mixed_precision = False
         stain_normalization = None
         object_detection = None
-        halo_size_px = 0        
-          
-          
+        halo_size_px = 0
+
+
     elif qupath_geojson_annotation_dir is not None:
-        try:
-            with (results_dir / "wsi_list.csv").open("r", encoding="utf-8") as manifest_fp:
-                manifest_df = pd.read_csv(manifest_fp)
-        except Exception as exc:  # pragma: no cover - IO error surface for users
-            raise click.ClickException(f"Unable to read wsi_list.csv") from exc
-    
-        if "wsi_path" not in manifest_df.columns:
-            raise click.ClickException(
-                f"wsi_paths must contain a 'wsi_path' column."
-            )
-    
-        wsi_paths = [URIPath(str(path)) for path in manifest_df["wsi_path"].dropna().tolist()]
-        
+        wsi_paths = _selected_wsi_paths()
+
         if not wsi_paths:
-            raise errors.WholeSlideImagesNotFound("wsi_list.csv")
-        
+            raise errors.WholeSlideImagesNotFound(results_dir / "patches")
+
         if not results_dir.exists():
             raise errors.ResultsDirectoryNotFound(results_dir)
 
@@ -1060,12 +1117,7 @@ def infer(
 
     # --- Validate dependent artifacts --------------------------------------
     if not (results_dir / "patches").exists():
-        raise click.ClickException(
-            "No patches were created. Please see the logs above and check for errors. "
-            "It is possible that no tissue was detected in the slides. If that is the case,"
-            " please try to use different --seg-* parameters, which will change how the"
-            " segmentation is done. For example, a lower binary threshold may be set."
-        )
+        raise click.ClickException(_PATCH_DIR_MISSING_HINT)
     
     if wsi_dir is not None and slide_paths is None:
         slide_paths = sorted(
@@ -1151,6 +1203,14 @@ def infer(
     if hplot and (len(hplot_base_types) != 0 and len(hplot_target_types) != 0):
         target_type_list = [c.strip().replace(' ', '_').lower() for c in hplot_target_types]
         base_type_list = [c.strip().replace(' ', '_').lower() for c in hplot_base_types]
+
+        manifest_records = _selected_slide_manifest()
+        slide_paths = [record.wsi_path for record in manifest_records]
+        slide_mpp_lookup = {
+            record.wsi_path.stem: record.slide_mpp
+            for record in manifest_records
+            if record.slide_mpp is not None
+        }
         
         for tp in base_type_list+target_type_list: 
             if tp not in model_obj.config.class_names:
@@ -1161,7 +1221,7 @@ def infer(
         
         failed_hplot_generation = hplot_generation(
             wsi_dir=None,
-            wsi_paths=wsi_paths,
+            slide_paths=slide_paths,
             results_dir=results_dir,
             base_type_list=base_type_list,
             target_type_list=target_type_list,
@@ -1173,6 +1233,7 @@ def infer(
             hplot_range_min=hplot_range_min,
             hplot_samples_with_valid_range_only=hplot_samples_with_valid_range_only,
             num_workers=1 if num_workers == 0 else num_workers,
+            slide_mpp_lookup=slide_mpp_lookup or None,
         )
         
         if failed_hplot_generation:
@@ -1212,13 +1273,14 @@ def infer(
                           )
     
     elif hplot and (len(hplot_base_types) == 0 or len(hplot_target_types) == 0):
-        raise click.ClickException(f"\nH-Plot requires both --hplot-base-types and hplot-target-types.")
+        raise click.ClickException(f"\nH-Plot requires both --hplot-base-types and --hplot-target-types.")
         click.secho("\n".join(failed_inference), fg="yellow")
         
             
     # --- CME analytics ------------------------------------------------------
     if cme_cellular or cme_annotation:      
         click.secho("\nRunning cme generation.\n", fg="green")
+        wsi_paths = _selected_wsi_paths()
         # Default flow: run CME with the graph-based pipeline (H-Optimus disabled).
         cme_generation(
             wsi_dir=None,

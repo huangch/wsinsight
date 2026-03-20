@@ -724,8 +724,29 @@ def compute_hplot(df_with_distances, filtered_edges_df):
     # Group by hplot_signed_distance_to_border and calculate the ratio of targets
     # Handle potential empty groups or no targets at a distance
     # Exclude NaN distances from grouping
-    base_type_prop_by_distance = df_with_distances.dropna(subset=['hplot_signed_distance_to_border']).groupby('hplot_signed_distance_to_border')[f'is_base_type'].apply(lambda x: x.sum() / len(x) if len(x) > 0 else 0)
-    target_type_prop_by_distance = df_with_distances.dropna(subset=['hplot_signed_distance_to_border']).groupby('hplot_signed_distance_to_border')[f'is_target_type'].apply(lambda x: x.sum() / len(x) if len(x) > 0 else 0)
+    
+    # base_type_prop_by_distance = df_with_distances.dropna(subset=['hplot_signed_distance_to_border']).groupby('hplot_signed_distance_to_border')[f'is_base_type'].apply(lambda x: x.sum() / len(x) if len(x) > 0 else 0)
+    # target_type_prop_by_distance = df_with_distances.dropna(subset=['hplot_signed_distance_to_border']).groupby('hplot_signed_distance_to_border')[f'is_target_type'].apply(lambda x: x.sum() / len(x) if len(x) > 0 else 0)
+
+    # all_type_count_by_distance = df_with_distances.dropna(subset=['hplot_signed_distance_to_border']).groupby('hplot_signed_distance_to_border')[f'is_base_type'].apply(lambda x: len(x) if len(x) > 0 else 0)
+    # base_type_count_by_distance = df_with_distances.dropna(subset=['hplot_signed_distance_to_border']).groupby('hplot_signed_distance_to_border')[f'is_base_type'].apply(lambda x: x.sum() if len(x) > 0 else 0)
+    # target_type_count_by_distance = df_with_distances.dropna(subset=['hplot_signed_distance_to_border']).groupby('hplot_signed_distance_to_border')[f'is_target_type'].apply(lambda x: x.sum() if len(x) > 0 else 0)
+
+    valid_layers = df_with_distances.dropna(subset=['hplot_signed_distance_to_border'])
+    grouped_layers = valid_layers.groupby('hplot_signed_distance_to_border')
+    layer_counts = grouped_layers.agg(
+        all_count=('is_base_type', 'size'),
+        base_count=('is_base_type', 'sum'),
+        target_count=('is_target_type', 'sum'),
+    )
+
+    all_type_count_by_distance = layer_counts['all_count']
+    base_type_count_by_distance = layer_counts['base_count']
+    target_type_count_by_distance = layer_counts['target_count']
+
+    denom = layer_counts['all_count'].replace(0, np.nan)
+    base_type_prop_by_distance = (layer_counts['base_count'] / denom).fillna(0.0)
+    target_type_prop_by_distance = (layer_counts['target_count'] / denom).fillna(0.0)
 
     # Step 1: Calculate average edge length between adjacent layers
     average_edge_length_between_layers = {}
@@ -797,8 +818,11 @@ def compute_hplot(df_with_distances, filtered_edges_df):
     plot_df = pd.DataFrame({
         'layer': target_type_prop_by_distance.index,
         'base_type_prop': base_type_prop_by_distance.values,
-        'target_type_prop': target_type_prop_by_distance.values
-    })
+        'target_type_prop': target_type_prop_by_distance.values,
+        'base_type_count': base_type_count_by_distance.values,
+        'target_type_count': target_type_count_by_distance.values,
+        'all_type_count': all_type_count_by_distance.values
+        })
 
     # Map the cumulative average edge lengths to the signed_distance in plot_df
     plot_df['distance'] = plot_df['layer'].map(cumulative_avg_lengths_series)
