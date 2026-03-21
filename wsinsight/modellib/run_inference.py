@@ -21,7 +21,7 @@ import wsinfer_zoo.client
 import geopandas as gpd
 import h5py 
 from math import ceil
-from concurrent.futures import ProcessPoolExecutor, as_completed
+from concurrent.futures import ProcessPoolExecutor, ThreadPoolExecutor, as_completed
 from typing import List
 
 from .. import errors
@@ -723,13 +723,13 @@ def run_inference(
                             vals = np.full(len(cx), np.nan, dtype=np.float32)
                             if hit_rows.any() and probs_mat is not None:
                                 vals[hit_rows] = probs_mat[best[hit_rows], j]
-                            results["annot_prob_" + c] = vals
+                            results["region_prob_" + c] = vals
             
                     return s, e, results
             
                 # 7) schedule work
                 indices = list(range(0, n_points, points_per_chunk))
-                with ProcessPoolExecutor(max_workers=max_workers) as ex:
+                with ThreadPoolExecutor(max_workers=max_workers) as ex:
                     futures = [ex.submit(process_chunk, s, min(n_points, s + points_per_chunk)) for s in indices]
                     for fut in as_completed(futures):
                         throttle_when_busy()
