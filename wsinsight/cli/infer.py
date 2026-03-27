@@ -27,7 +27,7 @@ import wsinfer_zoo.client
 from wsinfer_zoo.client import HFModel, Model, ModelConfiguration
 
 from .. import errors
-from ..insightlib.cme_generation import cme_generation
+# from ..insightlib.cme_generation import cme_generation
 from ..insightlib.hplot_generation import hplot_generation
 from ..modellib import models
 from ..modellib.run_inference import run_inference
@@ -755,39 +755,39 @@ def _optional_uri_paths(ctx: click.Context, param: click.Option, value):
     show_default=True,
     help="Skip samples lacking both inner/outer layer bounds so only valid H-Plot ranges contribute to stats.",
 )
-@click.option(
-    "--cme-cellular",
-    is_flag=True,
-    default=False,
-    show_default=True,
-    help="Run cellular-level CME analysis to produce per-cell embeddings/labels.",
-)
-@click.option(
-    "--cme-annotation",
-    is_flag=True,
-    default=False,
-    show_default=True,
-    help="Run annotation-level CME analysis to cluster higher-level regions.",
-)
-@click.option(
-    "--cme-soft-mode",
-    is_flag=True,
-    default=False,
-    show_default=True,
-    help="CME clustering weights class probabilities instead of hard labels; otherwise categorical assignments are used.",
-)
-@click.option(
-    "--cme-clustering-k",
-    default=None,
-    type=click.IntRange(min=0),
-    help="k-nearest-neighbor count used when building CME clustering graphs.",
-)
-@click.option(
-    "--cme-clustering-resolutions",
-    callback=_csv_to_list,
-    default="0.5,1.0,2.0",
-    help="Resolution parameter using in clustering for cmes.",
-)
+# @click.option(
+#     "--cme-cellular",
+#     is_flag=True,
+#     default=False,
+#     show_default=True,
+#     help="Run cellular-level CME analysis to produce per-cell embeddings/labels.",
+# )
+# @click.option(
+#     "--cme-annotation",
+#     is_flag=True,
+#     default=False,
+#     show_default=True,
+#     help="Run annotation-level CME analysis to cluster higher-level regions.",
+# )
+# @click.option(
+#     "--cme-soft-mode",
+#     is_flag=True,
+#     default=False,
+#     show_default=True,
+#     help="CME clustering weights class probabilities instead of hard labels; otherwise categorical assignments are used.",
+# )
+# @click.option(
+#     "--cme-clustering-k",
+#     default=None,
+#     type=click.IntRange(min=0),
+#     help="k-nearest-neighbor count used when building CME clustering graphs.",
+# )
+# @click.option(
+#     "--cme-clustering-resolutions",
+#     callback=_csv_to_list,
+#     default="0.5,1.0,2.0",
+#     help="Resolution parameter using in clustering for cmes.",
+# )
 
 
 # --- CLI command --------------------------------------------------------------
@@ -833,11 +833,11 @@ def infer(
     hplot_range_max: int = None,
     hplot_range_min: int = None,
     hplot_samples_with_valid_range_only: bool = False,
-    cme_cellular: bool = False,
-    cme_annotation: bool = False,
-    cme_soft_mode: bool = False,
-    cme_clustering_k: int | None = None,
-    cme_clustering_resolutions = [0.5,1.0,2.0],
+    # cme_cellular: bool = False,
+    # cme_annotation: bool = False,
+    # cme_soft_mode: bool = False,
+    # cme_clustering_k: int | None = None,
+    # cme_clustering_resolutions = [0.5,1.0,2.0],
 ) -> None:
     """Execute WSInsight inference and optional post-processing on prepared patches.
 
@@ -1278,85 +1278,83 @@ def infer(
         
             
     # --- CME analytics ------------------------------------------------------
-    if cme_cellular or cme_annotation:      
-        click.secho("\nRunning cme generation.\n", fg="green")
-        wsi_paths = _selected_wsi_paths()
-        # Default flow: run CME with the graph-based pipeline (H-Optimus disabled).
-        cme_generation(
-            wsi_dir=None,
-            wsi_paths=wsi_paths,
-            results_dir=results_dir,
-            max_edge_len_um=25,
-            max_cell_radius_um=15,
-            k_hops=2, alpha=1.0,
-            use_hoptimus=False,                 # ← off
-            hidden=64, out_dim=32, epochs=300,
-            cme_cellular=cme_cellular, 
-            cme_annotation=cme_annotation,
-            cme_clustering_k=cme_clustering_k, 
-            cme_clustering_resolutions=cme_clustering_resolutions,
-            cme_soft_mode=cme_soft_mode,
-            # seed=0,
-        )
-         
-        # # Option 2: Example wiring for H-Optimus when dedicated datasets are available.
-        # patch_datasets = [DummyPatchDataset(num_cells=len(slides_inputs[0][0])),
-        #                   DummyPatchDataset(num_cells=len(slides_inputs[1][0]))]
-        #
-        # res_h0 = cme_generation(
-        #     slides_inputs,
-        #     max_edge_len_um=70.0,
-        #     k_hops=2, alpha=1.0,
-        #     use_hoptimus=True,                  # ← ON
-        #     patch_datasets=patch_datasets,      # replace with your real datasets later
-        #     sample_frac=0.2, pca_dim=128, knn_k=3, knn_sigma_um=60.0,
-        #     hidden=64, out_dim=32, epochs=300,
-        #     clusters_k=5, seed=0
-        # )
-        #
-        # # Each result contains per-slide embeddings and labels:
-        # Z_slide0 = res_h0["embeddings"][0]        # [N0, 32]
-        # y_slide0 = res_h0["labels"][0]            # [N0]
-        # kept_idx0 = res_h0["kept_idx"][0]         # map to original rows in slideA_cells.csv
-     
-     
-        if geojson:
-            click.echo("\nWriting CME detection cellular results to GeoJSON files\n")
-            # Export CME cell-level outputs for quick map overlays.
-            cme_cell_csvs = _materialize_local_files(
-                [
-                    p
-                    for p in (results_dir / "cme-outputs-csv" / "cells").iterdir(files_only=True)
-                    if p.suffix == ".csv"
-                ]
-            )
-            write_geojsons(
-                csvs=cme_cell_csvs,
-                overlap=overlap,
-                results_dir=results_dir,
-                output_dir=URIPath("cme-outputs-geojson") / "cells",
-                prefix="cme",
-                num_workers=1 if export_workers == 0 else export_workers,
-                object_type="detection",
-                set_classification=True,
-                annotation_shape="box",
-            )
-     
-        
-        # Example annotation-level exports can be re-enabled when CME polygons are finalized.
-        # cme_cme_csvs = list((results_dir / "cme-outputs-csv" / "cmes").glob("*.csv"))
-        # write_geojsons(
-        #     csvs=cme_cme_csvs,
-        #     overlap=overlap,
-        #     results_dir=results_dir,
-        #     output_dir=Path("cme-outputs-geojson") / "cmes",
-        #     prefix="cme",
-        #     num_workers=1 if num_workers == 0 else num_workers,
-        #     object_type="annotation",
-        #     set_classification=True,
-        #     annotation_shape="polygon",
-        # )
-        
+    # if cme_cellular or cme_annotation:
+    #     click.secho("\nRunning cme generation.\n", fg="green")
+    #     wsi_paths = _selected_wsi_paths()
+    #     # Default flow: run CME with the graph-based pipeline (H-Optimus disabled).
+    #     cme_generation(
+    #         wsi_dir=None,
+    #         wsi_paths=wsi_paths,
+    #         results_dir=results_dir,
+    #         max_edge_len_um=25,
+    #         max_cell_radius_um=15,
+    #         k_hops=2, alpha=1.0,
+    #         use_hoptimus=False,                 # ← off
+    #         hidden=64, out_dim=32, epochs=300,
+    #         cme_cellular=cme_cellular,
+    #         cme_annotation=cme_annotation,
+    #         cme_clustering_k=cme_clustering_k,
+    #         cme_clustering_resolutions=cme_clustering_resolutions,
+    #         cme_soft_mode=cme_soft_mode,
+    #         # seed=0,
+    #     )
+    #
+    #     # # Option 2: Example wiring for H-Optimus when dedicated datasets are available.
+    #     # patch_datasets = [DummyPatchDataset(num_cells=len(slides_inputs[0][0])),
+    #     #                   DummyPatchDataset(num_cells=len(slides_inputs[1][0]))]
+    #     #
+    #     # res_h0 = cme_generation(
+    #     #     slides_inputs,
+    #     #     max_edge_len_um=70.0,
+    #     #     k_hops=2, alpha=1.0,
+    #     #     use_hoptimus=True,                  # ← ON
+    #     #     patch_datasets=patch_datasets,      # replace with your real datasets later
+    #     #     sample_frac=0.2, pca_dim=128, knn_k=3, knn_sigma_um=60.0,
+    #     #     hidden=64, out_dim=32, epochs=300,
+    #     #     clusters_k=5, seed=0
+    #     # )
+    #     #
+    #     # # Each result contains per-slide embeddings and labels:
+    #     # Z_slide0 = res_h0["embeddings"][0]        # [N0, 32]
+    #     # y_slide0 = res_h0["labels"][0]            # [N0]
+    #     # kept_idx0 = res_h0["kept_idx"][0]         # map to original rows in slideA_cells.csv
+    #
+    #     if geojson:
+    #         click.echo("\nWriting CME detection cellular results to GeoJSON files\n")
+    #         # Export CME cell-level outputs for quick map overlays.
+    #         cme_cell_csvs = _materialize_local_files(
+    #             [
+    #                 p
+    #                 for p in (results_dir / "cme-outputs-csv" / "cells").iterdir(files_only=True)
+    #                 if p.suffix == ".csv"
+    #             ]
+    #         )
+    #         write_geojsons(
+    #             csvs=cme_cell_csvs,
+    #             overlap=overlap,
+    #             results_dir=results_dir,
+    #             output_dir=URIPath("cme-outputs-geojson") / "cells",
+    #             prefix="cme",
+    #             num_workers=1 if export_workers == 0 else export_workers,
+    #             object_type="detection",
+    #             set_classification=True,
+    #             annotation_shape="box",
+    #         )
+    #
+    #     # Example annotation-level exports can be re-enabled when CME polygons are finalized.
+    #     # cme_cme_csvs = list((results_dir / "cme-outputs-csv" / "cmes").glob("*.csv"))
+    #     # write_geojsons(
+    #     #     csvs=cme_cme_csvs,
+    #     #     overlap=overlap,
+    #     #     results_dir=results_dir,
+    #     #     output_dir=Path("cme-outputs-geojson") / "cmes",
+    #     #     prefix="cme",
+    #     #     num_workers=1 if num_workers == 0 else num_workers,
+    #     #     object_type="annotation",
+    #     #     set_classification=True,
+    #     #     annotation_shape="polygon",
+    #     # )
+
     timestamp = datetime.now().astimezone().strftime("%Y%m%dT%H%M%S")
     run_metadata_outpath = results_dir / f"infer_metadata_{timestamp}.json"
     click.echo(f"\nSaving metadata about run to {run_metadata_outpath}\n")

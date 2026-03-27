@@ -147,11 +147,11 @@ _INFER_PARAM_NAMES: tuple[str, ...] = (
     "hplot_range_max",
     "hplot_range_min",
     "hplot_samples_with_valid_range_only",
-    "cme_cellular",
-    "cme_annotation",
-    "cme_soft_mode",
-    "cme_clustering_k",
-    "cme_clustering_resolutions",
+    # "cme_cellular",
+    # "cme_annotation",
+    # "cme_soft_mode",
+    # "cme_clustering_k",
+    # "cme_clustering_resolutions",
 )
 
 
@@ -583,40 +583,40 @@ def _select_kwargs(values: dict[str, Any], keys: tuple[str, ...]) -> dict[str, A
     show_default=True,
     help="H-Plot computing uses only samples with valid range of cellular-wise layers.",
 )
-@click.option(
-    "--cme-cellular",
-    is_flag=True,
-    default=False,
-    show_default=True,
-    help="Run cellular-level cme analysis.",
-)
-@click.option(
-    "--cme-annotation",
-    is_flag=True,
-    default=False,
-    show_default=True,
-    help="Run cellular-level cme analysis.",
-)
-@click.option(
-    "--cme-soft-mode",
-    is_flag=True,
-    default=False,
-    show_default=True,
-    help="CME clustering is computed based on the probability of classification."
-         "Otherwise, the categorization of classification.",
-)
-@click.option(
-    "--cme-clustering-k",
-    default=None,
-    type=click.IntRange(min=0),
-    help="the n-neighbors parameter using in clustering for cmes.",
-)
-@click.option(
-    "--cme-clustering-resolutions",
-    callback=_csv_to_list,
-    default="0.5,1.0,2.0",
-    help="Resolution parameter using in clustering for cmes.",
-)
+# @click.option(
+#     "--cme-cellular",
+#     is_flag=True,
+#     default=False,
+#     show_default=True,
+#     help="Run cellular-level cme analysis.",
+# )
+# @click.option(
+#     "--cme-annotation",
+#     is_flag=True,
+#     default=False,
+#     show_default=True,
+#     help="Run cellular-level cme analysis.",
+# )
+# @click.option(
+#     "--cme-soft-mode",
+#     is_flag=True,
+#     default=False,
+#     show_default=True,
+#     help="CME clustering is computed based on the probability of classification."
+#          "Otherwise, the categorization of classification.",
+# )
+# @click.option(
+#     "--cme-clustering-k",
+#     default=None,
+#     type=click.IntRange(min=0),
+#     help="the n-neighbors parameter using in clustering for cmes.",
+# )
+# @click.option(
+#     "--cme-clustering-resolutions",
+#     callback=_csv_to_list,
+#     default="0.5,1.0,2.0",
+#     help="Resolution parameter using in clustering for cmes.",
+# )
 def run(
     ctx: click.Context,
     *,
@@ -660,11 +660,11 @@ def run(
     hplot_range_max: int | None = None,
     hplot_range_min: int | None = None,
     hplot_samples_with_valid_range_only: bool = False,
-    cme_cellular: bool = False,
-    cme_annotation: bool = False,
-    cme_soft_mode: bool = False,
-    cme_clustering_k: int | None = None,
-    cme_clustering_resolutions: List | None = None,
+    # cme_cellular: bool = False,
+    # cme_annotation: bool = False,
+    # cme_soft_mode: bool = False,
+    # cme_clustering_k: int | None = None,
+    # cme_clustering_resolutions: List | None = None,
 ) -> None:
     """Run both patch extraction and inference workflows for a slide directory.
 
