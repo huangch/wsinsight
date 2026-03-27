@@ -315,7 +315,7 @@ def _optional_uri_paths(ctx: click.Context, param: click.Option, value):
 )
 @click.option(
     "-r",
-    "--references-dir",
+    "--region-inference-dir",
     type=(
         URIPathType(
             exists=True, 
@@ -335,7 +335,7 @@ def _optional_uri_paths(ctx: click.Context, param: click.Option, value):
         )
     ),
     default=None,
-    help="Directory that contains the previous wsinfer/wsinsight output as the reference for this analysis.",
+    help="Results directory from a prior region-level (patch-based) wsinsight run containing a model-outputs-csv/ folder. Requires --object-based: each detected object is matched to its enclosing region and the region's class probabilities are added as region_prob_* columns in the output.",
 )
 @click.option(
     "--qupath-detection-dir",
@@ -569,7 +569,7 @@ def patch(
     wsi_dir: URIPath,
     slide_paths: list[URIPath] | None,
     results_dir: URIPath,
-    references_dir: URIPath | None,
+    region_inference_dir: URIPath | None,
     qupath_detection_dir: URIPath | None,
     qupath_geojson_detection_dir: URIPath | None,
     qupath_geojson_annotation_dir: URIPath | None,
@@ -818,8 +818,8 @@ def patch(
     else:
         raise click.ClickException("Neither of --config and --model was passed")
 
-    if references_dir is not None and not object_based:
-        raise click.ClickException("--annotaions-dir only works with object based model.")
+    if region_inference_dir is not None and not object_based:
+        raise click.ClickException("--region-inference-dir only works with object based model.")
     
     # Validating all overlap options
     nonzero_count = sum([

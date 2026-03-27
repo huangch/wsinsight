@@ -6,7 +6,7 @@ FROM nvidia/cuda:12.8.0-cudnn-devel-ubuntu22.04
 ENV DEBIAN_FRONTEND=noninteractive \
     PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
-    PIP_NO_CACHE_DIR=1
+    PIP_NO_CACHE_DIR=1 
 
 # ------------------------------------
 # Basic system dependencies + OpenJDK 17
@@ -48,7 +48,7 @@ RUN conda --version && \
 # Create environment (conda-forge to avoid TOS re-prompts)
 # ------------------------------------
 RUN conda update -n base --yes --override-channels -c conda-forge conda && \
-    conda create -y --override-channels -n wsinsight -c conda-forge python=3.11 gdal=3.11.3 pip && \
+    conda create -y --override-channels -n wsinsight -c conda-forge python=3.11 gdal=3.11.3 pip "setuptools<67" && \
     conda clean -afy
 RUN python -m pip install --upgrade pip 
 

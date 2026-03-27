@@ -4,7 +4,7 @@ conda deactivate
 conda env remove -n wsinsight -y
 
 # conda gdal first as you already do
-conda create -n wsinsight python=3.11 gdal=3.11.3 -c conda-forge -y
+conda create -n wsinsight python=3.11 gdal=3.11.3 "setuptools<67" -c conda-forge -y
 conda activate wsinsight
 pip install --upgrade pip
 pip install -c ./wsinsight/constraints.txt "numpy<2"

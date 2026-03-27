@@ -454,7 +454,7 @@ def _optional_uri_paths(ctx: click.Context, param: click.Option, value):
 )
 @click.option(
     "-r",
-    "--references-dir",
+    "--region-inference-dir",
     type=(
         URIPathType(
             exists=True,
@@ -474,7 +474,7 @@ def _optional_uri_paths(ctx: click.Context, param: click.Option, value):
         )
     ),
     default=None,
-    help="Directory containing outputs from a prior wsinsight run (e.g., model-outputs-* folders) used as reference results.",
+    help="Results directory from a prior region-level (patch-based) wsinsight run containing a model-outputs-csv/ folder. Requires --object-based: each detected object is matched to its enclosing region and the region's class probabilities are added as region_prob_* columns in the output.",
 )
 @click.option(
     "--qupath-detection-dir",
@@ -797,7 +797,7 @@ def infer(
     wsi_dir: URIPath | None,
     slide_paths: List[URIPath] | None,
     results_dir: URIPath,
-    references_dir: URIPath | None,
+    region_inference_dir: URIPath | None,
     qupath_detection_dir: URIPath | None,
     qupath_geojson_detection_dir: URIPath | None,
     qupath_geojson_annotation_dir: URIPath | None,
@@ -1082,8 +1082,8 @@ def infer(
     else:
         raise click.ClickException("Neither of --config and --model was passed")
 
-    if references_dir is not None and not object_based:
-        raise click.ClickException("--annotaions-dir only works with object based model.")
+    if region_inference_dir is not None and not object_based:
+        raise click.ClickException("--region-inference-dir only works with object based model.")
     
     # Validating all overlap options
     nonzero_count = sum([
@@ -1140,7 +1140,7 @@ def infer(
         wsi_dir=wsi_dir,
         slide_paths=slide_paths,
         results_dir=results_dir,
-        references_dir=references_dir,
+        region_inference_dir=region_inference_dir,
         qupath_detection_dir=qupath_detection_dir,
         qupath_geojson_detection_dir=qupath_geojson_detection_dir,
         qupath_geojson_annotation_dir=qupath_geojson_annotation_dir,

@@ -43,7 +43,7 @@ def run_inference(
     wsi_dir: URIPath | None,
     slide_paths: List[URIPath] | None,
     results_dir: URIPath,
-    references_dir: str | URIPath | None,
+    region_inference_dir: str | URIPath | None,
     qupath_detection_dir: str | URIPath | None,
     qupath_geojson_detection_dir: str | URIPath | None,
     qupath_geojson_annotation_dir: str | URIPath | None,
@@ -78,9 +78,12 @@ def run_inference(
         are filtered to these stems.
     results_dir
         Directory that holds patch artifacts plus the destination for inference CSVs.
-    references_dir
-        Optional run directory whose outputs provide annotation/reference overlays
-        (used for CME or pseudo-label comparisons).
+    region_inference_dir
+        Results directory from a prior region-level (patch-based) wsinsight run
+        containing a model-outputs-csv/ folder. Requires ``object_based=True``:
+        each detected object is spatially matched to its enclosing region and the
+        region's class probabilities are added as ``region_prob_*`` columns in
+        the output CSV.
     qupath_* arguments
         Directories containing QuPath detections/geojsons when synthesizing pseudo
         models; mutually exclusive with standard model inputs.
@@ -620,9 +623,9 @@ def run_inference(
                 slide_df.loc[:, "qupath_detection_parent"] = slide_superior_structure
             
               
-            if references_dir is not None and object_based:
+            if region_inference_dir is not None and object_based:
                 
-                annot_csv = references_dir / "model-outputs-csv" / slide_csv_name
+                annot_csv = region_inference_dir / "model-outputs-csv" / slide_csv_name
                 
                 annot_df = pd.read_csv(
                     annot_csv,
@@ -690,7 +693,7 @@ def run_inference(
             
                 # 5) prepare output columns upfront to avoid SettingWithCopy issues
                 for c in prob_cols:
-                    slide_df["annot_prob_" + c] = np.nan
+                    slide_df["region_" + c] = np.nan
             
                 # 6) worker
                 def process_chunk(s: int, e: int):
@@ -723,7 +726,7 @@ def run_inference(
                             vals = np.full(len(cx), np.nan, dtype=np.float32)
                             if hit_rows.any() and probs_mat is not None:
                                 vals[hit_rows] = probs_mat[best[hit_rows], j]
-                            results["region_prob_" + c] = vals
+                            results["region_" + c] = vals
             
                     return s, e, results
             

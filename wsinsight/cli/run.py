@@ -90,7 +90,7 @@ _PATCH_PARAM_NAMES: tuple[str, ...] = (
     "wsi_dir",
     "slide_paths",
     "results_dir",
-    "references_dir",
+    "region_inference_dir",
     "qupath_detection_dir",
     "qupath_geojson_detection_dir",
     "qupath_geojson_annotation_dir",
@@ -118,7 +118,7 @@ _INFER_PARAM_NAMES: tuple[str, ...] = (
     "wsi_dir",
     "slide_paths",
     "results_dir",
-    "references_dir",
+    "region_inference_dir",
     "qupath_detection_dir",
     "qupath_geojson_detection_dir",
     "qupath_geojson_annotation_dir",
@@ -214,7 +214,7 @@ def _select_kwargs(values: dict[str, Any], keys: tuple[str, ...]) -> dict[str, A
 )
 @click.option(
     "-r",
-    "--references-dir",
+    "--region-inference-dir",
     type=(
         URIPathType(
             exists=True, 
@@ -234,7 +234,7 @@ def _select_kwargs(values: dict[str, Any], keys: tuple[str, ...]) -> dict[str, A
         )
     ),
     default=None,
-    help="Directory containing outputs from a prior wsinsight run (e.g., model-outputs-* folders) used as reference results.",
+    help="Results directory from a prior region-level (patch-based) wsinsight run containing a model-outputs-csv/ folder. Requires --object-based: each detected object is matched to its enclosing region and the region's class probabilities are added as region_prob_* columns in the output.",
 )
 @click.option(
     "--qupath-detection-dir",
@@ -622,7 +622,7 @@ def run(
     *,
     wsi_dir: URIPath,
     results_dir: URIPath,
-    references_dir: URIPath | None,
+    region_inference_dir: URIPath | None,
     qupath_detection_dir: URIPath | None,
     qupath_geojson_detection_dir: URIPath | None,
     qupath_geojson_annotation_dir: URIPath | None,
