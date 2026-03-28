@@ -30,6 +30,7 @@ from ..wsi import _validate_wsi_directory
 # from ..wsi import get_wsi_cls
 from ..uri_path import URIPath
 from ..num_worker_optimizer import pick_workers_safe, throttle_when_busy
+from ..insightlib.region_registration import register_objects_to_regions
 from .transforms import make_compose_from_transform_config
 from wsinsight.modellib.tilefuse import TileRemapStitcher
 from .data import WholeSlideImagePatches
@@ -624,121 +625,14 @@ def run_inference(
             
               
             if region_inference_dir is not None and object_based:
-                
                 annot_csv = region_inference_dir / "model-outputs-csv" / slide_csv_name
-                
                 annot_df = pd.read_csv(
                     annot_csv,
-                    # usecols=usecols,
-                    # dtype=dtype,
                     engine="c",
                     memory_map=True,
                     low_memory=False,
                 )
-                
-                tie_break = "largest_area"
-                mem_budget_mb = 256
-                max_workers = pick_workers_safe(max_workers=os.cpu_count()-8, min_workers=8)
-                
-                # out = slide_df.copy()
-            
-                # 1) centers (vectorized)
-                slide_df["cx"] = slide_df["minx"] + slide_df["width"]  * 0.5
-                slide_df["cy"] = slide_df["miny"] + slide_df["height"] * 0.5
-            
-                # 2) annot bounds (vectorized)
-                # a = annot_df.copy()
-                ax0 = annot_df["minx"].to_numpy()
-                ay0 = annot_df["miny"].to_numpy()
-                ax1 = (annot_df["minx"] + annot_df["width"]).to_numpy()
-                ay1 = (annot_df["miny"] + annot_df["height"]).to_numpy()
-                area = (annot_df["width"] * annot_df["height"]).to_numpy()
-            
-                prob_cols = [c for c in annot_df.columns if c.startswith("prob_")]
-                probs_mat = annot_df[prob_cols].to_numpy(dtype=np.float32) if prob_cols else None
-                # annot_prob_max = probs_mat.max(axis=1) if probs_mat is not None and probs_mat.size else None
-
-                # 3) containment predicate
-                # if include_right_edge:
-                def contains(cx_col, cy_col):
-                    return (
-                        (cx_col[:, None] >= ax0[None, :]) &
-                        (cx_col[:, None] <= ax1[None, :]) &
-                        (cy_col[:, None] >= ay0[None, :]) &
-                        (cy_col[:, None] <= ay1[None, :])
-                    )
-                # else:
-                #     def contains(cx_col, cy_col):
-                #         return (
-                #             (cx_col[:, None] >= ax0[None, :]) &
-                #             (cx_col[:, None] <  ax1[None, :]) &
-                #             (cy_col[:, None] >= ay0[None, :]) &
-                #             (cy_col[:, None] <  ay1[None, :])
-                #         )
-            
-                # 4) auto chunk sizing
-                n_points = len(slide_df)
-                n_annots = len(annot_df)
-                # Rough bytes per point in a worker: boolean mask (n_annots * 1 byte)
-                # + a float score matrix view (n_annots * 4 bytes) → ~5 bytes/annot per point
-                bytes_per_point = max(1, 5 * n_annots)
-                target_bytes_per_worker = int(mem_budget_mb * 1024**2)
-                # points per chunk so that mask+scores fit in mem budget (with a safety factor)
-                points_per_chunk_mem = max(1000, target_bytes_per_worker // bytes_per_point)
-                # also ensure enough chunks to keep workers busy
-                min_chunks = max_workers * 4
-                points_per_chunk_busy = max(1000, ceil(n_points / max(1, min_chunks)))
-                # final adaptive chunk size = conservative min of both constraints
-                points_per_chunk = int(max(1000, min(points_per_chunk_mem, points_per_chunk_busy)))
-            
-                # 5) prepare output columns upfront to avoid SettingWithCopy issues
-                for c in prob_cols:
-                    slide_df["region_" + c] = np.nan
-            
-                # 6) worker
-                def process_chunk(s: int, e: int):
-                    cx = slide_df["cx"].to_numpy()[s:e]
-                    cy = slide_df["cy"].to_numpy()[s:e]
-            
-                    mask = contains(cx, cy)         # shape (B, A)
-                    has_hit = mask.any(axis=1)
-            
-                    best = np.full(len(cx), -1, dtype=np.int64)
-                    if has_hit.any():
-                        if tie_break == "largest_area":
-                            cand_scores = np.where(mask, area[None, :], -np.inf)
-                            best_ix = cand_scores.argmax(axis=1)
-                        # elif tie_break == "highest_prob_max" and annot_prob_max is not None:
-                        #     cand_scores = np.where(mask, annot_prob_max[None, :], -np.inf)
-                        #     best_ix = cand_scores.argmax(axis=1)
-                        else:  # "first"
-                            # first True per row trick
-                            idxs = np.tile(np.arange(mask.shape[1]), (mask.shape[0], 1))
-                            cand_scores = np.where(mask, -idxs, -np.inf)
-                            best_ix = cand_scores.argmax(axis=1)
-                        best[has_hit] = best_ix[has_hit]
-            
-                    # build results for columns
-                    results = {}
-                    if prob_cols:
-                        hit_rows = best >= 0
-                        for j, c in enumerate(prob_cols):
-                            vals = np.full(len(cx), np.nan, dtype=np.float32)
-                            if hit_rows.any() and probs_mat is not None:
-                                vals[hit_rows] = probs_mat[best[hit_rows], j]
-                            results["region_" + c] = vals
-            
-                    return s, e, results
-            
-                # 7) schedule work
-                indices = list(range(0, n_points, points_per_chunk))
-                with ThreadPoolExecutor(max_workers=max_workers) as ex:
-                    futures = [ex.submit(process_chunk, s, min(n_points, s + points_per_chunk)) for s in indices]
-                    for fut in as_completed(futures):
-                        throttle_when_busy()
-                        s, e, res = fut.result()
-                        for col, vals in res.items():
-                            slide_df.loc[slide_df.index[s:e], col] = vals
+                slide_df = register_objects_to_regions(slide_df, annot_df)
             
             
             with slide_csv.open("wb") as fh:     # local cache, auto-upload on close

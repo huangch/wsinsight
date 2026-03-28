@@ -166,6 +166,7 @@ Command | Purpose
 `wsinsight run` | Segment tissue, extract patches, execute model inference, and emit CSV/GeoJSON/OME-CSV outputs (one-shot orchestration of the two commands below).
 `wsinsight patch` | Perform tissue segmentation, cache/crop patches to HDF5, and prepare metadata for later inference runs; safe to rerun to resume interrupted jobs.
 `wsinsight infer` | Load cached patches, run the selected model, and export QuPath/GeoJSON/OME-CSV artifacts.
+`wsinsight reg` | Post-hoc object-to-region registration: enrich existing object-level CSV outputs with `region_prob_*` columns derived from a separate region-level inference run (`-r`). Equivalent to running `infer` with `--region-inference-dir`, but works on already-completed runs without re-running inference.
 
 Pick `run` when you want a one-liner for single slides or small batches; switch to the explicit `patch` → `infer` flow to resume large jobs, share patch caches across model variants, or parallelize stages on separate machines. All commands share global options such as `--backend` (`openslide` or `tiffslide`) and `--log-level`. Use `wsinsight <command> --help` for the full option list, including QuPath integration flags and segmentation controls.
 
@@ -181,6 +182,20 @@ Pick `run` when you want a one-liner for single slides or small batches; switch 
 - Models registered in the WSInfer Zoo can be listed with `wsinfer-zoo ls`.
 - Bring-your-own models by supplying `--config` (JSON schema documented in `wsinsight/schemas/model-config.schema.json`) together with `--model-path` (TorchScript weights).
 - QuPath-generated detections and annotations can be used to create pseudo-model runs via the `--qupath-*` options in `wsinsight run`.
+
+## Environment Variables
+
+WSInsight reads the following environment variables at startup. Set them in your shell profile, conda activation script, or container environment so they apply to every command automatically.
+
+Variable | Purpose | Example
+--- | --- | ---
+`WSINFER_ZOO_REGISTRY_PATH` | Path to a local `wsinfer-zoo-registry.json` file. **Required in air-gapped / restricted-SSL environments.** When set (and the file exists), no network call to HuggingFace is made. | `export WSINFER_ZOO_REGISTRY_PATH=/workspace/wsinsight/devel/zoo/wsinfer-zoo-registry.json`
+`S3_STORAGE_OPTIONS` | JSON object passed verbatim to `s3fs` / `fsspec` (e.g. AWS profile, endpoint URL). Required to read/write S3 URIs. | `export S3_STORAGE_OPTIONS='{"profile":"saml"}'`
+`WSINSIGHT_REMOTE_CACHE_DIR` | Local directory where remote assets (S3 tiles, GDC downloads) are materialised. Defaults to `~/.cache/wsinsight`. Point it at a fast SSD for large cohorts. | `export WSINSIGHT_REMOTE_CACHE_DIR=/scratch/wsinsight-cache`
+`KERAS_HOME` | Override the Keras configuration/weights directory, useful when the default home directory is on a slow or quota-limited filesystem. | `export KERAS_HOME=/workspace/wsinsight/keras`
+
+> [!TIP]
+> If the CLI hangs or prints SSL errors on startup, you are almost certainly in an environment where `huggingface.co` is blocked.  Set `WSINFER_ZOO_REGISTRY_PATH` to the local registry file and the issue will disappear.
 
 ## Remote and Large-Scale Data
 
