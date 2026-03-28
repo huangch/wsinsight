@@ -1,0 +1,194 @@
+"""Standalone CLI command for post-hoc object-to-region registration."""
+
+from __future__ import annotations
+
+import json
+import os
+from pathlib import Path
+
+import click
+import pandas as pd
+import tqdm
+from platformdirs import user_cache_dir
+
+from ..insightlib.region_registration import register_objects_to_regions
+from ..uri_path import URIPath, URIPathType
+from ..write_geojson import write_geojsons
+from ..write_omecsv import write_omecsvs
+
+
+def _storage_kwargs() -> dict[str, object]:
+    cache_dir = os.getenv("WSINSIGHT_REMOTE_CACHE_DIR")
+    if cache_dir is None:
+        cache_dir = Path(user_cache_dir(appname="wsinsight", appauthor=False))
+    storage: dict[str, object] = {"cache_dir": cache_dir}
+    s3_options = os.getenv("S3_STORAGE_OPTIONS")
+    if s3_options:
+        try:
+            parsed = json.loads(s3_options)
+        except json.JSONDecodeError as exc:
+            raise RuntimeError("S3_STORAGE_OPTIONS must contain valid JSON.") from exc
+        if not isinstance(parsed, dict):
+            raise RuntimeError("S3_STORAGE_OPTIONS must be a JSON object.")
+        storage.update(parsed)
+    return storage
+
+
+_STORAGE_KWARGS = _storage_kwargs()
+
+
+@click.command()
+@click.option(
+    "-o",
+    "--results-dir",
+    required=True,
+    type=URIPathType(exists=True, **_STORAGE_KWARGS),
+    help=(
+        "Results directory from a prior object-based wsinsight run containing "
+        "a model-outputs-csv/ folder."
+    ),
+)
+@click.option(
+    "-r",
+    "--region-inference-dir",
+    required=True,
+    type=URIPathType(exists=True, **_STORAGE_KWARGS),
+    help=(
+        "Results directory from a prior region-level (patch-based) wsinsight run "
+        "containing a model-outputs-csv/ folder.  Each detected object is matched "
+        "to its enclosing region and the region's class probabilities are added as "
+        "region_prob_* columns in the object CSVs."
+    ),
+)
+@click.option(
+    "--geojson",
+    is_flag=True,
+    default=False,
+    show_default=True,
+    help=(
+        "Export enriched object CSVs to GeoJSON files.  Object-level probabilities "
+        "(prob_*) are written to model-outputs-geojson/."
+    ),
+)
+@click.option(
+    "--omecsv",
+    is_flag=True,
+    default=False,
+    show_default=True,
+    help=(
+        "Export enriched object CSVs to OME-CSV files.  Object-level probabilities "
+        "(prob_*) are written to model-outputs-omecsv/."
+    ),
+)
+@click.option(
+    "--export-workers",
+    default=4,
+    show_default=True,
+    type=click.IntRange(min=1),
+    help="Worker processes for GeoJSON/OME-CSV export.",
+)
+def reg(
+    results_dir: URIPath,
+    region_inference_dir: URIPath,
+    geojson: bool = False,
+    omecsv: bool = False,
+    export_workers: int = 4,
+) -> None:
+    """Register object-prediction CSVs to region-prediction results.
+
+    Reads every CSV in RESULTS_DIR/model-outputs-csv/, looks up the matching
+    region CSV in REGION_INFERENCE_DIR/model-outputs-csv/, spatially assigns
+    each object to its enclosing region, and writes the enriched CSV back
+    in-place with added region_prob_* columns.
+
+    Slides missing from REGION_INFERENCE_DIR are skipped with a warning.
+    If a region_prob_* column with the same name already exists it is
+    overwritten; columns from a different region model are preserved.
+
+    With --geojson or --omecsv, the enriched object CSVs are exported using
+    only the object-level prob_* columns.
+    """
+    obj_csv_dir = results_dir / "model-outputs-csv"
+    reg_csv_dir = region_inference_dir / "model-outputs-csv"
+
+    if not obj_csv_dir.exists():
+        raise click.ClickException(
+            f"--results-dir does not contain a model-outputs-csv/ subfolder: {results_dir}"
+        )
+    if not reg_csv_dir.exists():
+        raise click.ClickException(
+            f"--region-inference-dir does not contain a model-outputs-csv/ subfolder: "
+            f"{region_inference_dir}"
+        )
+
+    obj_csvs = sorted(p for p in obj_csv_dir.iterdir() if p.suffix == ".csv")
+    if not obj_csvs:
+        raise click.ClickException(f"No CSV files found in {obj_csv_dir}")
+
+    click.secho(f"\nRegistering {len(obj_csvs)} slide(s).\n", fg="green")
+
+    skipped = 0
+    processed = 0
+    for obj_csv in tqdm.tqdm(obj_csvs, desc="Registering slides"):
+        reg_csv = reg_csv_dir / obj_csv.name
+        if not reg_csv.exists():
+            click.echo(f"WARNING: no region CSV for {obj_csv.name}, skipping.")
+            skipped += 1
+            continue
+
+        slide_df = pd.read_csv(
+            obj_csv,
+            engine="c",
+            memory_map=True,
+            low_memory=False,
+        )
+        annot_df = pd.read_csv(
+            reg_csv,
+            engine="c",
+            memory_map=True,
+            low_memory=False,
+        )
+
+        slide_df = register_objects_to_regions(slide_df, annot_df)
+
+        with obj_csv.open("wb") as fh:
+            slide_df.to_csv(fh, index=False)
+
+        processed += 1
+
+    click.secho(
+        f"\nDone. Processed: {processed}, skipped: {skipped}.\n", fg="green"
+    )
+
+    if not (geojson or omecsv):
+        return
+
+    # Re-enumerate after registration so all (including previously-skipped) CSVs
+    # are picked up for export.
+    all_obj_csvs = sorted(p for p in obj_csv_dir.iterdir() if p.suffix == ".csv")
+    local_csvs = [Path(p.__fspath__()) for p in all_obj_csvs]
+
+    if geojson:
+        click.echo("\nWriting object probabilities (prob_*) to GeoJSON files\n")
+        write_geojsons(
+            csvs=local_csvs,
+            overlap=0.0,
+            results_dir=results_dir,
+            output_dir="model-outputs-geojson",
+            prefix="prob",
+            num_workers=export_workers,
+            object_type="detection",
+            set_classification=True,
+        )
+
+    if omecsv:
+        click.echo("\nWriting object probabilities (prob_*) to OME-CSV files\n")
+        write_omecsvs(
+            csvs=local_csvs,
+            h5s=[],
+            overlap=0.0,
+            results_dir=results_dir,
+            output_dir="model-outputs-omecsv",
+            prefix="prob",
+            num_workers=export_workers,
+        )
