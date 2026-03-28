@@ -87,12 +87,24 @@ _STORAGE_KWARGS = _storage_kwargs()
     type=click.IntRange(min=1),
     help="Worker processes for GeoJSON/OME-CSV export.",
 )
+@click.option(
+    "--region-overwrite",
+    is_flag=True,
+    default=False,
+    show_default=True,
+    help=(
+        "Overwrite existing region_* columns in object CSVs.  Without this flag, "
+        "any slide whose object CSV already contains region_* columns derived from "
+        "the same region model is skipped with a warning."
+    ),
+)
 def reg(
     results_dir: URIPath,
     region_inference_dir: URIPath,
     geojson: bool = False,
     omecsv: bool = False,
     export_workers: int = 4,
+    region_overwrite: bool = False,
 ) -> None:
     """Register object-prediction CSVs to region-prediction results.
 
@@ -129,32 +141,48 @@ def reg(
 
     skipped = 0
     processed = 0
-    for obj_csv in tqdm.tqdm(obj_csvs, desc="Registering slides"):
-        reg_csv = reg_csv_dir / obj_csv.name
-        if not reg_csv.exists():
-            click.echo(f"WARNING: no region CSV for {obj_csv.name}, skipping.")
-            skipped += 1
-            continue
+    with tqdm.tqdm(obj_csvs, desc="Slides", position=0) as slide_bar:
+        chunk_bar = tqdm.tqdm(desc="Registering", position=1, leave=False,
+                              unit="chunk")
+        for obj_csv in slide_bar:
+            reg_csv = reg_csv_dir / obj_csv.name
+            if not reg_csv.exists():
+                click.echo(f"WARNING: no region CSV for {obj_csv.name}, skipping.")
+                skipped += 1
+                continue
 
-        slide_df = pd.read_csv(
-            obj_csv,
-            engine="c",
-            memory_map=True,
-            low_memory=False,
-        )
-        annot_df = pd.read_csv(
-            reg_csv,
-            engine="c",
-            memory_map=True,
-            low_memory=False,
-        )
+            slide_df = pd.read_csv(
+                obj_csv,
+                engine="c",
+                memory_map=True,
+                low_memory=False,
+            )
+            annot_df = pd.read_csv(
+                reg_csv,
+                engine="c",
+                memory_map=True,
+                low_memory=False,
+            )
 
-        slide_df = register_objects_to_regions(slide_df, annot_df)
+            if not region_overwrite:
+                would_add = {"region_" + c for c in annot_df.columns}
+                already_present = would_add & set(slide_df.columns)
+                if already_present:
+                    click.echo(
+                        f"WARNING: skipping {obj_csv.name} — region_* columns already "
+                        f"present ({', '.join(sorted(already_present)[:3])}{'...' if len(already_present) > 3 else ''}). "
+                        f"Use --region-overwrite to replace."
+                    )
+                    skipped += 1
+                    continue
 
-        with obj_csv.open("wb") as fh:
-            slide_df.to_csv(fh, index=False)
+            slide_df = register_objects_to_regions(slide_df, annot_df, pbar=chunk_bar)
 
-        processed += 1
+            with obj_csv.open("wb") as fh:
+                slide_df.to_csv(fh, index=False)
+
+            processed += 1
+        chunk_bar.close()
 
     click.secho(
         f"\nDone. Processed: {processed}, skipped: {skipped}.\n", fg="green"

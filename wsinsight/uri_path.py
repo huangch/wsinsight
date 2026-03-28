@@ -44,6 +44,7 @@ class URIPath:
         cache_dir: Optional[str] = None,
         token: Optional[str] = None,        # GDC only (optional for open-access)
         token_path: Optional[str] = None,   # GDC only (optional)
+        _skip_validation: bool = False,     # internal: skip credential check for child paths
         **storage_options: Any,             # fsspec options (e.g., profile="saml", client_kwargs={...})
     ) -> None:
         if isinstance(uri, URIPath):
@@ -86,11 +87,11 @@ class URIPath:
             base = os.path.basename(self.uri.rstrip("/"))
             self._path = Path(self.uri) if self.is_local else Path(base or "remote.file")
 
-        # Check the credentials if the target file/dir is from remote
-        self._validate_credentials()
-        
         # ---- auto-clean internals (added; non-breaking) ----
         self._finalizer = None  # weakref.finalize handle; set when we materialize
+        # Check the credentials if the target file/dir is from remote
+        if not _skip_validation:
+            self._validate_credentials()
 
     # ------------------------ Path-ish ------------------------
     def __str__(self) -> str: return self.uri
@@ -105,11 +106,12 @@ class URIPath:
             return URIPath(f"{base}/{other_str}",
                            cache_dir=self._cache_dir,
                            token=self._gdc_token, token_path=self._gdc_token_path,
+                           _skip_validation=True,
                            **self.storage_options)
         if self.is_local:
-            return URIPath(str(Path(self._path) / other_str), cache_dir=self._cache_dir, **self.storage_options)
+            return URIPath(str(Path(self._path) / other_str), cache_dir=self._cache_dir, _skip_validation=True, **self.storage_options)
         base = self.uri.rstrip("/")
-        return URIPath(f"{base}/{other_str}", cache_dir=self._cache_dir, **self.storage_options)
+        return URIPath(f"{base}/{other_str}", cache_dir=self._cache_dir, _skip_validation=True, **self.storage_options)
 
     def mkdir(
         self,
@@ -163,15 +165,16 @@ class URIPath:
                 base = f"{base}/{parent_rel}/"
             return URIPath(base, cache_dir=self._cache_dir,
                            token=self._gdc_token, token_path=self._gdc_token_path,
+                           _skip_validation=True,
                            **self.storage_options)
         if self.is_local:
-            return URIPath(str(Path(self._path).parent), cache_dir=self._cache_dir, **self.storage_options)
+            return URIPath(str(Path(self._path).parent), cache_dir=self._cache_dir, _skip_validation=True, **self.storage_options)
         if self.scheme == "s3":
             if "/" in self.key:
                 parent_key = "/".join(self.key.split("/")[:-1])
-                return URIPath(f"s3://{self.bucket}/{parent_key}/", cache_dir=self._cache_dir, **self.storage_options)
-            return URIPath(f"s3://{self.bucket}", cache_dir=self._cache_dir, **self.storage_options)
-        return URIPath(self.uri.rsplit("/", 1)[0], cache_dir=self._cache_dir, **self.storage_options)
+                return URIPath(f"s3://{self.bucket}/{parent_key}/", cache_dir=self._cache_dir, _skip_validation=True, **self.storage_options)
+            return URIPath(f"s3://{self.bucket}", cache_dir=self._cache_dir, _skip_validation=True, **self.storage_options)
+        return URIPath(self.uri.rsplit("/", 1)[0], cache_dir=self._cache_dir, _skip_validation=True, **self.storage_options)
 
     @property
     def parts(self) -> Tuple[str, ...]:
@@ -316,7 +319,7 @@ class URIPath:
         for child in it:
             if files_only and child.is_dir():
                 continue
-            yield URIPath(str(child), cache_dir=self._cache_dir, **self.storage_options)
+            yield URIPath(str(child), cache_dir=self._cache_dir, _skip_validation=True, **self.storage_options)
 
     # ------------------------ Scheme helpers: GDC-MANIFEST ------------------------
     def _exists_gdc_manifest(self) -> bool:
@@ -342,6 +345,7 @@ class URIPath:
             yield URIPath(f"gdc-manifest://{self._gdc_manifest_path}/{fn}",
                           cache_dir=self._cache_dir,
                           token=self._gdc_token, token_path=self._gdc_token_path,
+                          _skip_validation=True,
                           **self.storage_options)
 
     # ------------------------ Scheme helpers: REMOTE (fsspec, e.g., S3) ------------------------
@@ -409,15 +413,15 @@ class URIPath:
         base = fs_path if fs_path.endswith("/") else fs_path + "/"
         if recursive:
             for name in fs.find(base):
-                yield URIPath(f"{self.scheme}://{name}" if self.scheme != "s3" else f"s3://{name}",
-                              cache_dir=self._cache_dir, **self.storage_options)
+                yield URIPath(f"{self.scheme}://{name}",
+                              cache_dir=self._cache_dir, _skip_validation=True, **self.storage_options)
         else:
             try:
                 for entry in fs.ls(base, detail=True):
                     if files_only and entry.get("type") == "directory":
                         continue
-                    yield URIPath(f"{self.scheme}://{entry['name']}" if self.scheme != "s3" else f"s3://{entry['name']}",
-                                  cache_dir=self._cache_dir, **self.storage_options)
+                    yield URIPath(f"{self.scheme}://{entry['name']}",
+                                  cache_dir=self._cache_dir, _skip_validation=True, **self.storage_options)
             except FileNotFoundError:
                 return
 
@@ -675,13 +679,14 @@ class URIPath:
                 new_uri,
                 cache_dir=self._cache_dir,
                 token=self._gdc_token, token_path=self._gdc_token_path,
+                _skip_validation=True,
                 **self.storage_options
             )
 
         # ----- local -----
         if self.is_local:
             new_local = str(self._path.with_suffix(suffix))
-            return URIPath(new_local, cache_dir=self._cache_dir, **self.storage_options)
+            return URIPath(new_local, cache_dir=self._cache_dir, _skip_validation=True, **self.storage_options)
 
         # ----- generic remote (e.g., s3) -----
         # Replace suffix only in the last path segment
@@ -698,7 +703,7 @@ class URIPath:
             # handle URIs that may not have bucket semantics
             prefix = self.uri.rstrip("/").rsplit("/", 1)[0]
             new_uri = f"{prefix}/{new_last}"
-        return URIPath(new_uri, cache_dir=self._cache_dir, **self.storage_options)
+        return URIPath(new_uri, cache_dir=self._cache_dir, _skip_validation=True, **self.storage_options)
 
     def with_name(self, new_name):
         """
@@ -716,24 +721,12 @@ class URIPath:
         if any(sep in new_name for sep in ("/", "\\")):
             raise ValueError(f"Invalid new_name '{new_name}': must not contain path separators")
 
-        # Capture storage_options if `path` is a URIPath; fall back to empty dict
-        is_uriobj = isinstance(self, URIPath)
-        storage_options = getattr(self, "storage_options", None)
-
-        # Get the string URI/path to manipulate
-        s = str(self.uri if is_uriobj and hasattr(self, "uri") else self)
-
+        s = self.uri
         parsed = urlparse(s)
         is_uri = bool(parsed.scheme) and not (len(parsed.scheme) == 1 and parsed.scheme.isalpha())
 
         if not is_uri:
-            # Local FS: rebuild name via pathlib, then convert back to URI if original was URIPath with 'file' scheme
-            p = Path(s).with_name(new_name)
-            # Build a URI-like string for uniformity
-            new_uri = p.as_posix()
-            if is_uriobj and getattr(self, "scheme", "file") == "file":
-                # ensure file:// prefix when original URIPath represented a local file URI
-                new_uri = f"file://{new_uri.lstrip('/')}"
+            new_uri = str(Path(s).with_name(new_name))
         else:
             # True URI: replace only the last segment of the path
             pth = parsed.path or ""
@@ -747,8 +740,7 @@ class URIPath:
                 parsed.params, parsed.query, parsed.fragment
             ))
 
-        # Always return a URIPath, preserving storage_options
-        return URIPath(new_uri, cache_dir=self._cache_dir, **(storage_options or {}))
+        return URIPath(new_uri, cache_dir=self._cache_dir, _skip_validation=True, **self.storage_options)
 
     # ------------------------ Auto-cache cleanup helpers (inside class) ------------------------
     def _register_finalizer(self, path: Optional[str]) -> None:
@@ -782,7 +774,7 @@ class URIPath:
         Safe to call multiple times; does not change public usage anywhere else.
         """
         p = getattr(self, "_materialized_path", None)
-        if p and os.path.exists(p):
+        if p and not self.is_local and os.path.exists(p):
             try:
                 os.remove(p)
             except Exception:
@@ -803,6 +795,14 @@ class URIPath:
                 self._finalizer()
         except Exception:
             pass
+
+    def __getstate__(self) -> dict:
+        state = self.__dict__.copy()
+        state["_finalizer"] = None   # weakref.finalize is not picklable
+        return state
+
+    def __setstate__(self, state: dict) -> None:
+        self.__dict__.update(state)
 
 
 class URIPathType(click.ParamType):
@@ -842,7 +842,12 @@ class _SyncOnCloseFile:
 
     def __exit__(self, exc_type, exc_val, exc_tb):
         result = self._fp.__exit__(exc_type, exc_val, exc_tb)
-        self.close()
+        if exc_type is None:
+            self.close()
+        else:
+            if self._fp and not self._fp.closed:
+                self._fp.close()
+            self._on_close = None   # discard sync — avoid uploading corrupt data
         return result
 
     def close(self):

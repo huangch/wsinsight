@@ -60,6 +60,7 @@ def run_inference(
     object_detection: str = None,
     mixed_precision: bool = False,
     stitch_workers: int | None = None,
+    region_overwrite: bool = False,
 ) -> tuple[list[str], list[str]]:
     """Run batched model inference on precomputed patches and emit CSV outputs.
 
@@ -170,7 +171,6 @@ def run_inference(
 
         model.eval()
     
-        # if torch.cuda.is_available() and torch.cuda.device_count() > 1 and not object_end2end:
         if torch.cuda.is_available() and torch.cuda.device_count() > 1:
             model = torch.nn.DataParallel(model)
         
@@ -460,17 +460,17 @@ def run_inference(
                         if mixed_precision:
                             with torch.no_grad():
                                 with torch.autocast(device_type=device.type, dtype=torch.float16):
-                                    pred_dict = model(batch_imgs.to(device, 
-                                                                    non_blocking=True, # add this for better performance?
+                                    pred_dict = model(batch_imgs.to(device,
+                                                                    non_blocking=True,
                                                                     ))
                         else:
                             with torch.no_grad():
-                                pred_dict = model(batch_imgs.to(device, 
-                                                                non_blocking=True, # add this for better performance?
+                                pred_dict = model(batch_imgs.to(device,
+                                                                non_blocking=True,
                                                                 ))
                             
                         stitcher.accumulate_batch_torch(pred_dict, batch_coords.to(device))
-                        qbar.update(1) # Disable the whole pbar
+                        qbar.update(1)
            
                         gc.collect()
                 
@@ -632,6 +632,19 @@ def run_inference(
                     memory_map=True,
                     low_memory=False,
                 )
+                if not region_overwrite:
+                    would_add = {"region_" + c for c in annot_df.columns}
+                    already_present = would_add & set(slide_df.columns)
+                    if already_present:
+                        print(
+                            f"WARNING: skipping region registration for {wsi_path.stem} "
+                            f"— region_* columns already present. "
+                            f"Use --region-overwrite to replace."
+                        )
+                        with slide_csv.open("wb") as fh:
+                            slide_df.to_csv(fh, index=False)
+                        pbar.update(1)
+                        continue
                 slide_df = register_objects_to_regions(slide_df, annot_df)
             
             

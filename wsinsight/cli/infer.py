@@ -788,6 +788,17 @@ def _optional_uri_paths(ctx: click.Context, param: click.Option, value):
 #     default="0.5,1.0,2.0",
 #     help="Resolution parameter using in clustering for cmes.",
 # )
+@click.option(
+    "--region-overwrite",
+    is_flag=True,
+    default=False,
+    show_default=True,
+    help=(
+        "Overwrite existing region_* columns when using --region-inference-dir.  "
+        "Without this flag, slides whose object CSV already contains region_* columns "
+        "are skipped with a warning.  Requires --region-inference-dir."
+    ),
+)
 
 
 # --- CLI command --------------------------------------------------------------
@@ -833,6 +844,7 @@ def infer(
     hplot_range_max: int = None,
     hplot_range_min: int = None,
     hplot_samples_with_valid_range_only: bool = False,
+    region_overwrite: bool = False,
     # cme_cellular: bool = False,
     # cme_annotation: bool = False,
     # cme_soft_mode: bool = False,
@@ -1084,6 +1096,9 @@ def infer(
 
     if region_inference_dir is not None and not object_based:
         raise click.ClickException("--region-inference-dir only works with object based model.")
+
+    if region_overwrite and region_inference_dir is None:
+        raise click.ClickException("--region-overwrite requires --region-inference-dir.")
     
     # Validating all overlap options
     nonzero_count = sum([
@@ -1155,6 +1170,7 @@ def infer(
         object_detection=object_detection,
         mixed_precision=mixed_precision,
         stitch_workers=stitch_workers,
+        region_overwrite=region_overwrite,
     )
 
     # --- Optional exports: GeoJSON / OME-CSV -------------------------------

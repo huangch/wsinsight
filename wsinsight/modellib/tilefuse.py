@@ -23,6 +23,128 @@ from concurrent.futures import ThreadPoolExecutor
 
 import warnings
 
+
+# ------------------------------------------------------------------ #
+# Lazily-allocated sparse canvas                                       #
+# ------------------------------------------------------------------ #
+class _SparseCanvas:
+    """
+    A 2-D (H, W) or 3-D (H, W, C) array that only allocates memory for
+    ``chunk_size × chunk_size`` blocks that are actually written to.
+
+    For large whole-slide images most of the bounding box is background,
+    so tissue-covering patches may touch only a small fraction of the
+    possible chunks, giving a proportional memory saving.
+
+    All chunks share the same ``dtype``.  Callers that need float32 for
+    OpenCV/scipy operations should add ``.astype(np.float32)`` on the
+    result of ``read()``.
+
+    Thread safety
+    -------------
+    ``write()`` must only be called from one thread at a time (the
+    inference accumulation loop is sequential, so this holds).
+    ``read()`` is safe to call from multiple threads simultaneously
+    (returns a fresh array; only reads from ``self._chunks``).
+    """
+
+    def __init__(
+        self,
+        height: int,
+        width: int,
+        n_channels: int,          # 0 → 2-D canvas, >0 → 3-D canvas
+        chunk_size: int = 4096,
+        dtype=np.float16,
+    ) -> None:
+        self.height = height
+        self.width = width
+        self.n_channels = n_channels
+        self.chunk_size = chunk_size
+        self.dtype = dtype
+        self._chunks: dict = {}   # (cy_start, cx_start) → np.ndarray
+
+    # ------------------------------------------------------------------
+    def _alloc(self, cy: int, cx: int) -> np.ndarray:
+        """Allocate and register a zeroed chunk at grid position (cy, cx)."""
+        ch = min(self.chunk_size, self.height - cy)
+        cw = min(self.chunk_size, self.width - cx)
+        shape = (ch, cw) if self.n_channels == 0 else (ch, cw, self.n_channels)
+        arr = np.zeros(shape, dtype=self.dtype)
+        self._chunks[(cy, cx)] = arr
+        return arr
+
+    def _snap(self, coord: int) -> int:
+        """Return the chunk-grid start for ``coord``."""
+        return (coord // self.chunk_size) * self.chunk_size
+
+    # ------------------------------------------------------------------
+    def write(
+        self,
+        y0: int, y1: int,
+        x0: int, x1: int,
+        data: np.ndarray,
+    ) -> None:
+        """Write ``data[0:y1-y0, 0:x1-x0, ...]`` into ``[y0:y1, x0:x1, ...]``."""
+        cs = self.chunk_size
+        cy = self._snap(y0)
+        while cy < y1:
+            cy_end = min(cy + cs, self.height)
+            cx = self._snap(x0)
+            while cx < x1:
+                cx_end = min(cx + cs, self.width)
+                # region of intersection
+                ry0 = max(y0, cy);  ry1 = min(y1, cy_end)
+                rx0 = max(x0, cx);  rx1 = min(x1, cx_end)
+                if ry1 > ry0 and rx1 > rx0:
+                    chunk = self._chunks.get((cy, cx))
+                    if chunk is None:
+                        chunk = self._alloc(cy, cx)
+                    # local coords inside chunk
+                    lry0 = ry0 - cy;  lry1 = ry1 - cy
+                    lrx0 = rx0 - cx;  lrx1 = rx1 - cx
+                    # source coords inside data
+                    dry0 = ry0 - y0;  dry1 = ry1 - y0
+                    drx0 = rx0 - x0;  drx1 = rx1 - x0
+                    if self.n_channels == 0:
+                        chunk[lry0:lry1, lrx0:lrx1] = data[dry0:dry1, drx0:drx1]
+                    else:
+                        chunk[lry0:lry1, lrx0:lrx1, :] = data[dry0:dry1, drx0:drx1, :]
+                cx += cs
+            cy += cs
+
+    # ------------------------------------------------------------------
+    def read(self, y0: int, y1: int, x0: int, x1: int) -> np.ndarray:
+        """
+        Return a fresh array filled from ``[y0:y1, x0:x1, ...]``.
+        Regions that have never been written return zeros.
+        """
+        h = y1 - y0;  w = x1 - x0
+        shape = (h, w) if self.n_channels == 0 else (h, w, self.n_channels)
+        out = np.zeros(shape, dtype=self.dtype)
+        cs = self.chunk_size
+        cy = self._snap(y0)
+        while cy < y1:
+            cy_end = min(cy + cs, self.height)
+            cx = self._snap(x0)
+            while cx < x1:
+                cx_end = min(cx + cs, self.width)
+                ry0 = max(y0, cy);  ry1 = min(y1, cy_end)
+                rx0 = max(x0, cx);  rx1 = min(x1, cx_end)
+                if ry1 > ry0 and rx1 > rx0:
+                    chunk = self._chunks.get((cy, cx))
+                    if chunk is not None:
+                        lry0 = ry0 - cy;  lry1 = ry1 - cy
+                        lrx0 = rx0 - cx;  lrx1 = rx1 - cx
+                        dry0 = ry0 - y0;  dry1 = ry1 - y0
+                        drx0 = rx0 - x0;  drx1 = rx1 - x0
+                        if self.n_channels == 0:
+                            out[dry0:dry1, drx0:drx1] = chunk[lry0:lry1, lrx0:lrx1]
+                        else:
+                            out[dry0:dry1, drx0:drx1, :] = chunk[lry0:lry1, lrx0:lrx1, :]
+                cx += cs
+            cy += cs
+        return out
+
 # Tame nested threading from 3rd-party libs
 import cv2
 try:
@@ -201,9 +323,13 @@ class TileRemapStitcher:
         self.slide_halo_size = slide_halo_size
         self.alpha = model_mpp / slide_mpp
         self.min_object_size = int(min_object_size)
-        self.np_map = np.zeros((slide_height, slide_width), dtype=np.float32)
-        self.hv_map = np.zeros((slide_height, slide_width, 2), dtype=np.float32)
-        self.tp_map = np.zeros((slide_height, slide_width, self.n_classes), dtype=np.float32)
+        # Sparse canvases: only chunks that receive inference patches are
+        # allocated, avoiding OOM on large slides with sparse tissue.
+        # float16 halves memory vs float32; finalize workers upcast to float32
+        # before passing to OpenCV/scipy (see the worker closure below).
+        self.np_map = _SparseCanvas(slide_height, slide_width, n_channels=0, dtype=np.float16)
+        self.hv_map = _SparseCanvas(slide_height, slide_width, n_channels=2, dtype=np.float16)
+        self.tp_map = _SparseCanvas(slide_height, slide_width, n_channels=self.n_classes, dtype=np.float16)
         self.device = device
 
     def _get_bounding_box(self, img):
@@ -273,9 +399,9 @@ class TileRemapStitcher:
             tx0 = cx0 - x0; ty0 = cy0 - y0
             tx1 = tx0 + (cx1 - cx0); ty1 = ty0 + (cy1 - cy0)
 
-            self.np_map[cy0:cy1, cx0:cx1]        = np_res_np[i, ty0:ty1, tx0:tx1]
-            self.hv_map[cy0:cy1, cx0:cx1, :]     = hv_res_np[i, ty0:ty1, tx0:tx1, :]
-            self.tp_map[cy0:cy1, cx0:cx1, :]     = tp_res_np[i, ty0:ty1, tx0:tx1, :]
+            self.np_map.write(cy0, cy1, cx0, cx1, np_res_np[i, ty0:ty1, tx0:tx1])
+            self.hv_map.write(cy0, cy1, cx0, cx1, hv_res_np[i, ty0:ty1, tx0:tx1, :])
+            self.tp_map.write(cy0, cy1, cx0, cx1, tp_res_np[i, ty0:ty1, tx0:tx1, :])
 
     def finalize(self,
                  tile_size: int = 2048,
@@ -377,9 +503,10 @@ class TileRemapStitcher:
                      interior_y0, interior_x0,
                      inner_y0, inner_y1, inner_x0, inner_x1) in batched_jobs:
 
-                    np_tile = np.ascontiguousarray(np_map[pad_y0:pad_y1, pad_x0:pad_x1])
-                    hv_tile = np.ascontiguousarray(hv_map[pad_y0:pad_y1, pad_x0:pad_x1, :])
-                    tp_tile = np.ascontiguousarray(tp_map[pad_y0:pad_y1, pad_x0:pad_x1, :])
+                    # Read sparse chunks; upcast np/hv to float32 for OpenCV/scipy.
+                    np_tile = np_map.read(pad_y0, pad_y1, pad_x0, pad_x1).astype(np.float32)
+                    hv_tile = hv_map.read(pad_y0, pad_y1, pad_x0, pad_x1).astype(np.float32)
+                    tp_tile = tp_map.read(pad_y0, pad_y1, pad_x0, pad_x1)  # float16 ok; worker casts to float64
                     interior_slice = (slice(inner_y0, inner_y1), slice(inner_x0, inner_x1))
 
                     ins, prb, ply = _stitching_worker(

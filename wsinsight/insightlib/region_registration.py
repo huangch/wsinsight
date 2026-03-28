@@ -5,9 +5,11 @@ from __future__ import annotations
 import os
 from math import ceil
 from concurrent.futures import ThreadPoolExecutor, as_completed
+from typing import Optional
 
 import numpy as np
 import pandas as pd
+import tqdm as tqdm_module
 
 from ..num_worker_optimizer import pick_workers_safe, throttle_when_busy
 
@@ -18,6 +20,7 @@ def register_objects_to_regions(
     tie_break: str = "largest_area",
     mem_budget_mb: int = 256,
     max_workers: int | None = None,
+    pbar: Optional["tqdm_module.tqdm"] = None,
 ) -> pd.DataFrame:
     """Match each object in *slide_df* to its enclosing region in *annot_df*.
 
@@ -64,8 +67,11 @@ def register_objects_to_regions(
     ay1 = (annot_df["miny"] + annot_df["height"]).to_numpy()
     area = (annot_df["width"] * annot_df["height"]).to_numpy()
 
-    prob_cols = [c for c in annot_df.columns if c.startswith("prob_")]
-    probs_mat = annot_df[prob_cols].to_numpy(dtype=np.float32) if prob_cols else None
+    # All columns from the region CSV are copied with a "region_" prefix.
+    # This includes spatial columns (minx/miny/width/height) as region_minx etc.
+    # as well as all prob_* columns as region_prob_*.
+    copy_cols = list(annot_df.columns)
+    copy_mat = annot_df[copy_cols].to_numpy(dtype=np.float64) if copy_cols else None
 
     # 3) containment predicate
     def contains(cx_col, cy_col):
@@ -91,9 +97,9 @@ def register_objects_to_regions(
     # final adaptive chunk size = conservative min of both constraints
     points_per_chunk = int(max(1000, min(points_per_chunk_mem, points_per_chunk_busy)))
 
-    # 5) initialise output columns (add or overwrite for these class names only)
-    for c in prob_cols:
-        slide_df["region_prob_" + c[len("prob_"):]] = np.nan
+    # 5) initialise output columns (add or overwrite for all region columns)
+    for c in copy_cols:
+        slide_df["region_" + c] = np.nan
 
     # 6) chunk worker
     def process_chunk(s: int, e: int):
@@ -115,18 +121,20 @@ def register_objects_to_regions(
             best[has_hit] = best_ix[has_hit]
 
         results = {}
-        if prob_cols:
+        if copy_cols:
             hit_rows = best >= 0
-            for j, c in enumerate(prob_cols):
-                vals = np.full(len(cx), np.nan, dtype=np.float32)
-                if hit_rows.any() and probs_mat is not None:
-                    vals[hit_rows] = probs_mat[best[hit_rows], j]
-                results["region_prob_" + c[len("prob_"):]] = vals
+            for j, c in enumerate(copy_cols):
+                vals = np.full(len(cx), np.nan, dtype=np.float64)
+                if hit_rows.any() and copy_mat is not None:
+                    vals[hit_rows] = copy_mat[best[hit_rows], j]
+                results["region_" + c] = vals
 
         return s, e, results
 
     # 7) schedule work
     indices = list(range(0, n_points, points_per_chunk))
+    if pbar is not None:
+        pbar.reset(total=len(indices))
     with ThreadPoolExecutor(max_workers=max_workers) as ex:
         futures = [
             ex.submit(process_chunk, s, min(n_points, s + points_per_chunk))
@@ -137,5 +145,7 @@ def register_objects_to_regions(
             s, e, res = fut.result()
             for col, vals in res.items():
                 slide_df.loc[slide_df.index[s:e], col] = vals
+            if pbar is not None:
+                pbar.update(1)
 
     return slide_df

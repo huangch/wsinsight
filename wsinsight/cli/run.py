@@ -147,6 +147,7 @@ _INFER_PARAM_NAMES: tuple[str, ...] = (
     "hplot_range_max",
     "hplot_range_min",
     "hplot_samples_with_valid_range_only",
+    "region_overwrite",
     # "cme_cellular",
     # "cme_annotation",
     # "cme_soft_mode",
@@ -583,6 +584,17 @@ def _select_kwargs(values: dict[str, Any], keys: tuple[str, ...]) -> dict[str, A
     show_default=True,
     help="H-Plot computing uses only samples with valid range of cellular-wise layers.",
 )
+@click.option(
+    "--region-overwrite",
+    is_flag=True,
+    default=False,
+    show_default=True,
+    help=(
+        "Overwrite existing region_* columns when using --region-inference-dir.  "
+        "Without this flag, slides whose object CSV already contains region_* columns "
+        "are skipped with a warning.  Requires --region-inference-dir."
+    ),
+)
 # @click.option(
 #     "--cme-cellular",
 #     is_flag=True,
@@ -660,6 +672,7 @@ def run(
     hplot_range_max: int | None = None,
     hplot_range_min: int | None = None,
     hplot_samples_with_valid_range_only: bool = False,
+    region_overwrite: bool = False,
     # cme_cellular: bool = False,
     # cme_annotation: bool = False,
     # cme_soft_mode: bool = False,
