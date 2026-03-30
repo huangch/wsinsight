@@ -37,7 +37,27 @@ def _storage_kwargs() -> dict[str, object]:
 _STORAGE_KWARGS = _storage_kwargs()
 
 
+def _assert_directory(path: URIPath, option_name: str) -> None:
+    """Ensure the provided `URIPath` exists and points to a directory."""
+    if not path.exists():
+        raise click.ClickException(f"{option_name} directory not found: {path}")
+    if not path.is_dir():
+        raise click.ClickException(f"{option_name} must be a directory")
+
+
 @click.command()
+@click.option(
+    "-i",
+    "--wsi-dir",
+    default=None,
+    required=False,
+    type=URIPathType(exists=True, **_STORAGE_KWARGS),
+    help=(
+        "If provided, only slides whose filename stem matches a file in this directory "
+        "are processed.  Image files are not opened; the directory is used for name "
+        "enumeration only.  Mirrors --wsi-dir in run/infer/hplot for consistent sharding."
+    ),
+)
 @click.option(
     "-o",
     "--results-dir",
@@ -99,6 +119,7 @@ _STORAGE_KWARGS = _storage_kwargs()
     ),
 )
 def reg(
+    wsi_dir: URIPath | None,
     results_dir: URIPath,
     region_inference_dir: URIPath,
     geojson: bool = False,
@@ -108,10 +129,15 @@ def reg(
 ) -> None:
     """Register object-prediction CSVs to region-prediction results.
 
-    Reads every CSV in RESULTS_DIR/model-outputs-csv/, looks up the matching
-    region CSV in REGION_INFERENCE_DIR/model-outputs-csv/, spatially assigns
-    each object to its enclosing region, and writes the enriched CSV back
-    in-place with added region_prob_* columns.
+    Reads CSVs in RESULTS_DIR/model-outputs-csv/, looks up the matching region
+    CSV in REGION_INFERENCE_DIR/model-outputs-csv/, spatially assigns each
+    object to its enclosing region, and writes the enriched CSV back in-place
+    with added region_prob_* columns.
+
+    When --wsi-dir is supplied the slide list is derived from the image
+    filenames in that directory (image files are not opened), mirroring the
+    behaviour of run/infer/hplot and enabling consistent sharding.  Without
+    --wsi-dir every CSV found in RESULTS_DIR/model-outputs-csv/ is processed.
 
     Slides missing from REGION_INFERENCE_DIR are skipped with a warning.
     If a region_prob_* column with the same name already exists it is
@@ -133,7 +159,15 @@ def reg(
             f"{region_inference_dir}"
         )
 
-    obj_csvs = sorted(p for p in obj_csv_dir.iterdir() if p.suffix == ".csv")
+    if wsi_dir is not None:
+        _assert_directory(wsi_dir, "--wsi-dir")
+        obj_csvs = sorted(
+            obj_csv_dir / p.with_suffix(".csv").name
+            for p in wsi_dir.iterdir()
+            if p.is_file()
+        )
+    else:
+        obj_csvs = sorted(p for p in obj_csv_dir.iterdir() if p.suffix == ".csv")
     if not obj_csvs:
         raise click.ClickException(f"No CSV files found in {obj_csv_dir}")
 
@@ -192,8 +226,15 @@ def reg(
         return
 
     # Re-enumerate after registration so all (including previously-skipped) CSVs
-    # are picked up for export.
-    all_obj_csvs = sorted(p for p in obj_csv_dir.iterdir() if p.suffix == ".csv")
+    # are picked up for export.  Honour --wsi-dir shard when provided.
+    if wsi_dir is not None:
+        all_obj_csvs = sorted(
+            obj_csv_dir / p.with_suffix(".csv").name
+            for p in wsi_dir.iterdir()
+            if p.is_file()
+        )
+    else:
+        all_obj_csvs = sorted(p for p in obj_csv_dir.iterdir() if p.suffix == ".csv")
     local_csvs = [Path(p.__fspath__()) for p in all_obj_csvs]
 
     if geojson:

@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import json
-from concurrent.futures import ProcessPoolExecutor, as_completed
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 from typing import Sequence, List, Mapping
 
@@ -15,9 +15,8 @@ from .. import errors
 from ..wsi import _validate_wsi_directory, get_avg_mpp
 from ..uri_path import URIPath
 
-from .insight_helpers import (compute_cell_center_points, 
+from .insight_helpers import (compute_cell_center_points,
                               delaunay_triangulation,
-                              create_adjacency_list_fast,
                               k_hop_neighbors,
                               compute_enrichment_index,
                               identify_region_by_cell_function_enrichment,
@@ -26,6 +25,20 @@ from .insight_helpers import (compute_cell_center_points,
                               compute_hplot,
                               compute_hmetrics,
                               )
+
+_WORKER_STEPS = [
+    "load CSV",
+    "cell centers",
+    "triangulation",
+    "k-hop neighbors",
+    "enrichment index",
+    "tumor regions",
+    "border cells",
+    "layer distances",
+    "hplot curve",
+    "hmetrics",
+    "save outputs",
+]
 
 
 def _worker(
@@ -42,6 +55,7 @@ def _worker(
     range_max: int | None,
     samples_with_valid_range_only: bool,
     slide_mpp_lookup: Mapping[str, float] | None = None,
+    pbar_position: int = 1,
 ):
     """Process a single slide to build cell layers, save intermediates, and compute metrics."""
 
@@ -59,6 +73,21 @@ def _worker(
             hmetric_dict = json.load(fp)
         return slide_id, hplot_df, hmetric_dict
 
+    # desc = slide_id if len(slide_id) <= 32 else slide_id[:29] + "..."
+    # inner = tqdm(
+    #     total=len(_WORKER_STEPS),
+    #     desc=desc,
+    #     position=pbar_position,
+    #     leave=False,
+    #     unit="step",
+    #     dynamic_ncols=True,
+    # )
+
+    def _step(name: str) -> None:
+        pass
+        # inner.set_postfix_str(name)
+        # inner.update(1)
+
     mpp = None
     if slide_mpp_lookup:
         # Prefer cached spacing derived during patch extraction (avoids re-reading remote WSIs).
@@ -71,10 +100,13 @@ def _worker(
         with model_output_csv.open("r", encoding="utf-8") as fp:
             nodes_df = pd.read_csv(fp)
     except Exception:
+        # inner.close()
         return slide_id, None, None
+    _step("load CSV")
 
     prob_columns = [c for c in nodes_df.columns.to_list() if c.startswith("prob_")]
     if not prob_columns:
+        # inner.close()
         return slide_id, None, None
 
     predicted_labels = nodes_df[prob_columns].idxmax(axis=1)
@@ -83,27 +115,39 @@ def _worker(
     target_targets = {f"{prob_prefix}{tt}" for tt in target_type_list}
     nodes_df["is_base_type"] = predicted_labels.isin(base_targets)
     nodes_df["is_target_type"] = predicted_labels.isin(target_targets)
-
     nodes_df = compute_cell_center_points(nodes_df)
+    _step("cell centers")
+
     edges_df = delaunay_triangulation(nodes_df[["center_x", "center_y"]].values, max_neighbor_distance_px)
+    _step("triangulation")
 
     if "source" not in edges_df.columns or "target" not in edges_df.columns:
+        # inner.close()
         return slide_id, None, None
 
-    adj_list = create_adjacency_list_fast(edges_df)
-    k_neighbors_results = k_hop_neighbors(nodes_df, adj_list, hplot_k)
+    k_neighbors_results, A_sparse, Mk_sparse = k_hop_neighbors(len(nodes_df), edges_df, hplot_k)
+    _step("k-hop neighbors")
 
-    nodes_df = compute_enrichment_index(nodes_df, k_neighbors_results)
+    nodes_df = compute_enrichment_index(nodes_df, k_neighbors_results, Mk_sparse=Mk_sparse)
+    _step("enrichment index")
+
     nodes_df = identify_region_by_cell_function_enrichment(
-        k_neighbors_results, nodes_df, hplot_N, hplot_R
+        k_neighbors_results, nodes_df, hplot_N, hplot_R, Mk_sparse=Mk_sparse
     )
-    nodes_df = identify_border_cells(nodes_df, adj_list)
-    nodes_df = calculate_distance_to_border(nodes_df, adj_list)
+    _step("tumor regions")
+
+    nodes_df = identify_border_cells(nodes_df, {}, A_sparse=A_sparse)
+    _step("border cells")
+
+    nodes_df = calculate_distance_to_border(nodes_df, {}, A_sparse=A_sparse)
+    _step("layer distances")
 
     with cells_csv.open("w", encoding="utf-8", newline="") as fp:
         nodes_df.to_csv(fp, index=False)
 
     hplot_df = compute_hplot(nodes_df, edges_df)
+    _step("hplot curve")
+
     with hplot_csv.open("w", encoding="utf-8", newline="") as fp:
         hplot_df.to_csv(fp, index=False)
 
@@ -113,10 +157,13 @@ def _worker(
         range_max=range_max,
         hplot_samples_with_valid_range_only=samples_with_valid_range_only,
     )
+    _step("hmetrics")
 
     with hmetric_json.open("w", encoding="utf-8") as fp:
         json.dump(hmetric_dict, fp, indent=2)
+    _step("save outputs")
 
+    # inner.close()
     return slide_id, hplot_df, hmetric_dict
 
 
@@ -304,15 +351,25 @@ def hplot_generation(
     if not jobs:
         return failed_generation
 
-    with ProcessPoolExecutor(max_workers=num_workers) as ex:
-        futures = [ex.submit(_worker, *args) for args in jobs]
-        pbar = tqdm(total=len(futures))
+    with ThreadPoolExecutor(max_workers=num_workers) as ex:
+        futures = [
+            ex.submit(_worker, *args, (i % num_workers) + 1)
+            for i, args in enumerate(jobs)
+        ]
+        outer = tqdm(
+            total=len(futures),
+            desc="Slides",
+            position=0,
+            leave=True,
+            unit="slide",
+            dynamic_ncols=True,
+        )
         for f in as_completed(futures):
             image_id, df, hm = f.result()
 
             if df is None or hm is None:
                 failed_generation.append(image_id)
-                pbar.update(1)
+                outer.update(1)
                 continue
 
             clean_df = df.copy()
@@ -327,7 +384,7 @@ def hplot_generation(
             clean_df = clean_df[np.isfinite(clean_df["layer"])][required_cols]
             if clean_df.empty:
                 failed_generation.append(image_id)
-                pbar.update(1)
+                outer.update(1)
                 continue
 
             clean_df["layer"] = clean_df["layer"].astype(int)
@@ -388,8 +445,8 @@ def hplot_generation(
                 ),
             ]
 
-            pbar.update(1)
-        pbar.close()
+            outer.update(1)
+        outer.close()
 
     if hplot_hplots_csv.exists():
         with hplot_hplots_csv.open("r", encoding="utf-8") as fp:

@@ -143,6 +143,13 @@ _STORAGE_KWARGS = _storage_kwargs()
     show_default=True,
     help="H-Plot computing uses only samples with valid range of cellular-wise layers.",
 )
+@click.option(
+    "--num-workers",
+    default=8,
+    show_default=True,
+    type=click.IntRange(min=1),
+    help="Number of slides to process concurrently.",
+)
 def hplot(
     *,
     wsi_dir: URIPath,
@@ -156,6 +163,7 @@ def hplot(
     hplot_range_max: int | None = None,
     hplot_range_min: int | None = None,
     hplot_samples_with_valid_range_only: bool = False,
+    num_workers: int = 8,
 ) -> None:
     """Run H-Plot analysis on inference outputs held inside ``results_dir``."""
 
@@ -192,6 +200,7 @@ def hplot(
         hplot_range_max=hplot_range_max,
         hplot_range_min=hplot_range_min,
         hplot_samples_with_valid_range_only=hplot_samples_with_valid_range_only,
+        num_workers=num_workers,
     )
 
     if failed_hplot_generation:

@@ -38,36 +38,33 @@ def delaunay_triangulation(point2d_ary, max_edge_length):
         max_edge_length: Maximum length for edges to be included in the analysis.
 
     Returns:
-        A tuple containing:
-        - A DataFrame of edges with 'source', 'target', and 'length' columns representing point indices and edge length,
-          filtered by max_edge_length.
-        - The DataFrame with 'center_x' and 'center_y' columns added.
+        A DataFrame of edges with 'source', 'target', and 'length' columns,
+        filtered to edges shorter than max_edge_length.
     """
-
-    # Perform Delaunay triangulation
     tri = Delaunay(point2d_ary)
 
-    # Get the edges of the triangulation
-    # The edges are pairs of indices into the points array
-    edges = set()
-    for simplex in tri.simplices:
-        edges.add(tuple(sorted((simplex[0], simplex[1]))))
-        edges.add(tuple(sorted((simplex[0], simplex[2]))))
-        edges.add(tuple(sorted((simplex[1], simplex[2]))))
+    # Extract all 3 edge pairs from every simplex in one vectorised step
+    s = tri.simplices  # shape (M, 3)
+    pairs = np.concatenate([
+        s[:, [0, 1]],
+        s[:, [0, 2]],
+        s[:, [1, 2]],
+    ], axis=0)  # shape (3M, 2)
 
-    # Filter edges by length and store in a list of dictionaries
-    filtered_edges_list = []
-    for i, j in edges:
-        point1 = point2d_ary[i]
-        point2 = point2d_ary[j]
-        distance = np.linalg.norm(point1 - point2)
-        if distance < max_edge_length:
-            filtered_edges_list.append({'source': i, 'target': j, 'length': distance})
+    # Canonicalise (min, max) so each undirected edge is represented once, then deduplicate
+    pairs = np.sort(pairs, axis=1)
+    pairs = np.unique(pairs, axis=0)
 
-    # Convert the list of dictionaries to a pandas DataFrame
-    filtered_edges_df = pd.DataFrame(filtered_edges_list)
+    src, dst = pairs[:, 0], pairs[:, 1]
+    diff = point2d_ary[src] - point2d_ary[dst]
+    lengths = np.linalg.norm(diff, axis=1)
 
-    return filtered_edges_df # , model_output_df # Return both filtered edges DataFrame and the updated DataFrame
+    mask = lengths < max_edge_length
+    return pd.DataFrame({
+        "source": src[mask],
+        "target": dst[mask],
+        "length": lengths[mask],
+    })
 
 
 # def create_adjacency_list(edges_df):
@@ -177,60 +174,77 @@ def create_adjacency_list_fast(
     return adj
 
 
-def k_hop_neighbors(nodes_df, adjacency_list, k):
+def k_hop_neighbors(nodes_df_or_N, edges_df_or_adj, k):
     """
-    Finds k-hop neighbors for all cells in a DataFrame using a DataFrame of edges.
+    Finds k-hop neighbors for all cells using sparse matrix exponentiation.
 
-    Args:
-        nodes_df: DataFrame with cell data.
-        adjacency_list: A dictionary representing the adjacency list.
-        k: The number of hops.
+    Accepts two calling conventions:
+      - New (preferred): k_hop_neighbors(N: int, edges_df: DataFrame, k)
+      - Legacy:          k_hop_neighbors(nodes_df: DataFrame, adjacency_list: dict, k)
 
     Returns:
-        A list of lists, where each inner list contains the indices of all cells
-        reachable from the corresponding cell within k hops.
+        (neighbor_lists, A_csr, Mk_csr)
+        - neighbor_lists: list[list[int]] — k-hop neighbor indices per cell
+        - A_csr: 1-hop symmetric sparse adjacency matrix (uint8, no self-loops)
+        - Mk_csr: k-hop reachability matrix (uint8, with self-loops)
     """
+    from scipy.sparse import csr_matrix, eye as speye
 
-    # Create adjacency list from the edges DataFrame
-    # adjacency_list = create_adjacency_list(edges_df)
+    # --- resolve calling convention ---
+    if isinstance(nodes_df_or_N, int):
+        N = nodes_df_or_N
+        edges_df = edges_df_or_adj
+        if N == 0:
+            empty = csr_matrix((0, 0), dtype=np.uint8)
+            return [], empty, empty
+        if len(edges_df) and "source" in edges_df.columns:
+            src = edges_df["source"].to_numpy(dtype=np.int64)
+            dst = edges_df["target"].to_numpy(dtype=np.int64)
+            all_src = np.concatenate([src, dst])
+            all_dst = np.concatenate([dst, src])
+            data = np.ones(len(all_src), dtype=np.uint8)
+            A = csr_matrix((data, (all_src, all_dst)), shape=(N, N), dtype=np.uint8)
+            A.data[:] = 1
+        else:
+            A = csr_matrix((N, N), dtype=np.uint8)
+    else:
+        # Legacy: nodes_df + adjacency_list dict
+        N = len(nodes_df_or_N)
+        adjacency_list = edges_df_or_adj
+        if N == 0:
+            empty = csr_matrix((0, 0), dtype=np.uint8)
+            return [], empty, empty
+        if adjacency_list:
+            srcs_list, dsts_list = [], []
+            for s, nbrs in adjacency_list.items():
+                if nbrs:
+                    srcs_list.append(np.full(len(nbrs), s, dtype=np.int64))
+                    dsts_list.append(np.asarray(nbrs, dtype=np.int64))
+            if srcs_list:
+                srcs = np.concatenate(srcs_list)
+                dsts = np.concatenate(dsts_list)
+                data = np.ones(len(srcs), dtype=np.uint8)
+                A = csr_matrix((data, (srcs, dsts)), shape=(N, N), dtype=np.uint8)
+                A.data[:] = 1
+            else:
+                A = csr_matrix((N, N), dtype=np.uint8)
+        else:
+            A = csr_matrix((N, N), dtype=np.uint8)
 
-    def k_hop_search(start_node, k, adjacency_list):
-        """
-        Performs a k-hop search starting from a given node using BFS.
+    # Build M = A + I (self-loops), then compute M^k
+    I = speye(N, dtype=np.uint8, format="csr")
+    M = (A + I).tocsr()
+    M.data[:] = 1
 
-        Args:
-            start_node: The index of the starting node.
-            k: The number of hops.
-            adjacency_list: The adjacency list representation of the graph.
+    Mk = M
+    for _ in range(k - 1):
+        Mk = (Mk @ M).tocsr()
+        Mk.data[:] = 1
 
-        Returns:
-            A set of reachable node indices within k hops (including the start node).
-        """
-        visited = set()
-        queue = deque([(start_node, 0)])  # (node, distance)
-        reachable_nodes = set()
-
-        while queue:
-            current_node, distance = queue.popleft() # Using popleft for BFS
-
-            if current_node not in visited and distance <= k:
-                visited.add(current_node)
-                reachable_nodes.add(current_node)
-
-                if distance < k and current_node in adjacency_list:
-                    for neighbor in adjacency_list[current_node]:
-                        if neighbor not in visited:
-                            queue.append((neighbor, distance + 1))
-
-        return sorted(list(reachable_nodes))
-
-    # Apply k-hop search to all cells
-    all_k_hop_neighbors = []
-    for i in nodes_df.index:
-        reachable_neighbors = k_hop_search(start_node=i, k=k, adjacency_list=adjacency_list)
-        all_k_hop_neighbors.append(reachable_neighbors)
-
-    return all_k_hop_neighbors
+    indptr = Mk.indptr
+    indices = Mk.indices
+    neighbor_lists = [indices[indptr[i]:indptr[i + 1]].tolist() for i in range(N)]
+    return neighbor_lists, A, Mk
 
 
 # --------------------------- helpers ---------------------------
@@ -347,7 +361,6 @@ def _enrichment_for_cell(args) -> float:
     return i, value
 
 
-# ---- parallel main ----
 def compute_enrichment_index(
     nodes_df: pd.DataFrame,
     k_neighbors_results: List[List],
@@ -355,55 +368,41 @@ def compute_enrichment_index(
     base_col: str = "is_base_type",
     eps: float = 1e-6,
     max_workers: int = None,
+    Mk_sparse=None,
 ) -> pd.DataFrame:
     """
-    为每个 cell 计算 enrichment_index = T * T / (T + B + eps) 的并行版本（ThreadPoolExecutor）。
+    Compute per-cell enrichment_index = T^2 / (T + B + eps).
 
-    其中：
-      T = (k 邻居中 target=True 的数量) / (邻居总数)
-      B = (k 邻居中 base=True   的数量) / (邻居总数)
-
-    约定：
-      - k_neighbors_results[i] 对应 nodes_df.iloc[i] 这个 cell
-      - k_neighbors_results[i] 内的元素是该 cell 邻居的 nodes_df.index（cell ID）
-
-    参数:
-      nodes_df: 包含 target_col / base_col 布林列的 DataFrame
-      k_neighbors_results: 每个 cell 的邻居 ID 列表
-      target_col: 目标类型标记列名
-      base_col: 基底 / 对照类型标记列名
-      eps: 防止除零的微小常数
-      max_workers: 线程数（缺省为 None = ThreadPoolExecutor 自动选择）
-
-    返回:
-      原始 nodes_df，附加一列 "hplot_enrichment_index"
+    When Mk_sparse is supplied (preferred), uses a single sparse matrix multiply
+    (all in C via scipy) instead of N individual pandas reindex calls.
+    Falls back to the ThreadPoolExecutor approach when Mk_sparse is None.
     """
-    # 基本检查
     for col in (target_col, base_col):
         if col not in nodes_df.columns:
             raise KeyError(f"missing required column '{col}' in nodes_df")
+
+    if Mk_sparse is not None:
+        is_target = nodes_df[target_col].to_numpy(dtype=np.float32)
+        is_base   = nodes_df[base_col].to_numpy(dtype=np.float32)
+        ones      = np.ones(len(nodes_df), dtype=np.float32)
+        t_counts  = np.asarray(Mk_sparse @ is_target).ravel()
+        b_counts  = np.asarray(Mk_sparse @ is_base).ravel()
+        n_counts  = np.maximum(np.asarray(Mk_sparse @ ones).ravel(), 1.0)
+        T = t_counts / n_counts
+        B = b_counts / n_counts
+        nodes_df["hplot_enrichment_index"] = T * T / (T + B + eps)
+        return nodes_df
+
+    # --- fallback: ThreadPoolExecutor path (used when Mk_sparse not available) ---
     if len(k_neighbors_results) != len(nodes_df):
         raise ValueError("k_neighbors_results length must match len(nodes_df)")
-
-    # 布林 Series，以 index 为键，方便 reindex 到邻居 ID
     target_s = nodes_df[target_col].astype(bool)
     base_s   = nodes_df[base_col].astype(bool)
-
-    # 结果容器
     out = np.empty(len(nodes_df), dtype=float)
-
-    # 准备任务参数：每个 cell 一组 args
-    tasks = [
-        (i, neigh_ids, target_s, base_s, eps)
-        for i, neigh_ids in enumerate(k_neighbors_results)
-    ]
-
-    # 并行计算
+    tasks = [(i, neigh_ids, target_s, base_s, eps) for i, neigh_ids in enumerate(k_neighbors_results)]
     with ThreadPoolExecutor(max_workers=max_workers) as ex:
         for i, value in ex.map(_enrichment_for_cell, tasks):
             out[i] = value
-
-    # 写入新列
     nodes_df["hplot_enrichment_index"] = out
     return nodes_df
 
@@ -499,34 +498,41 @@ def identify_region_by_cell_function_enrichment(
     N: int,
     R: float,
     max_workers: int = None,
+    Mk_sparse=None,
 ):
     """
-    Parallel version of identify_region_by_cell_function_enrichment
-    using ThreadPoolExecutor.
+    Identify cells whose k-hop neighborhood meets the base-type enrichment criteria.
+
+    When Mk_sparse is supplied (preferred), uses sparse matrix multiplication
+    instead of N individual iloc slices in a ThreadPoolExecutor.
+    Falls back to the ThreadPoolExecutor approach when Mk_sparse is None.
 
     Args:
         k_hop_neighbors_list: list of neighbor index lists per cell
         model_output_df: DataFrame with column 'is_base_type'
         N: minimal neighborhood size
         R: minimal base-type ratio
-        max_workers: passed to ThreadPoolExecutor (default: None = auto)
+        Mk_sparse: optional k-hop reachability sparse matrix (uint8 CSR)
 
     Returns:
         model_output_df with boolean column 'is_base_region'
     """
-    # prepare argument tuples once
-    tasks = [
-        (i, neighbors, model_output_df, N, R)
-        for i, neighbors in enumerate(k_hop_neighbors_list)
-    ]
+    if Mk_sparse is not None:
+        is_base  = model_output_df["is_base_type"].to_numpy(dtype=np.float32)
+        ones     = np.ones(len(model_output_df), dtype=np.float32)
+        b_counts = np.asarray(Mk_sparse @ is_base).ravel()
+        n_counts = np.asarray(Mk_sparse @ ones).ravel()
+        safe_n   = np.maximum(n_counts, 1.0)
+        model_output_df["is_base_region"] = (n_counts >= N) & (b_counts / safe_n >= R)
+        return model_output_df
 
+    # --- fallback: ThreadPoolExecutor path ---
+    tasks = [(i, neighbors, model_output_df, N, R) for i, neighbors in enumerate(k_hop_neighbors_list)]
     enriched_cells = []
-
     with ThreadPoolExecutor(max_workers=max_workers) as ex:
         for result in ex.map(_check_enrichment_for_cell, tasks):
             if result is not None:
                 enriched_cells.append(result)
-
     model_output_df["is_base_region"] = model_output_df.index.isin(enriched_cells)
     return model_output_df
 
@@ -597,15 +603,19 @@ def identify_border_cells(
     model_output_df: pd.DataFrame,
     adjacency_list: Dict[Any, List[Any]],
     max_workers: int = None,
+    A_sparse=None,
 ) -> pd.DataFrame:
     """
-    Identifies base border cells based on connections to non-base region cells,
-    using ThreadPoolExecutor to parallelize over base_region_indices.
+    Identifies base border cells: base-region cells that have at least one
+    non-base-region neighbor.
+
+    When A_sparse is supplied (preferred), uses a single sparse matrix multiply.
+    Falls back to the ThreadPoolExecutor approach when A_sparse is None.
 
     Args:
         model_output_df: DataFrame with a boolean column 'is_base_region'.
-        adjacency_list: dict-like adjacency list: node_id -> list of neighbor node_ids.
-        max_workers: optional number of threads for ThreadPoolExecutor.
+        adjacency_list: 1-hop adjacency dict (used only in fallback path).
+        A_sparse: optional 1-hop symmetric sparse adjacency matrix (uint8 CSR).
 
     Returns:
         The DataFrame with a new boolean column 'is_base_border'.
@@ -613,33 +623,25 @@ def identify_border_cells(
     if "is_base_region" not in model_output_df.columns:
         raise KeyError("model_output_df must contain column 'is_base_region'")
 
-    # 所有 cell index 的集合，用于 O(1) membership 检查
-    df_index_set = set(model_output_df.index)
+    if A_sparse is not None:
+        is_region     = model_output_df["is_base_region"].to_numpy(dtype=np.float32)
+        is_non_region = 1.0 - is_region
+        # For each cell: number of non-base-region neighbors
+        non_region_nbr_count = np.asarray(A_sparse @ is_non_region).ravel()
+        model_output_df["is_base_border"] = is_region.astype(bool) & (non_region_nbr_count > 0)
+        return model_output_df
 
-    # 只读 Series，可安全在多线程中访问
+    # --- fallback: ThreadPoolExecutor path ---
+    df_index_set   = set(model_output_df.index)
     is_base_region = model_output_df["is_base_region"].astype(bool)
-
-    # 只在 base_region = True 的 cell 上做检查
     base_region_indices = is_base_region[is_base_region].index
-
-    # 初始化输出 Series，全 False
     border_series = pd.Series(False, index=model_output_df.index)
-
-    # 准备任务参数
-    tasks = [
-        (idx, adjacency_list, df_index_set, is_base_region)
-        for idx in base_region_indices
-    ]
-
-    # 并行执行
+    tasks = [(idx, adjacency_list, df_index_set, is_base_region) for idx in base_region_indices]
     with ThreadPoolExecutor(max_workers=max_workers) as ex:
         for idx, is_border in ex.map(_is_border_for_index, tasks):
             if is_border:
                 border_series.loc[idx] = True
-
-    # 一次性写回 DataFrame
     model_output_df["is_base_border"] = border_series
-
     return model_output_df
 
 
@@ -667,45 +669,73 @@ def identify_border_cells(
 #     return model_output_df
 
 
-def calculate_distance_to_border(model_output_df, adjacency_list):
+def calculate_distance_to_border(model_output_df, adjacency_list, A_sparse=None):
     """
     Calculates the shortest edge count from every cell to the nearest base border cell.
 
+    When A_sparse is supplied (preferred), uses scipy multi-source BFS via a
+    virtual source node — all done in C, no Python BFS loop.
+    Falls back to pure Python BFS when A_sparse is None.
+
     Args:
-        model_output_df: DataFrame with 'is_base_border' column.
-        adjacency_list: Adjacency list representing connections between cells.
+        model_output_df: DataFrame with 'is_base_border' and 'is_base_region' columns.
+        adjacency_list: 1-hop adjacency dict (used only in fallback path).
+        A_sparse: optional 1-hop symmetric sparse adjacency matrix (uint8 CSR).
 
     Returns:
-        The DataFrame with a new column 'edge_distance_to_border'.
+        The DataFrame with new columns 'distance_to_border' and
+        'hplot_signed_distance_to_border'.
     """
-    # Initialize distances to infinity for all cells
-    edge_distance_to_border = {index: float('inf') for index in model_output_df.index}
-    queue = deque()
+    N = len(model_output_df)
+    border_mask = model_output_df["is_base_border"].to_numpy(dtype=bool)
 
-    # Start BFS from all base border cells
-    border_cells = model_output_df[model_output_df['is_base_border']].index.tolist()
-    for border_index in border_cells:
-        # Ensure border cell exists in the graph keys before adding to queue
-        if border_index in adjacency_list:
-            edge_distance_to_border[border_index] = 0
-            queue.append(border_index)
+    if A_sparse is not None:
+        from scipy.sparse import csr_matrix, vstack, hstack
+        from scipy.sparse.csgraph import shortest_path
 
-    while queue:
-        current_cell = queue.popleft()
+        if border_mask.any():
+            border_idx = np.where(border_mask)[0].astype(np.int32)
+            n_border   = len(border_idx)
+            # Add a virtual source node (index N) connected to all border cells
+            vsrc_rows = np.zeros(n_border, dtype=np.int32)
+            data      = np.ones(n_border, dtype=np.uint8)
+            top_row  = csr_matrix((data, (vsrc_rows, border_idx)), shape=(1, N), dtype=np.uint8)
+            left_col = top_row.T.tocsr()
+            corner   = csr_matrix((1, 1), dtype=np.uint8)
+            aug = vstack([hstack([A_sparse, left_col]), hstack([top_row, corner])]).tocsr()
+            # BFS shortest path from the virtual source (index N); unweighted graph
+            dist_row = shortest_path(aug, method="D", directed=False,
+                                     indices=N, unweighted=True)
+            edge_dist = dist_row[:N]
+            # Subtract the virtual hop; unreachable nodes stay inf
+            inf_mask  = np.isinf(edge_dist)
+            edge_dist = np.where(inf_mask, np.inf, np.maximum(edge_dist - 1.0, 0.0))
+            edge_dist[border_mask] = 0.0
+        else:
+            edge_dist = np.full(N, np.inf)
+    else:
+        # --- fallback: pure Python multi-source BFS ---
+        edge_distance_to_border = {idx: float("inf") for idx in model_output_df.index}
+        queue = deque()
+        for border_index in model_output_df[border_mask].index:
+            if border_index in adjacency_list:
+                edge_distance_to_border[border_index] = 0
+                queue.append(border_index)
+        while queue:
+            cur = queue.popleft()
+            if cur in adjacency_list:
+                for nb in adjacency_list[cur]:
+                    if nb in model_output_df.index and edge_distance_to_border[nb] == float("inf"):
+                        edge_distance_to_border[nb] = edge_distance_to_border[cur] + 1
+                        queue.append(nb)
+        edge_dist = np.array([edge_distance_to_border[i] for i in model_output_df.index], dtype=float)
 
-        if current_cell in adjacency_list:
-            for neighbor in adjacency_list[current_cell]:
-                # Ensure neighbor exists in the DataFrame index and hasn't been visited
-                if neighbor in model_output_df.index and edge_distance_to_border[neighbor] == float('inf'):
-                    edge_distance_to_border[neighbor] = edge_distance_to_border[current_cell] + 1
-                    queue.append(neighbor)
-
-    # Add the calculated edge count to the DataFrame
-    model_output_df['distance_to_border'] = model_output_df.index.map(edge_distance_to_border)
-    model_output_df['hplot_signed_distance_to_border'] = model_output_df['distance_to_border']
-    model_output_df.loc[model_output_df['is_base_region'], 'hplot_signed_distance_to_border'] *= -1
-    model_output_df['hplot_signed_distance_to_border'] = model_output_df['hplot_signed_distance_to_border'].replace([np.inf, -np.inf], np.nan)
-    
+    model_output_df["distance_to_border"] = edge_dist
+    model_output_df["hplot_signed_distance_to_border"] = edge_dist.copy()
+    model_output_df.loc[model_output_df["is_base_region"], "hplot_signed_distance_to_border"] *= -1
+    model_output_df["hplot_signed_distance_to_border"] = (
+        model_output_df["hplot_signed_distance_to_border"].replace([np.inf, -np.inf], np.nan)
+    )
     return model_output_df
 
 
