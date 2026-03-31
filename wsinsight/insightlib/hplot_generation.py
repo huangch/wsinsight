@@ -112,6 +112,21 @@ def _worker(
     prob_prefix = "prob_"
     base_targets = {f"{prob_prefix}{bt}" for bt in base_type_list}
     target_targets = {f"{prob_prefix}{tt}" for tt in target_type_list}
+    available_prob_cols = set(prob_columns)
+    if not (base_targets & available_prob_cols):
+        print(
+            f"WARNING: [{slide_id}] None of the base types {sorted(base_targets)} "
+            f"matched available columns {sorted(available_prob_cols)}. Skipping slide."
+        )
+        inner.close()
+        return slide_id, None, None
+    if not (target_targets & available_prob_cols):
+        print(
+            f"WARNING: [{slide_id}] None of the target types {sorted(target_targets)} "
+            f"matched available columns {sorted(available_prob_cols)}. Skipping slide."
+        )
+        inner.close()
+        return slide_id, None, None
     nodes_df["is_base_type"] = predicted_labels.isin(base_targets)
     nodes_df["is_target_type"] = predicted_labels.isin(target_targets)
     nodes_df = compute_cell_center_points(nodes_df)
