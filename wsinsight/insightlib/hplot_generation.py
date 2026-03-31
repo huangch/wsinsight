@@ -73,20 +73,19 @@ def _worker(
             hmetric_dict = json.load(fp)
         return slide_id, hplot_df, hmetric_dict
 
-    # desc = slide_id if len(slide_id) <= 32 else slide_id[:29] + "..."
-    # inner = tqdm(
-    #     total=len(_WORKER_STEPS),
-    #     desc=desc,
-    #     position=pbar_position,
-    #     leave=False,
-    #     unit="step",
-    #     dynamic_ncols=True,
-    # )
+    desc = slide_id if len(slide_id) <= 32 else slide_id[:29] + "..."
+    inner = tqdm(
+        total=len(_WORKER_STEPS),
+        desc=desc,
+        position=pbar_position,
+        leave=False,
+        unit="step",
+        dynamic_ncols=True,
+    )
 
     def _step(name: str) -> None:
-        pass
-        # inner.set_postfix_str(name)
-        # inner.update(1)
+        inner.set_postfix_str(name)
+        inner.update(1)
 
     mpp = None
     if slide_mpp_lookup:
@@ -100,13 +99,13 @@ def _worker(
         with model_output_csv.open("r", encoding="utf-8") as fp:
             nodes_df = pd.read_csv(fp)
     except Exception:
-        # inner.close()
+        inner.close()
         return slide_id, None, None
     _step("load CSV")
 
     prob_columns = [c for c in nodes_df.columns.to_list() if c.startswith("prob_")]
     if not prob_columns:
-        # inner.close()
+        inner.close()
         return slide_id, None, None
 
     predicted_labels = nodes_df[prob_columns].idxmax(axis=1)
@@ -122,7 +121,7 @@ def _worker(
     _step("triangulation")
 
     if "source" not in edges_df.columns or "target" not in edges_df.columns:
-        # inner.close()
+        inner.close()
         return slide_id, None, None
 
     k_neighbors_results, A_sparse, Mk_sparse = k_hop_neighbors(len(nodes_df), edges_df, hplot_k)
@@ -163,7 +162,7 @@ def _worker(
         json.dump(hmetric_dict, fp, indent=2)
     _step("save outputs")
 
-    # inner.close()
+    inner.close()
     return slide_id, hplot_df, hmetric_dict
 
 
