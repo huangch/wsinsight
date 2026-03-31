@@ -60,8 +60,8 @@ def _worker(
     """Process a single slide to build cell layers, save intermediates, and compute metrics."""
 
     slide_id = wsi_path.stem
-    hplot_csv_name = wsi_path.with_name(slide_id).with_suffix(".csv").name
-    hmetric_json_name = wsi_path.with_name(slide_id).with_suffix(".json").name
+    hplot_csv_name = model_output_csv.name
+    hmetric_json_name = model_output_csv.with_suffix(".json").name
     hplot_csv = insight_dir / "hplots" / hplot_csv_name
     hmetric_json = insight_dir / "hmetrics" / hmetric_json_name
     cells_csv = insight_dir / "cells" / hplot_csv_name
