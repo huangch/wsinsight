@@ -312,7 +312,7 @@ def hplot_generation(
         raise ValueError("base_type_list and target_type_list must be provided")
 
     hplot_df = pd.DataFrame(
-        {"id": [], "layer": [], "value": [], "target_count": [], "all_count": [], "distance": []}
+        {"id": [], "layer": [], "target_prop": [], "target_count": [], "base_prop": [], "base_count": [], "all_count": [], "distance": []}
     )
     hmetrics_df = pd.DataFrame(
         {
@@ -392,6 +392,8 @@ def hplot_generation(
                 "layer",
                 "target_type_prop",
                 "target_type_count",
+                "base_type_prop",
+                "base_type_count",
                 "all_type_count",
                 "distance",
             ]
@@ -408,19 +410,21 @@ def hplot_generation(
                 int(layer): (
                     row.get("target_type_prop", np.nan),
                     row.get("target_type_count", np.nan),
+                    row.get("base_type_prop", np.nan),
+                    row.get("base_type_count", np.nan),
                     row.get("all_type_count", np.nan),
                     row.get("distance", np.nan),
                 )
                 for layer, row in clean_df.set_index("layer")[
-                    ["target_type_prop", "target_type_count", "all_type_count", "distance"]
+                    ["target_type_prop", "target_type_count", "base_type_prop", "base_type_count", "all_type_count", "distance"]
                 ].iterrows()
             }
 
             for layer in range(mn, mx + 1):
-                value, target_count, all_count, distance = layer_lookup.get(
-                    layer, (np.nan, np.nan, np.nan, np.nan)
+                target_prop, target_count, base_prop, base_count, all_count, distance = layer_lookup.get(
+                    layer, (np.nan, np.nan, np.nan, np.nan, np.nan, np.nan)
                 )
-                hplot_df.loc[len(hplot_df)] = [image_id, layer, value, target_count, all_count, distance]
+                hplot_df.loc[len(hplot_df)] = [image_id, layer, target_prop, target_count, base_prop, base_count, all_count, distance]
 
             hmetrics_df.loc[len(hmetrics_df)] = [
                 image_id,
