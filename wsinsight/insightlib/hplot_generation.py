@@ -55,6 +55,7 @@ def _worker(
     range_max: int | None,
     samples_with_valid_range_only: bool,
     slide_mpp_lookup: Mapping[str, float] | None = None,
+    overwrite: bool = False,
     pbar_position: int = 1,
 ):
     """Process a single slide to build cell layers, save intermediates, and compute metrics."""
@@ -66,7 +67,7 @@ def _worker(
     hmetric_json = insight_dir / "hmetrics" / hmetric_json_name
     cells_csv = insight_dir / "cells" / hplot_csv_name
 
-    if hplot_csv.exists() and hmetric_json.exists() and cells_csv.exists():
+    if not overwrite and hplot_csv.exists() and hmetric_json.exists() and cells_csv.exists():
         with hplot_csv.open("r", encoding="utf-8") as fp:
             hplot_df = pd.read_csv(fp)
         with hmetric_json.open("r", encoding="utf-8") as fp:
@@ -236,6 +237,7 @@ def hplot_generation(
     hplot_samples_with_valid_range_only: bool = False,
     num_workers: int = 8,
     slide_mpp_lookup: Mapping[str, float] | None = None,
+    overwrite: bool = False,
 ) -> list[str]:
     """Compute H-Plot layers/metrics for WSInsight outputs and persist aggregated CSVs."""
 
@@ -359,6 +361,7 @@ def hplot_generation(
                 hplot_range_max,
                 hplot_samples_with_valid_range_only,
                 slide_mpp_lookup,
+                overwrite,
             )
         )
 

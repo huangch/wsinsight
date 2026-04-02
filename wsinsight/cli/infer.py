@@ -755,6 +755,13 @@ def _optional_uri_paths(ctx: click.Context, param: click.Option, value):
     show_default=True,
     help="Skip samples lacking both inner/outer layer bounds so only valid H-Plot ranges contribute to stats.",
 )
+@click.option(
+    "--hplot-overwrite",
+    is_flag=True,
+    default=False,
+    show_default=True,
+    help="Overwrite existing H-Plot results instead of skipping slides that already have outputs.",
+)
 # @click.option(
 #     "--cme-cellular",
 #     is_flag=True,
@@ -844,6 +851,7 @@ def infer(
     hplot_range_max: int = None,
     hplot_range_min: int = None,
     hplot_samples_with_valid_range_only: bool = False,
+    hplot_overwrite: bool = False,
     region_overwrite: bool = False,
     # cme_cellular: bool = False,
     # cme_annotation: bool = False,
@@ -1250,6 +1258,7 @@ def infer(
             hplot_samples_with_valid_range_only=hplot_samples_with_valid_range_only,
             num_workers=1 if num_workers == 0 else num_workers,
             slide_mpp_lookup=slide_mpp_lookup or None,
+            overwrite=hplot_overwrite,
         )
         
         if failed_hplot_generation:

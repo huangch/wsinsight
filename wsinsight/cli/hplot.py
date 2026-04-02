@@ -144,6 +144,13 @@ _STORAGE_KWARGS = _storage_kwargs()
     help="H-Plot computing uses only samples with valid range of cellular-wise layers.",
 )
 @click.option(
+    "--hplot-overwrite",
+    is_flag=True,
+    default=False,
+    show_default=True,
+    help="Overwrite existing H-Plot results instead of skipping slides that already have outputs.",
+)
+@click.option(
     "--num-workers",
     default=8,
     show_default=True,
@@ -163,6 +170,7 @@ def hplot(
     hplot_range_max: int | None = None,
     hplot_range_min: int | None = None,
     hplot_samples_with_valid_range_only: bool = False,
+    hplot_overwrite: bool = False,
     num_workers: int = 8,
 ) -> None:
     """Run H-Plot analysis on inference outputs held inside ``results_dir``."""
@@ -201,6 +209,7 @@ def hplot(
         hplot_range_min=hplot_range_min,
         hplot_samples_with_valid_range_only=hplot_samples_with_valid_range_only,
         num_workers=num_workers,
+        overwrite=hplot_overwrite,
     )
 
     if failed_hplot_generation:

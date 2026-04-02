@@ -147,6 +147,7 @@ _INFER_PARAM_NAMES: tuple[str, ...] = (
     "hplot_range_max",
     "hplot_range_min",
     "hplot_samples_with_valid_range_only",
+    "hplot_overwrite",
     "region_overwrite",
     # "cme_cellular",
     # "cme_annotation",
@@ -585,6 +586,13 @@ def _select_kwargs(values: dict[str, Any], keys: tuple[str, ...]) -> dict[str, A
     help="H-Plot computing uses only samples with valid range of cellular-wise layers.",
 )
 @click.option(
+    "--hplot-overwrite",
+    is_flag=True,
+    default=False,
+    show_default=True,
+    help="Overwrite existing H-Plot results instead of skipping slides that already have outputs.",
+)
+@click.option(
     "--region-overwrite",
     is_flag=True,
     default=False,
@@ -672,6 +680,7 @@ def run(
     hplot_range_max: int | None = None,
     hplot_range_min: int | None = None,
     hplot_samples_with_valid_range_only: bool = False,
+    hplot_overwrite: bool = False,
     region_overwrite: bool = False,
     # cme_cellular: bool = False,
     # cme_annotation: bool = False,
