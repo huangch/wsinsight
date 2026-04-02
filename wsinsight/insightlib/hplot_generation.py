@@ -269,7 +269,7 @@ def hplot_finalize(output_dir: URIPath, overwrite: bool = False) -> None:
     _COL_ORDER = ["id", "layer", "target_prop", "target_count", "base_prop", "base_count", "all_count", "distance"]
 
     hplot_frames: list[pd.DataFrame] = []
-    for csv_file in hplot_files:
+    for csv_file in tqdm(hplot_files, desc="Assembling hplot CSVs", unit="slide"):
         slide_id = csv_file.stem
         with csv_file.open("r", encoding="utf-8") as fp:
             df = pd.read_csv(fp)
@@ -322,7 +322,7 @@ def hplot_finalize(output_dir: URIPath, overwrite: bool = False) -> None:
         "weighted_global_enrichment_index",
     ]
     hmetrics_rows: list[dict] = []
-    for json_file in hmetric_files:
+    for json_file in tqdm(hmetric_files, desc="Assembling hmetrics JSONs", unit="slide"):
         slide_id = json_file.stem
         with json_file.open("r", encoding="utf-8") as fp:
             hm = json.load(fp)
