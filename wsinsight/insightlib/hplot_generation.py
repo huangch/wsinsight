@@ -222,6 +222,150 @@ def upsert_by_key(df_old: pd.DataFrame, df_new: pd.DataFrame, key: str) -> pd.Da
     return out
 
 
+def hplot_finalize(output_dir: URIPath, overwrite: bool = False) -> None:
+    """Rebuild hplot-outputs.csv and hmetrics-outputs.csv from per-slide intermediates.
+
+    Reads all per-slide CSV/JSON files written by hplot_generation into
+    ``output_dir/hplot-outputs-csv/hplots/`` and
+    ``output_dir/hplot-outputs-csv/hmetrics/`` and assembles the two
+    aggregated summary files at the top level of ``output_dir``.
+
+    When *overwrite* is False and both summary files already exist, the
+    function returns without modifying anything.
+    """
+
+    hplot_hplots_csv = output_dir / "hplot-outputs.csv"
+    hplot_hmetrics_csv = output_dir / "hmetrics-outputs.csv"
+
+    if not overwrite and hplot_hplots_csv.exists() and hplot_hmetrics_csv.exists():
+        print(
+            "hplot-outputs.csv and hmetrics-outputs.csv already exist. "
+            "Use --hplot-overwrite to regenerate."
+        )
+        return
+
+    hplot_outputs_csv_dir = output_dir / "hplot-outputs-csv"
+    hplots_dir = hplot_outputs_csv_dir / "hplots"
+    hmetrics_dir = hplot_outputs_csv_dir / "hmetrics"
+
+    hplot_files = sorted(hplots_dir.iterdir()) if hplots_dir.exists() else []
+    hmetric_files = sorted(hmetrics_dir.iterdir()) if hmetrics_dir.exists() else []
+
+    hplot_files = [f for f in hplot_files if f.name.endswith(".csv")]
+    hmetric_files = [f for f in hmetric_files if f.name.endswith(".json")]
+
+    if not hplot_files and not hmetric_files:
+        raise ValueError(
+            f"No per-slide hplot CSV or hmetric JSON files found under {hplot_outputs_csv_dir}."
+        )
+
+    _COL_RENAME = {
+        "target_type_prop": "target_prop",
+        "target_type_count": "target_count",
+        "base_type_prop": "base_prop",
+        "base_type_count": "base_count",
+        "all_type_count": "all_count",
+    }
+    _COL_ORDER = ["id", "layer", "target_prop", "target_count", "base_prop", "base_count", "all_count", "distance"]
+
+    hplot_frames: list[pd.DataFrame] = []
+    for csv_file in hplot_files:
+        slide_id = csv_file.stem
+        with csv_file.open("r", encoding="utf-8") as fp:
+            df = pd.read_csv(fp)
+        df["layer"] = pd.to_numeric(df["layer"], errors="coerce")
+        df = df[np.isfinite(df["layer"])].copy()
+        if df.empty:
+            continue
+        df["layer"] = df["layer"].astype(int)
+        src_cols = [c for c in ["layer", "target_type_prop", "target_type_count",
+                                 "base_type_prop", "base_type_count", "all_type_count", "distance"]
+                    if c in df.columns]
+        df = df[src_cols].copy()
+        df.rename(columns=_COL_RENAME, inplace=True)
+
+        # Gap-fill: ensure every integer layer in [min, max] has a row
+        mn, mx = int(df["layer"].min()), int(df["layer"].max())
+        layer_lookup = df.set_index("layer").to_dict("index")
+        rows = []
+        for layer in range(mn, mx + 1):
+            entry = layer_lookup.get(layer, {})
+            rows.append({
+                "id": slide_id,
+                "layer": layer,
+                "target_prop": entry.get("target_prop", np.nan),
+                "target_count": entry.get("target_count", np.nan),
+                "base_prop": entry.get("base_prop", np.nan),
+                "base_count": entry.get("base_count", np.nan),
+                "all_count": entry.get("all_count", np.nan),
+                "distance": entry.get("distance", np.nan),
+            })
+        hplot_frames.append(pd.DataFrame(rows, columns=_COL_ORDER))
+
+    if hplot_frames:
+        merged_hplot = pd.concat(hplot_frames, ignore_index=True)
+        merged_hplot.drop_duplicates(subset=["id", "layer"], keep="last", inplace=True)
+        merged_hplot.sort_values(["id", "layer"], inplace=True, ignore_index=True)
+        with hplot_hplots_csv.open("w", encoding="utf-8", newline="") as fp:
+            merged_hplot.to_csv(fp, index=False)
+
+    _HMETRICS_COLS = [
+        "id", "valid",
+        "convergence_distance (intra)", "abundance_score (intra)", "penetration_score (intra)",
+        "layerwise_enrichment_index (intra)", "global_enrichment_index (intra)",
+        "weighted_global_enrichment_index (intra)",
+        "convergence_distance (peri)", "abundance_score (peri)", "proximity_score (peri)",
+        "layerwise_enrichment_index (peri)", "global_enrichment_index (peri)",
+        "weighted_global_enrichment_index (peri)",
+        "exclusion_index", "desert_index", "inflammation_index",
+        "layerwise_enrichment_index", "global_enrichment_index",
+        "weighted_global_enrichment_index",
+    ]
+    hmetrics_rows: list[dict] = []
+    for json_file in hmetric_files:
+        slide_id = json_file.stem
+        with json_file.open("r", encoding="utf-8") as fp:
+            hm = json.load(fp)
+        intra = hm.get("intra", {})
+        peri = hm.get("peri", {})
+        intra_ab = intra.get("abundance_score", 0.0)
+        peri_ab = peri.get("abundance_score", 0.0)
+        hmetrics_rows.append({
+            "id": slide_id,
+            "valid": hm.get("valid"),
+            "convergence_distance (intra)": intra.get("convergence_distance"),
+            "abundance_score (intra)": intra_ab,
+            "penetration_score (intra)": intra.get("penetration_score"),
+            "layerwise_enrichment_index (intra)": intra.get("layerwise_enrichment_index"),
+            "global_enrichment_index (intra)": intra.get("global_enrichment_index"),
+            "weighted_global_enrichment_index (intra)": intra.get("weighted_global_enrichment_index"),
+            "convergence_distance (peri)": peri.get("convergence_distance"),
+            "abundance_score (peri)": peri_ab,
+            "proximity_score (peri)": peri.get("proximity_score"),
+            "layerwise_enrichment_index (peri)": peri.get("layerwise_enrichment_index"),
+            "global_enrichment_index (peri)": peri.get("global_enrichment_index"),
+            "weighted_global_enrichment_index (peri)": peri.get("weighted_global_enrichment_index"),
+            "exclusion_index": peri_ab / (1e-6 + peri_ab + intra_ab),
+            "desert_index": 1 - 0.5 * (intra_ab + peri_ab),
+            "inflammation_index": 0.5 * (intra_ab + peri_ab),
+            "layerwise_enrichment_index": 0.5 * (
+                peri.get("layerwise_enrichment_index", 0.0) + intra.get("layerwise_enrichment_index", 0.0)
+            ),
+            "global_enrichment_index": 0.5 * (
+                intra.get("global_enrichment_index", 0.0) + peri.get("global_enrichment_index", 0.0)
+            ),
+            "weighted_global_enrichment_index": 0.5 * (
+                intra.get("weighted_global_enrichment_index", 0.0) + peri.get("weighted_global_enrichment_index", 0.0)
+            ),
+        })
+
+    if hmetrics_rows:
+        merged_hmetrics = pd.DataFrame(hmetrics_rows, columns=_HMETRICS_COLS)
+        merged_hmetrics.drop_duplicates(subset=["id"], keep="last", inplace=True)
+        with hplot_hmetrics_csv.open("w", encoding="utf-8", newline="") as fp:
+            merged_hmetrics.to_csv(fp, index=False)
+
+
 def hplot_generation(
     wsi_dir: str | Path | URIPath | None,
     slide_paths: List[URIPath] | None,

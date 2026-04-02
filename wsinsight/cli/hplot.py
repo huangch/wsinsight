@@ -12,7 +12,7 @@ from typing import Iterable, List
 import click
 from platformdirs import user_cache_dir
 
-from ..insightlib.hplot_generation import hplot_generation
+from ..insightlib.hplot_generation import hplot_generation, hplot_finalize
 from ..uri_path import URIPath, URIPathType
 
 
@@ -220,3 +220,38 @@ def hplot(
         click.secho("\n".join(failed_hplot_generation), fg="yellow")
 
     click.secho("\nWSInsight tasks are all finished.\n", fg="green")
+
+
+@click.command("hplot-finalize")
+@click.option(
+    "-o",
+    "--output-dir",
+    type=URIPathType(exists=True, **_STORAGE_KWARGS),
+    required=True,
+    help="Results directory containing hplot per-slide outputs. The aggregated "
+         "hplot-outputs.csv and hmetrics-outputs.csv will be written here.",
+)
+@click.option(
+    "--hplot-overwrite",
+    is_flag=True,
+    default=False,
+    show_default=True,
+    help="Overwrite existing hplot-outputs.csv and hmetrics-outputs.csv if they already exist.",
+)
+def hplot_finalize_cmd(
+    *,
+    output_dir: URIPath,
+    hplot_overwrite: bool = False,
+) -> None:
+    """Rebuild hplot-outputs.csv and hmetrics-outputs.csv from per-slide intermediates.
+
+    Use this after running parallel ``hplot`` jobs that share the same
+    ``--output-dir``. Each worker writes its per-slide files; this command
+    assembles the final aggregated CSVs from all of them.
+    """
+
+    _assert_directory(output_dir, "--output-dir")
+
+    click.secho("\nFinalizing H-Plot outputs.\n", fg="green")
+    hplot_finalize(output_dir=output_dir, overwrite=hplot_overwrite)
+    click.secho("\nH-Plot finalization complete.\n", fg="green")
