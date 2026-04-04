@@ -148,7 +148,7 @@ _INFER_PARAM_NAMES: tuple[str, ...] = (
     "hplot_range_min",
     "hplot_samples_with_valid_range_only",
     "hplot_overwrite",
-    "region_overwrite",
+    "reg_overwrite",
     # "cme_cellular",
     # "cme_annotation",
     # "cme_soft_mode",
@@ -593,7 +593,7 @@ def _select_kwargs(values: dict[str, Any], keys: tuple[str, ...]) -> dict[str, A
     help="Overwrite existing H-Plot results instead of skipping slides that already have outputs.",
 )
 @click.option(
-    "--region-overwrite",
+    "--reg-overwrite",
     is_flag=True,
     default=False,
     show_default=True,
@@ -681,7 +681,7 @@ def run(
     hplot_range_min: int | None = None,
     hplot_samples_with_valid_range_only: bool = False,
     hplot_overwrite: bool = False,
-    region_overwrite: bool = False,
+    reg_overwrite: bool = False,
     # cme_cellular: bool = False,
     # cme_annotation: bool = False,
     # cme_soft_mode: bool = False,

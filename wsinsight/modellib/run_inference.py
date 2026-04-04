@@ -639,7 +639,7 @@ def run_inference(
                         print(
                             f"WARNING: skipping region registration for {wsi_path.stem} "
                             f"— region_* columns already present. "
-                            f"Use --region-overwrite to replace."
+                            f"Use --reg-overwrite to replace."
                         )
                         with slide_csv.open("wb") as fh:
                             slide_df.to_csv(fh, index=False)

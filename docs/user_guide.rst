@@ -48,17 +48,28 @@ WSInsight provides a CLI. Use :code:`--help` to explore available options:
 
 Three commands are available today:
 
-=================  ================================================================
-Command            Purpose
-=================  ================================================================
-``wsinsight run``  Convenience wrapper that extracts patches then runs inference/exports.
-``wsinsight patch``  Generate tissue masks + patch caches inside ``--results-dir``.
-``wsinsight infer``  Reuse cached patches to run models and emit GeoJSON/OME exports.
-=================  ================================================================
+=========================  ================================================================
+Command                    Purpose
+=========================  ================================================================
+``wsinsight run``          Convenience wrapper that extracts patches then runs inference/exports.
+``wsinsight patch``        Generate tissue masks + patch caches inside ``--results-dir``.
+``wsinsight infer``        Reuse cached patches to run models and emit GeoJSON/OME exports.
+                           Supports inline region registration via
+                           ``--region-inference-dir`` and ``--reg-overwrite``.
+``wsinsight reg``          Post-hoc object-to-region registration on already-completed runs.
+                           Enriches object CSVs with ``region_prob_*`` columns.
+``wsinsight hplot``        Standalone H-Plot analysis on existing object-based inference
+                           outputs.
+``wsinsight hplot-finalize``  Aggregate per-slide H-Plot intermediates into a cohort-level
+                           summary.
+=========================  ================================================================
 
 Pick ``run`` for one-shot processing. Switch to the explicit ``patch`` → ``infer`` flow
 for large cohorts, resumable jobs, or when you want to reuse the same patches across
-multiple model configurations. All commands share the same URI-aware options and support
+multiple model configurations. Run ``hplot`` on completed cell-detection outputs to
+compute spatial tumour-microenvironment metrics, then ``hplot-finalize`` to assemble the
+cohort-level summary. Use ``reg`` to enrich an earlier run with region-level probabilities
+without re-running inference. All commands share the same URI-aware options and support
 local folders, ``s3://`` buckets, and ``gdc-manifest://`` manifests.
 
 
@@ -180,10 +191,121 @@ scratch volume, and write final GeoJSON/OME-CSV artifacts back to another S3 buc
 without any code changes.
 
 
+Region registration
+-------------------
+
+``wsinsight reg`` enriches existing object-level CSV outputs with region-level class
+probabilities derived from a separate region-based inference run. This is equivalent to
+running ``wsinsight infer`` with ``--region-inference-dir``, but operates on
+already-completed runs without repeating inference.
+
+Required options:
+
+* ``-o / --results-dir`` — directory of the prior object-based run.  Must contain a
+  ``model-outputs-csv/`` subfolder.
+* ``-r / --region-inference-dir`` — directory of the prior region-level run.  Must
+  contain its own ``model-outputs-csv/`` subfolder.
+
+Spatial matching assigns each detected object to its enclosing region polygon.  The
+output CSVs gain ``region_prob_*`` columns for every class in the region model.
+
+Optional options:
+
+* ``-i / --wsi-dir`` — when supplied, the slide list is derived from filenames in this
+  directory (images are not opened).  This mirrors the shard-enumeration behaviour of
+  ``run`` / ``infer`` / ``hplot``.
+* ``--reg-overwrite`` — by default, any slide whose object CSV already contains
+  ``region_*`` columns is skipped with a warning.  Pass ``--reg-overwrite`` to
+  unconditionally overwrite those columns.
+* ``--geojson`` / ``--omecsv`` — export the enriched CSVs to GeoJSON or OME-CSV after
+  registration.
+* ``--export-workers`` (default 4) — worker processes for the export step.
+
+Example::
+
+    wsinsight reg \
+        --results-dir results/ \
+        --region-inference-dir results-region/ \
+        --reg-overwrite \
+        --geojson
+
+
+H-Plot analysis
+---------------
+
+``wsinsight hplot`` computes H-Plot spatial metrics from existing cell-detection
+inference outputs inside ``--results-dir``.  It builds a proximity graph over detected
+cells, identifies tumour-core regions, and calculates layer-wise abundance profiles for
+the requested cell types.
+
+Required options:
+
+* ``-i / --wsi-dir`` — slide directory (used for slide enumeration; images are not
+  opened).
+* ``-o / --results-dir`` — directory containing a ``model-outputs-csv/`` subfolder from
+  a prior object-based inference run.
+* ``--hplot-base-types`` — comma-separated base cell type(s) that define tumour clusters
+  (e.g. ``tumor``).
+* ``--hplot-target-types`` — comma-separated target cell type(s) for the layer-wise
+  proportion computation (e.g. ``lymphocyte``).
+
+Tuning options:
+
+* ``--hplot-max-neighbor-distance`` (default 25.0 µm) — maximum distance to a
+  neighbouring cell when constructing the proximity graph.
+* ``--hplot-k`` (default 2) — maximum edge distance (graph hops) defining a cell's
+  neighbourhood.
+* ``--hplot-n`` (default 8) — minimum neighbourhood size required for a cell to be
+  included in tumour-region determination.
+* ``--hplot-r`` (default 0.5) — minimum fraction of base-type cells in a cell's
+  neighbourhood for that cell to be counted as part of a tumour region.
+* ``--hplot-range-max`` — maximum layer index outward from the tumour boundary to
+  include in the range window.
+* ``--hplot-range-min`` — minimum layer index inward into the tumour to include.
+* ``--hplot-samples-with-valid-range-only`` — restrict H-Plot computation to slides
+  that have cells at every layer within the range window.
+* ``--hplot-overwrite`` — overwrite existing per-slide H-Plot outputs instead of
+  skipping slides that already have results.
+* ``--num-workers`` (default 8) — number of slides to process concurrently.
+
+Example::
+
+    wsinsight hplot \
+        --wsi-dir slides/ \
+        --results-dir results/ \
+        --hplot-base-types tumor \
+        --hplot-target-types lymphocyte \
+        --hplot-k 2 \
+        --hplot-n 8 \
+        --hplot-r 0.5 \
+        --num-workers 16
+
+
+H-Plot finalization
+-------------------
+
+``wsinsight hplot-finalize`` aggregates per-slide H-Plot intermediates that were written
+by one or more ``hplot`` jobs into a single cohort-level summary.  Run this command once
+after all parallel ``hplot`` workers have finished:
+
+* ``-o / --output-dir`` (required) — the shared ``--results-dir`` used by the ``hplot``
+  jobs.  The command reads per-slide H-Plot files and writes two files into this
+  directory:
+
+  * ``hplot-outputs.csv`` — cohort-level H-Plot profiles
+  * ``hmetrics-outputs.csv`` — cohort-level H-metric summary statistics
+
+* ``--hplot-overwrite`` — overwrite the aggregated CSVs if they already exist.
+
+Example::
+
+    wsinsight hplot-finalize \
+        --output-dir results/ \
+        --hplot-overwrite
+
+
 Output structure
 ----------------
-
-Each inference run produces deterministic directories inside :code:`--results-dir`:
 
 ::
 
@@ -193,6 +315,9 @@ Each inference run produces deterministic directories inside :code:`--results-di
    ├── model-outputs-geojson/  # spatial annotations for QuPath/Geo viewers
    ├── model-outputs-omecsv/   # OME-compatible CSV exports (gzip)
    ├── patches/                # HDF5 with patch coordinates
+   ├── hplot-outputs/          # per-slide H-Plot intermediates
+   ├── hplot-outputs.csv       # cohort-level H-Plot summary (after hplot-finalize)
+   ├── hmetrics-outputs.csv    # cohort-level H-metrics summary (after hplot-finalize)
    └── run_metadata_*.json     # configuration and runtime info
 
 GeoJSON/OME outputs can be loaded into QuPath, napari, or GIS tools for spatial analysis.

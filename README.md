@@ -163,12 +163,14 @@ The editable install enables rapid iteration on CLI commands, model definitions,
 
 Command | Purpose
 --- | ---
-`wsinsight run` | Segment tissue, extract patches, execute model inference, and emit CSV/GeoJSON/OME-CSV outputs (one-shot orchestration of the two commands below).
+`wsinsight run` | Segment tissue, extract patches, execute model inference, and emit CSV/GeoJSON/OME-CSV outputs (one-shot orchestration of `patch` + `infer`).
 `wsinsight patch` | Perform tissue segmentation, cache/crop patches to HDF5, and prepare metadata for later inference runs; safe to rerun to resume interrupted jobs.
-`wsinsight infer` | Load cached patches, run the selected model, and export QuPath/GeoJSON/OME-CSV artifacts.
-`wsinsight reg` | Post-hoc object-to-region registration: enrich existing object-level CSV outputs with `region_prob_*` columns derived from a separate region-level inference run (`-r`). Equivalent to running `infer` with `--region-inference-dir`, but works on already-completed runs without re-running inference.
+`wsinsight infer` | Load cached patches, run the selected model, and export QuPath/GeoJSON/OME-CSV artifacts. Optionally enrich object CSVs with region-level probabilities via `--region-inference-dir` and `--reg-overwrite`.
+`wsinsight reg` | Post-hoc object-to-region registration: enrich existing object-level CSV outputs with `region_prob_*` columns derived from a separate region-level inference run (`-r`). Equivalent to running `infer` with `--region-inference-dir`, but works on already-completed runs without re-running inference. Use `--reg-overwrite` to replace existing `region_*` columns.
+`wsinsight hplot` | Standalone H-Plot analysis on existing inference outputs. Requires cell-type-aware model outputs and both `--hplot-base-types` and `--hplot-target-types`. Computes layer-wise cell-type proportions from tumour boundary outward.
+`wsinsight hplot-finalize` | Aggregate per-slide H-Plot intermediates into a single `hplot-outputs.csv` and `hmetrics-outputs.csv`. Use after running parallel `hplot` jobs that share the same `--output-dir`.
 
-Pick `run` when you want a one-liner for single slides or small batches; switch to the explicit `patch` → `infer` flow to resume large jobs, share patch caches across model variants, or parallelize stages on separate machines. All commands share global options such as `--backend` (`openslide` or `tiffslide`) and `--log-level`. Use `wsinsight <command> --help` for the full option list, including QuPath integration flags and segmentation controls.
+Pick `run` when you want a one-liner for single slides or small batches; switch to the explicit `patch` → `infer` flow to resume large jobs, share patch caches across model variants, or parallelize stages on separate machines. Run `wsinsight hplot` on completed object-based inference outputs to compute spatial tumour-microenvironment metrics, then `wsinsight hplot-finalize` to assemble the cohort-level summary. All commands share global options such as `--backend` (`openslide` or `tiffslide`) and `--log-level`. Use `wsinsight <command> --help` for the full option list, including QuPath integration flags and segmentation controls.
 
 ## Results Layout
 
