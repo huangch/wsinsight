@@ -390,7 +390,7 @@ def compute_enrichment_index(
         n_counts  = np.maximum(np.asarray(Mk_sparse @ ones).ravel(), 1.0)
         T = t_counts / n_counts
         B = b_counts / n_counts
-        nodes_df["hplot_enrichment_index"] = T * T / (T + B + eps)
+        nodes_df["enrichment_index"] = T * T / (T + B + eps)
         return nodes_df
 
     # --- fallback: ThreadPoolExecutor path (used when Mk_sparse not available) ---
@@ -403,7 +403,7 @@ def compute_enrichment_index(
     with ThreadPoolExecutor(max_workers=max_workers) as ex:
         for i, value in ex.map(_enrichment_for_cell, tasks):
             out[i] = value
-    nodes_df["hplot_enrichment_index"] = out
+    nodes_df["enrichment_index"] = out
     return nodes_df
 
 
@@ -457,7 +457,7 @@ def compute_enrichment_index(
 #         out[i] = T * T / (T + B + eps)
 #
 #     # 写入新列
-#     nodes_df["hplot_enrichment_index"] = out
+#     nodes_df["enrichment_index"] = out
 #     return nodes_df
 
 
@@ -684,7 +684,7 @@ def calculate_distance_to_border(model_output_df, adjacency_list, A_sparse=None)
 
     Returns:
         The DataFrame with new columns 'distance_to_border' and
-        'hplot_signed_distance_to_border'.
+        'signed_distance_to_border'.
     """
     N = len(model_output_df)
     border_mask = model_output_df["is_base_border"].to_numpy(dtype=bool)
@@ -731,10 +731,10 @@ def calculate_distance_to_border(model_output_df, adjacency_list, A_sparse=None)
         edge_dist = np.array([edge_distance_to_border[i] for i in model_output_df.index], dtype=float)
 
     model_output_df["distance_to_border"] = edge_dist
-    model_output_df["hplot_signed_distance_to_border"] = edge_dist.copy()
-    model_output_df.loc[model_output_df["is_base_region"], "hplot_signed_distance_to_border"] *= -1
-    model_output_df["hplot_signed_distance_to_border"] = (
-        model_output_df["hplot_signed_distance_to_border"].replace([np.inf, -np.inf], np.nan)
+    model_output_df["signed_distance_to_border"] = edge_dist.copy()
+    model_output_df.loc[model_output_df["is_base_region"], "signed_distance_to_border"] *= -1
+    model_output_df["signed_distance_to_border"] = (
+        model_output_df["signed_distance_to_border"].replace([np.inf, -np.inf], np.nan)
     )
     return model_output_df
 
@@ -744,26 +744,26 @@ def compute_hplot(df_with_distances, filtered_edges_df):
     Calculates the target ratio by cumulative average distance to the tumor border.
 
     Args:
-        df_with_distances: DataFrame with 'hplot_signed_distance_to_border' and 'is_target' columns.
+        df_with_distances: DataFrame with 'signed_distance_to_border' and 'is_target' columns.
         filtered_edges_df: DataFrame with 'source', 'target', and 'length' columns representing filtered edges.
 
     Returns:
         A pandas DataFrame with 'cumulative_avg_edge_length' and 'target_type_prop' columns,
         sorted by cumulative_avg_edge_length, ready for plotting.
     """
-    # Group by hplot_signed_distance_to_border and calculate the ratio of targets
+    # Group by signed_distance_to_border and calculate the ratio of targets
     # Handle potential empty groups or no targets at a distance
     # Exclude NaN distances from grouping
     
-    # base_type_prop_by_distance = df_with_distances.dropna(subset=['hplot_signed_distance_to_border']).groupby('hplot_signed_distance_to_border')[f'is_base_type'].apply(lambda x: x.sum() / len(x) if len(x) > 0 else 0)
-    # target_type_prop_by_distance = df_with_distances.dropna(subset=['hplot_signed_distance_to_border']).groupby('hplot_signed_distance_to_border')[f'is_target_type'].apply(lambda x: x.sum() / len(x) if len(x) > 0 else 0)
+    # base_type_prop_by_distance = df_with_distances.dropna(subset=['signed_distance_to_border']).groupby('signed_distance_to_border')[f'is_base_type'].apply(lambda x: x.sum() / len(x) if len(x) > 0 else 0)
+    # target_type_prop_by_distance = df_with_distances.dropna(subset=['signed_distance_to_border']).groupby('signed_distance_to_border')[f'is_target_type'].apply(lambda x: x.sum() / len(x) if len(x) > 0 else 0)
 
-    # all_type_count_by_distance = df_with_distances.dropna(subset=['hplot_signed_distance_to_border']).groupby('hplot_signed_distance_to_border')[f'is_base_type'].apply(lambda x: len(x) if len(x) > 0 else 0)
-    # base_type_count_by_distance = df_with_distances.dropna(subset=['hplot_signed_distance_to_border']).groupby('hplot_signed_distance_to_border')[f'is_base_type'].apply(lambda x: x.sum() if len(x) > 0 else 0)
-    # target_type_count_by_distance = df_with_distances.dropna(subset=['hplot_signed_distance_to_border']).groupby('hplot_signed_distance_to_border')[f'is_target_type'].apply(lambda x: x.sum() if len(x) > 0 else 0)
+    # all_type_count_by_distance = df_with_distances.dropna(subset=['signed_distance_to_border']).groupby('signed_distance_to_border')[f'is_base_type'].apply(lambda x: len(x) if len(x) > 0 else 0)
+    # base_type_count_by_distance = df_with_distances.dropna(subset=['signed_distance_to_border']).groupby('signed_distance_to_border')[f'is_base_type'].apply(lambda x: x.sum() if len(x) > 0 else 0)
+    # target_type_count_by_distance = df_with_distances.dropna(subset=['signed_distance_to_border']).groupby('signed_distance_to_border')[f'is_target_type'].apply(lambda x: x.sum() if len(x) > 0 else 0)
 
-    valid_layers = df_with_distances.dropna(subset=['hplot_signed_distance_to_border'])
-    grouped_layers = valid_layers.groupby('hplot_signed_distance_to_border')
+    valid_layers = df_with_distances.dropna(subset=['signed_distance_to_border'])
+    grouped_layers = valid_layers.groupby('signed_distance_to_border')
     layer_counts = grouped_layers.agg(
         all_count=('is_base_type', 'size'),
         base_count=('is_base_type', 'sum'),
@@ -780,15 +780,15 @@ def compute_hplot(df_with_distances, filtered_edges_df):
 
     # Step 1: Calculate average edge length between adjacent layers
     average_edge_length_between_layers = {}
-    unique_distances = sorted(df_with_distances['hplot_signed_distance_to_border'].dropna().unique())
+    unique_distances = sorted(df_with_distances['signed_distance_to_border'].dropna().unique())
 
     for i in range(len(unique_distances) - 1):
         dist1 = unique_distances[i]
         dist2 = unique_distances[i+1]
 
         # Identify cells in the two adjacent layers
-        cells_in_dist1 = df_with_distances[df_with_distances['hplot_signed_distance_to_border'] == dist1].index
-        cells_in_dist2 = df_with_distances[df_with_distances['hplot_signed_distance_to_border'] == dist2].index
+        cells_in_dist1 = df_with_distances[df_with_distances['signed_distance_to_border'] == dist1].index
+        cells_in_dist2 = df_with_distances[df_with_distances['signed_distance_to_border'] == dist2].index
 
         # Find edges connecting cells in dist1 to cells in dist2
         connecting_edges = filtered_edges_df[

@@ -1,37 +1,293 @@
 Command reference
 =================
 
-Six CLI entry points are available:
+Eight CLI entry points are available:
 
-=========================  ================================================================
-Command                    Purpose
-=========================  ================================================================
-``wsinsight run``          One-shot workflow that patches slides then runs inference/exports.
-``wsinsight patch``        Extract tissue masks and patches, caching them in ``--results-dir``.
-``wsinsight infer``        Reuse cached patches to run models and exporters. Supports inline
-                           region registration via ``--region-inference-dir`` and
-                           ``--reg-overwrite``.
-``wsinsight reg``          Post-hoc object-to-region registration on already-completed runs.
-                           Enriches object CSVs with ``region_prob_*`` columns from a prior
-                           region-level run. Use ``--reg-overwrite`` to replace existing
-                           region columns.
-``wsinsight hplot``        Standalone H-Plot analysis on existing object-based inference
-                           outputs. Requires both ``--hplot-base-types`` and
-                           ``--hplot-target-types``.
+============================  ================================================================
+Command                       Purpose
+============================  ================================================================
+``wsinsight run``             One-shot workflow: tissue segmentation, patch extraction, model
+                              inference, and optional exports.  Accepts all ``infer`` options
+                              including ``--hplot`` and ``--ncomp``.
+``wsinsight patch``           Segment tissue and cache patches to HDF5; safe to rerun to
+                              resume interrupted jobs.
+``wsinsight infer``           Reuse cached patches to run models and exporters.  Supports
+                              inline H-Plot (``--hplot``) and neighborhood composition
+                              (``--ncomp``) analytics, region registration via
+                              ``--region-inference-dir``, and ``--reg-overwrite``.
+``wsinsight reg``             Post-hoc object-to-region registration on already-completed
+                              runs.  Enriches object CSVs with ``region_prob_*`` columns from
+                              a prior region-level run.  Use ``--reg-overwrite`` to replace
+                              existing region columns.
+``wsinsight hplot``           Standalone H-Plot analysis on existing object-based inference
+                              outputs.  Requires both ``--hplot-base-types`` and
+                              ``--hplot-target-types``.
 ``wsinsight hplot-finalize``  Aggregate per-slide H-Plot intermediates into cohort-level
-                           ``hplot-outputs.csv`` and ``hmetrics-outputs.csv``. Run this after
-                           parallel ``hplot`` jobs that share an output directory.
-=========================  ================================================================
+                              ``hplot-outputs.csv`` and ``hmetrics-outputs.csv``.  Run this
+                              after parallel ``hplot`` jobs that share an output directory.
+``wsinsight ncomp``           Neighborhood composition analysis on existing inference outputs.
+                              For each target cell, builds a Delaunay graph, collects k-hop
+                              neighbors, and records per-cell type counts and proportions.
+                              Can also run inline via ``wsinsight infer --ncomp`` or
+                              ``wsinsight run --ncomp``.
+============================  ================================================================
 
 Use ``run`` for simple single-machine jobs, and switch to the explicit ``patch`` → ``infer``
 flow when you need to resume work, share caches across models, or process slides on
-multiple nodes. Run ``hplot`` on completed cell-detection outputs to compute spatial
-tumour-microenvironment metrics and ``hplot-finalize`` to assemble the cohort-level summary.
-Use ``reg`` to enrich earlier runs with region-level probabilities without re-running
-inference. All commands share the same URI-aware options for local folders,
-``s3://`` buckets, and ``gdc-manifest://`` manifests.
+multiple nodes.  Both ``infer`` and ``run`` can trigger H-Plot and neighborhood composition
+inline via ``--hplot`` / ``--ncomp``.  Use the standalone ``hplot`` and ``ncomp`` commands
+to re-run analytics on existing inference outputs without repeating inference.  Run
+``hplot-finalize`` to assemble the cohort-level summary after parallel ``hplot`` jobs.  Use
+``reg`` to enrich earlier runs with region-level probabilities without re-running inference.
+All commands share the same URI-aware options for local folders, ``s3://`` buckets, and
+``gdc-manifest://`` manifests.
+
+
+Output file formats
+-------------------
+
+``model-outputs-csv/<slide>.csv``
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Produced by ``infer``, ``run``, and ``reg``.
+
+.. list-table::
+   :header-rows: 1
+   :widths: 35 65
+
+   * - Column
+     - Description
+   * - ``minx``, ``miny``
+     - Top-left corner of the patch/detection bounding box (pixels)
+   * - ``width``, ``height``
+     - Bounding box size (pixels)
+   * - ``prob_<class>``
+     - Model probability for each class (e.g. ``prob_tumor``)
+   * - ``qupath_detection_parent``
+     - Parent annotation name — only with ``--qupath-detection-dir``
+   * - ``region_minx``, ``region_miny``, ``region_width``, ``region_height``
+     - Matched region bounding box — only with ``--region-inference-dir``
+   * - ``region_prob_<class>``
+     - Region-level class probabilities — only with ``--region-inference-dir``
+
+
+``hplot-outputs-csv/hplots/<slide>.csv``
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Per-layer H-Plot curve.  One row per integer layer index.
+
+.. list-table::
+   :header-rows: 1
+   :widths: 35 65
+
+   * - Column
+     - Description
+   * - ``layer``
+     - Integer layer index; 0 = border, negative = inside base region, positive = outside
+   * - ``target_type_prop``, ``target_type_count``
+     - Proportion and count of target cells at this layer
+   * - ``base_type_prop``, ``base_type_count``
+     - Proportion and count of base cells at this layer
+   * - ``all_type_count``
+     - Total cell count at this layer
+   * - ``distance``
+     - Cumulative µm distance from the base-region border
+
+
+``hplot-outputs-csv/cells/<slide>.csv``
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Per-cell file: the original ``model-outputs-csv/<slide>.csv`` extended with spatial columns.
+
+.. list-table::
+   :header-rows: 1
+   :widths: 35 65
+
+   * - Column
+     - Description
+   * - ``minx``, ``miny``, ``width``, ``height``
+     - Inherited from inference output
+   * - ``prob_<class>``
+     - Inherited from inference output
+   * - ``center_x``, ``center_y``
+     - Cell centre in pixels
+   * - ``is_base_type``
+     - ``True`` if the cell's predicted class is a base type
+   * - ``is_target_type``
+     - ``True`` if the cell's predicted class is a target type
+   * - ``signed_distance_to_border``
+     - Hop distance to the base-region boundary; negative = inside, 0 = border,
+       positive = outside, NaN = unreachable
+
+
+``hplot-outputs.csv``
+~~~~~~~~~~~~~~~~~~~~~~
+
+Cohort-level H-Plot curve aggregated across all slides, produced by ``hplot``,
+``infer --hplot``, ``run --hplot``, or ``hplot-finalize``.
+
+Columns: ``id``, ``layer``, ``target_prop``, ``target_count``, ``base_prop``,
+``base_count``, ``all_count``, ``distance``
+
+
+``hmetrics-outputs.csv``
+~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Per-slide spatial interaction metrics.  One row per slide.
+
+Columns: ``id``, ``valid``,
+``convergence_distance (intra)``, ``abundance_score (intra)``, ``penetration_score (intra)``,
+``layerwise_enrichment_index (intra)``, ``global_enrichment_index (intra)``,
+``weighted_global_enrichment_index (intra)``,
+``convergence_distance (peri)``, ``abundance_score (peri)``, ``proximity_score (peri)``,
+``layerwise_enrichment_index (peri)``, ``global_enrichment_index (peri)``,
+``weighted_global_enrichment_index (peri)``,
+``exclusion_index``, ``desert_index``, ``inflammation_index``,
+``layerwise_enrichment_index``, ``global_enrichment_index``,
+``weighted_global_enrichment_index``
+
+
+``ncomp-outputs-csv/<slide>.csv``
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Per-cell neighborhood composition produced by ``ncomp``, ``infer --ncomp``, or
+``run --ncomp``.
+
+.. list-table::
+   :header-rows: 1
+   :widths: 35 65
+
+   * - Column
+     - Description
+   * - ``center_x``, ``center_y``
+     - Cell centre in pixels
+   * - ``cell_type``
+     - Predicted cell type (argmax of ``prob_*`` columns)
+   * - ``neighborhood_size``
+     - Number of k-hop graph neighbors (excluding self)
+   * - ``neighborhood_<class>_count``
+     - Count of neighbors of each class; one column per model class
+   * - ``neighborhood_<class>_prop``
+     - Proportion of neighbors of each class; one column per model class
+
+
+Key parameters
+--------------
+
+H-Plot (``--hplot-*`` in ``infer``, ``run``, and ``wsinsight hplot``)
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. list-table::
+   :header-rows: 1
+   :widths: 35 15 50
+
+   * - Option
+     - Default
+     - Description
+   * - ``--hplot-base-types``
+     - required
+     - Comma-separated base cell types defining the tumour cluster (e.g. ``tumor``)
+   * - ``--hplot-target-types``
+     - required
+     - Comma-separated target cell types to track across layers (e.g. ``lymphocyte``)
+   * - ``--hplot-max-neighbor-distance``
+     - ``25.0``
+     - Maximum Delaunay edge length in µm
+   * - ``--hplot-k``
+     - ``2``
+     - k-hop neighborhood radius for base-region detection
+   * - ``--hplot-n``
+     - ``8``
+     - Minimum neighborhood size for base-region membership
+   * - ``--hplot-r``
+     - ``0.5``
+     - Minimum base-type fraction for base-region membership
+   * - ``--hplot-range-min``
+     - ``None``
+     - Innermost layer index (≤ 0) included in metrics
+   * - ``--hplot-range-max``
+     - ``None``
+     - Outermost layer index (≥ 1) included in metrics
+   * - ``--hplot-samples-with-valid-range-only``
+     - off
+     - Exclude slides that do not cover the full ``[range-min, range-max]`` window
+   * - ``--hplot-overwrite``
+     - off
+     - Recompute and overwrite existing per-slide H-Plot outputs
+
+Neighborhood composition (``--ncomp-*`` in ``infer``, ``run``, and ``wsinsight ncomp``)
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. list-table::
+   :header-rows: 1
+   :widths: 35 15 50
+
+   * - Option
+     - Default
+     - Description
+   * - ``--ncomp-target-types``
+     - all cells
+     - Comma-separated cell types to compute neighborhoods for
+   * - ``--ncomp-max-neighbor-distance``
+     - ``25.0``
+     - Maximum Delaunay edge length in µm
+   * - ``--ncomp-k``
+     - ``2``
+     - k-hop neighborhood radius
+   * - ``--ncomp-overwrite``
+     - off
+     - Recompute and overwrite existing per-slide ncomp outputs
+
+
+Example workflows
+-----------------
+
+Run inference + H-Plot + ncomp in a single command::
+
+    wsinsight run \
+      --wsi-dir slides/ \
+      --results-dir results/ \
+      --model pancancer-lymphocytes-inceptionv4.tcga \
+      --batch-size 32 \
+      --hplot \
+      --hplot-base-types tumor \
+      --hplot-target-types lymphocyte \
+      --hplot-range-min -5 \
+      --hplot-range-max 5 \
+      --ncomp \
+      --ncomp-target-types lymphocyte
+
+Run H-Plot on existing inference outputs::
+
+    wsinsight hplot \
+      --wsi-dir slides/ \
+      --results-dir results/ \
+      --hplot-base-types tumor \
+      --hplot-target-types lymphocyte \
+      --hplot-range-min -5 \
+      --hplot-range-max 5
+
+Aggregate H-Plot results after parallel per-slide runs::
+
+    wsinsight hplot-finalize --results-dir results/
+
+Run neighborhood composition on existing inference outputs::
+
+    wsinsight ncomp \
+      --wsi-dir slides/ \
+      --results-dir results/ \
+      --ncomp-target-types lymphocyte \
+      --ncomp-k 2
+
+Enrich object CSVs with region probabilities post-hoc::
+
+    wsinsight reg \
+      --results-dir results-cellvit/ \
+      --region-inference-dir results-region/ \
+      --reg-overwrite
+
 
 .. click:: wsinsight.cli.cli:cli
    :prog: wsinsight
    :nested: full
-   :commands: run, patch, infer, hplot, hplot_finalize_cmd, reg
+   :commands: run, patch, infer, hplot, hplot_finalize_cmd, reg, ncomp

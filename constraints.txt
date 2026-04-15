@@ -132,7 +132,7 @@ nvidia-nvtx-cu12==12.8.90
 ome-types==0.6.1
 opencv-python-headless==4.11.0.86
 openslide-bin==4.0.0.8
-openslide-python==1.4.2.2
+openslide-python==1.4.3
 opt_einsum==3.4.0
 optree==0.17.0
 orjson==3.11.3

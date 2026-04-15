@@ -20,13 +20,14 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 ENV JAVA_HOME=/usr/lib/jvm/java-17-openjdk-amd64
 ENV PATH="$JAVA_HOME/bin:$PATH"
 
+# ------------------------------------
 # Install AWS CLI v2
 # ------------------------------------
 RUN curl "https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip" -o "awscliv2.zip" && \
     unzip awscliv2.zip && \
     ./aws/install && \
     rm -rf aws awscliv2.zip
-
+    
 # ------------------------------------
 # Install Miniconda (Python 3.11 base)
 # ------------------------------------

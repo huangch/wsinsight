@@ -104,7 +104,7 @@ _STORAGE_KWARGS = _storage_kwargs()
     "--hplot-target-types",
     callback=_csv_to_list,
     default=None,
-    help="Target cell type cell type list for computing layer-wise proportion, e.g., lymphocytes.",
+    help="Target cell type or cell type list whose layer-wise proportion is computed, e.g., lymphocytes.",
 )
 @click.option(
     "--hplot-k",
@@ -225,7 +225,7 @@ def hplot(
 @click.command("hplot-finalize")
 @click.option(
     "-o",
-    "--output-dir",
+    "--results-dir",
     type=URIPathType(exists=True, **_STORAGE_KWARGS),
     required=True,
     help="Results directory containing hplot per-slide outputs. The aggregated "
@@ -240,18 +240,18 @@ def hplot(
 )
 def hplot_finalize_cmd(
     *,
-    output_dir: URIPath,
+    results_dir: URIPath,
     hplot_overwrite: bool = False,
 ) -> None:
     """Rebuild hplot-outputs.csv and hmetrics-outputs.csv from per-slide intermediates.
 
     Use this after running parallel ``hplot`` jobs that share the same
-    ``--output-dir``. Each worker writes its per-slide files; this command
+    ``--results-dir``. Each worker writes its per-slide files; this command
     assembles the final aggregated CSVs from all of them.
     """
 
-    _assert_directory(output_dir, "--output-dir")
+    _assert_directory(results_dir, "--results-dir")
 
     click.secho("\nFinalizing H-Plot outputs.\n", fg="green")
-    hplot_finalize(output_dir=output_dir, overwrite=hplot_overwrite)
+    hplot_finalize(output_dir=results_dir, overwrite=hplot_overwrite)
     click.secho("\nH-Plot finalization complete.\n", fg="green")

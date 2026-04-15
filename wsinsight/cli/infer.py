@@ -29,6 +29,7 @@ from wsinfer_zoo.client import HFModel, Model, ModelConfiguration
 from .. import errors
 # from ..insightlib.cme_generation import cme_generation
 from ..insightlib.hplot_generation import hplot_generation
+from ..insightlib.ncomp_generation import ncomp_generation
 from ..modellib import models
 from ..modellib.run_inference import run_inference
 # QuPath project export relies on optional dependencies; import remains disabled until re-enabled.
@@ -715,7 +716,7 @@ def _optional_uri_paths(ctx: click.Context, param: click.Option, value):
     "--hplot-target-types",
     callback=_csv_to_list,
     default=None,
-    help="Target cell type cell type list for computing layer-wise proportion, e.g., lymphocytes.",
+    help="Target cell type or cell type list whose layer-wise proportion is computed, e.g., lymphocytes.",
 )
 @click.option(
     "--hplot-k",
@@ -761,6 +762,39 @@ def _optional_uri_paths(ctx: click.Context, param: click.Option, value):
     default=False,
     show_default=True,
     help="Overwrite existing H-Plot results instead of skipping slides that already have outputs.",
+)
+@click.option(
+    "--ncomp",
+    is_flag=True,
+    default=False,
+    show_default=True,
+    help="Run neighborhood composition (ncomp) analysis after inference.",
+)
+@click.option(
+    "--ncomp-max-neighbor-distance",
+    default=25.0,
+    type=click.FloatRange(min=0),
+    help="Maximum distance (µm) between neighboring cells in the Delaunay graph for ncomp.",
+)
+@click.option(
+    "--ncomp-target-types",
+    callback=_csv_to_list,
+    default=None,
+    help="Cell type(s) to compute neighborhood composition for. Omit to process every cell.",
+)
+@click.option(
+    "--ncomp-k",
+    default=2,
+    type=click.IntRange(min=1),
+    show_default=True,
+    help="Number of hops defining the ncomp neighborhood radius.",
+)
+@click.option(
+    "--ncomp-overwrite",
+    is_flag=True,
+    default=False,
+    show_default=True,
+    help="Recompute and overwrite existing per-slide ncomp outputs.",
 )
 # @click.option(
 #     "--cme-cellular",
@@ -852,6 +886,11 @@ def infer(
     hplot_range_min: int = None,
     hplot_samples_with_valid_range_only: bool = False,
     hplot_overwrite: bool = False,
+    ncomp: bool = False,
+    ncomp_max_neighbor_distance: float = 25.0,
+    ncomp_target_types: List | None = None,
+    ncomp_k: int = 2,
+    ncomp_overwrite: bool = False,
     reg_overwrite: bool = False,
     # cme_cellular: bool = False,
     # cme_annotation: bool = False,
@@ -1300,9 +1339,38 @@ def infer(
     elif hplot and (len(hplot_base_types) == 0 or len(hplot_target_types) == 0):
         raise click.ClickException(f"\nH-Plot requires both --hplot-base-types and --hplot-target-types.")
         click.secho("\n".join(failed_inference), fg="yellow")
-        
-            
-    # --- CME analytics ------------------------------------------------------
+
+    # --- ncomp analytics ----------------------------------------------------
+    if ncomp:
+        ncomp_target_list = [c.strip().replace(' ', '_').lower() for c in ncomp_target_types] if ncomp_target_types else []
+
+        manifest_records = _selected_slide_manifest()
+        ncomp_slide_paths = [record.wsi_path for record in manifest_records]
+        ncomp_mpp_lookup = {
+            record.wsi_path.stem: record.slide_mpp
+            for record in manifest_records
+            if record.slide_mpp is not None
+        }
+
+        click.secho("\nRunning neighborhood composition (ncomp) analysis.\n", fg="green")
+
+        failed_ncomp = ncomp_generation(
+            wsi_dir=None,
+            slide_paths=ncomp_slide_paths,
+            results_dir=results_dir,
+            target_type_list=ncomp_target_list,
+            max_neighbor_distance_um=ncomp_max_neighbor_distance,
+            ncomp_k=ncomp_k,
+            num_workers=1 if num_workers == 0 else num_workers,
+            slide_mpp_lookup=ncomp_mpp_lookup or None,
+            overwrite=ncomp_overwrite,
+        )
+
+        if failed_ncomp:
+            click.secho(
+                f"\nncomp failed for {len(failed_ncomp)} slide(s)", fg="yellow"
+            )
+            click.secho("\n".join(failed_ncomp), fg="yellow")
     # if cme_cellular or cme_annotation:
     #     click.secho("\nRunning cme generation.\n", fg="green")
     #     wsi_paths = _selected_wsi_paths()

@@ -148,6 +148,11 @@ _INFER_PARAM_NAMES: tuple[str, ...] = (
     "hplot_range_min",
     "hplot_samples_with_valid_range_only",
     "hplot_overwrite",
+    "ncomp",
+    "ncomp_max_neighbor_distance",
+    "ncomp_target_types",
+    "ncomp_k",
+    "ncomp_overwrite",
     "reg_overwrite",
     # "cme_cellular",
     # "cme_annotation",
@@ -545,7 +550,7 @@ def _select_kwargs(values: dict[str, Any], keys: tuple[str, ...]) -> dict[str, A
     "--hplot-target-types",
     callback=_csv_to_list,
     default=None,
-    help="Target cell type cell type list for computing layer-wise proportion, e.g., lymphocytes.",
+    help="Target cell type or cell type list whose layer-wise proportion is computed, e.g., lymphocytes.",
 )
 @click.option(
     "--hplot-k",
@@ -591,6 +596,39 @@ def _select_kwargs(values: dict[str, Any], keys: tuple[str, ...]) -> dict[str, A
     default=False,
     show_default=True,
     help="Overwrite existing H-Plot results instead of skipping slides that already have outputs.",
+)
+@click.option(
+    "--ncomp",
+    is_flag=True,
+    default=False,
+    show_default=True,
+    help="Run neighborhood composition (ncomp) analysis after inference.",
+)
+@click.option(
+    "--ncomp-max-neighbor-distance",
+    default=25.0,
+    type=click.FloatRange(min=0),
+    help="Maximum distance (µm) between neighboring cells in the Delaunay graph for ncomp.",
+)
+@click.option(
+    "--ncomp-target-types",
+    callback=_csv_to_list,
+    default=None,
+    help="Cell type(s) to compute neighborhood composition for. Omit to process every cell.",
+)
+@click.option(
+    "--ncomp-k",
+    default=2,
+    type=click.IntRange(min=1),
+    show_default=True,
+    help="Number of hops defining the ncomp neighborhood radius.",
+)
+@click.option(
+    "--ncomp-overwrite",
+    is_flag=True,
+    default=False,
+    show_default=True,
+    help="Recompute and overwrite existing per-slide ncomp outputs.",
 )
 @click.option(
     "--reg-overwrite",
@@ -681,6 +719,11 @@ def run(
     hplot_range_min: int | None = None,
     hplot_samples_with_valid_range_only: bool = False,
     hplot_overwrite: bool = False,
+    ncomp: bool = False,
+    ncomp_max_neighbor_distance: float = 25.0,
+    ncomp_target_types: List | None = None,
+    ncomp_k: int = 2,
+    ncomp_overwrite: bool = False,
     reg_overwrite: bool = False,
     # cme_cellular: bool = False,
     # cme_annotation: bool = False,

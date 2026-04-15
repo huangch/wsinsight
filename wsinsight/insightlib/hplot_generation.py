@@ -18,7 +18,6 @@ from ..uri_path import URIPath
 from .insight_helpers import (compute_cell_center_points,
                               delaunay_triangulation,
                               k_hop_neighbors,
-                              compute_enrichment_index,
                               identify_region_by_cell_function_enrichment,
                               calculate_distance_to_border,
                               identify_border_cells,
@@ -31,7 +30,6 @@ _WORKER_STEPS = [
     "cell centers",
     "triangulation",
     "k-hop neighbors",
-    "enrichment index",
     "tumor regions",
     "border cells",
     "layer distances",
@@ -143,9 +141,6 @@ def _worker(
     k_neighbors_results, A_sparse, Mk_sparse = k_hop_neighbors(len(nodes_df), edges_df, hplot_k)
     _step("k-hop neighbors")
 
-    nodes_df = compute_enrichment_index(nodes_df, k_neighbors_results, Mk_sparse=Mk_sparse)
-    _step("enrichment index")
-
     nodes_df = identify_region_by_cell_function_enrichment(
         k_neighbors_results, nodes_df, hplot_N, hplot_R, Mk_sparse=Mk_sparse
     )
@@ -157,8 +152,9 @@ def _worker(
     nodes_df = calculate_distance_to_border(nodes_df, {}, A_sparse=A_sparse)
     _step("layer distances")
 
+    _drop_cols = ["is_base_region", "is_base_border", "distance_to_border"]
     with cells_csv.open("w", encoding="utf-8", newline="") as fp:
-        nodes_df.to_csv(fp, index=False)
+        nodes_df.drop(columns=[c for c in _drop_cols if c in nodes_df.columns]).to_csv(fp, index=False)
 
     hplot_df = compute_hplot(nodes_df, edges_df)
     _step("hplot curve")
