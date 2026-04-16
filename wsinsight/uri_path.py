@@ -26,7 +26,7 @@ class URIPath:
       - Local filesystem paths
       - fsspec remotes (e.g., s3://bucket/key)
       - gdc-manifest:///abs/path/to/manifest.tsv/<filename>
-      - image-list:///abs/path/to/filelist.txt  (one slide URI per line)
+      - image-list:///abs/path/to/filelist.txt  (one slide file path per line)
 
     Features:
       - open(): stream (local/remote) or local-open after materialize (gdc-manifest)
