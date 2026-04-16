@@ -15,11 +15,33 @@ pip install -c constraints.txt torch torchvision torch-geometric tensorflow kera
 
 # histomicstk wheel source (same as before), still honoring constraints:
 # pip install -c constraints.txt "numpy<2" histomicstk --find-links https://girder.github.io/large_image_wheels
-# In case of SSL issues, use below installing histomicstk
+# In case of SSL issues behind a corporate proxy, pre-install pyvips with cert check disabled,
+# then install histomicstk normally.
+pip install --trusted-host github.com --trusted-host raw.githubusercontent.com --trusted-host girder.github.io \
+    --find-links https://girder.github.io/large_image_wheels \
+    -c constraints.txt "numpy<2" pyvips \
+    2>/dev/null \
+  || pip install --trusted-host github.com --trusted-host raw.githubusercontent.com --trusted-host girder.github.io \
+    --find-links https://girder.github.io/large_image_wheels \
+    -c constraints.txt "numpy<2" pyvips \
+    --cert /etc/ssl/certs/ca-certificates.crt \
+    2>/dev/null \
+  || PIP_TRUSTED_HOST="github.com girder.github.io raw.githubusercontent.com" \
+    CURL_CA_BUNDLE="" \
+    pip install -c constraints.txt "numpy<2" pyvips \
+    --find-links https://girder.github.io/large_image_wheels
+
 pip install --trusted-host github.com --trusted-host raw.githubusercontent.com --trusted-host girder.github.io --find-links https://girder.github.io/large_image_wheels -c constraints.txt "numpy<2" histomicstk
 
-# the rest + your package
-pip install -c constraints.txt -e .
+# Pre-install remaining heavy deps that cause resolver backtracking
+pip install -c constraints.txt "numpy<2" \
+    scikit-learn shapely geopandas pyproj rasterio pyogrio \
+    openslide-python wsidicom paquo "wsinfer-zoo>=0.6.2" \
+    igraph leidenalg s3fs boto3 platformdirs timm \
+    tiffslide imagecodecs opencv-python-headless orjson click
+
+# the rest + your package (use --no-build-isolation to speed up resolve)
+pip install -c constraints.txt --no-build-isolation -e .
 
 # install CellViT training dependencies (optional):
 # pip install -c constraints.txt "numpy<2" cupy wandb albumentations colorama einops schema torchstain natsort geojson ujson ray torchmetrics "evalutils==0.5.0" torchinfo
