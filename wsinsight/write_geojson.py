@@ -456,12 +456,12 @@ def write_geojsons(
     """Convert CSV outputs to GeoJSON concurrently and store results."""
     # Basic validations
     if not results_dir.exists():
-        raise FileExistsError(f"results_dir does not exist: {results_dir}")
+        raise FileNotFoundError(f"results_dir does not exist: {results_dir}")
 
     missing_dirs = sorted({p.parent for p in csvs if not p.parent.exists()}, key=lambda x: str(x))
     if missing_dirs:
         missing_str = ", ".join(str(d) for d in missing_dirs)
-        raise FileExistsError(
+        raise FileNotFoundError(
             "GeoJSON input CSV directory not found: "
             f"{missing_str}"
         )

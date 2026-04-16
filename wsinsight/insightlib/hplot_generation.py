@@ -3,11 +3,14 @@
 from __future__ import annotations
 
 import json
+import logging
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 from typing import Sequence, List, Mapping
 
 import numpy as np
+
+_logger = logging.getLogger(__name__)
 import pandas as pd
 from tqdm import tqdm
 
@@ -97,7 +100,8 @@ def _worker(
     try:
         with model_output_csv.open("r", encoding="utf-8") as fp:
             nodes_df = pd.read_csv(fp)
-    except Exception:
+    except Exception as exc:
+        _logger.warning("Failed to load CSV for %s: %s", slide_id, exc)
         inner.close()
         return slide_id, None, None
     _step("load CSV")

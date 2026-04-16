@@ -140,7 +140,7 @@ _STORAGE_KWARGS = _storage_kwargs()
     help="Number of hops that define the neighborhood radius (k-hop).",
 )
 @click.option(
-    "--ncomp-overwrite",
+    "--overwrite",
     is_flag=True,
     default=False,
     show_default=True,
@@ -160,7 +160,7 @@ def ncomp(
     ncomp_max_neighbor_distance: float = 25.0,
     ncomp_target_types: List | None = None,
     ncomp_k: int = 2,
-    ncomp_overwrite: bool = False,
+    overwrite: bool = False,
     num_workers: int = 8,
 ) -> None:
     """Compute neighborhood composition for each cell in WSInsight inference outputs.
@@ -200,7 +200,7 @@ def ncomp(
         max_neighbor_distance_um=ncomp_max_neighbor_distance,
         ncomp_k=ncomp_k,
         num_workers=num_workers,
-        overwrite=ncomp_overwrite,
+        overwrite=overwrite,
     )
 
     if failed:

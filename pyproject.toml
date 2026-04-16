@@ -34,7 +34,7 @@ classifiers = [
 dependencies = [
   "click>=8.0,<9,!=8.1.4,!=8.1.5",
   "h5py",
-  "numpy>=1.21.0,<2.0.0",
+  "numpy<2.0.0",
   "opencv-python-headless>=4.0.0",
   "orjson>=3.9.0",
   "pandas>=2.0",

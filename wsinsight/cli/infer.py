@@ -28,8 +28,6 @@ from wsinfer_zoo.client import HFModel, Model, ModelConfiguration
 
 from .. import errors
 # from ..insightlib.cme_generation import cme_generation
-from ..insightlib.hplot_generation import hplot_generation
-from ..insightlib.ncomp_generation import ncomp_generation
 from ..modellib import models
 from ..modellib.run_inference import run_inference
 # QuPath project export relies on optional dependencies; import remains disabled until re-enabled.
@@ -602,7 +600,8 @@ def _optional_uri_paths(ctx: click.Context, param: click.Option, value):
     default=None,
     help=(
         "Path to a folder containing config.json and torchscript_model.pt. "
-        "Shorthand for --config + --model-path. Mutually exclusive with --model."
+        "Shorthand for --config + --model-path. Mutually exclusive with --model, "
+        "--config, and --model-path."
     ),
 )
 @click.option(
@@ -671,109 +670,6 @@ def _optional_uri_paths(ctx: click.Context, param: click.Option, value):
     help="The size of patch in pixel. The default value of 0 produces"
     " full patch size of the chosen model.",
 )
-@click.option(
-    "--hplot",
-    is_flag=True,
-    default=False,
-    show_default=True,
-    help="Run H-Plot analysis to compute per-cell layer metrics and optional exports.",
-)
-@click.option(
-    "--hplot-max-neighbor-distance",
-    default=25.0,
-    type=click.FloatRange(min=0),
-    help="A parameter of float value determining maximal distance (um) to a neighboring cell.",
-)
-@click.option(
-    "--hplot-base-types",
-    callback=_csv_to_list,
-    default=None,
-    help="Base cell type or cell type list that form(s) the cell cluster(s), e.g., tumor cells.",
-)
-@click.option(
-    "--hplot-target-types",
-    callback=_csv_to_list,
-    default=None,
-    help="Target cell type or cell type list whose layer-wise proportion is computed, e.g., lymphocytes.",
-)
-@click.option(
-    "--hplot-k",
-    default=2,
-    type=click.IntRange(min=0),
-    help="The maximal edge distance for defining the neighborhood of a cell.",
-)
-@click.option(
-    "--hplot-n",
-    default=8,
-    type=click.IntRange(min=0),
-    help="The minimal neighborhood size for a cell to be computed for determining tumor regions.",
-)
-@click.option(
-    "--hplot-r",
-    default=0.5,
-    type=click.FloatRange(min=0, max=1),
-    help="The minimal ratio of tumor cells in the neighborhood of a cell, determining "
-        "is this cell included in a tumor region.",
-)
-@click.option(
-    "--hplot-range-max",
-    default=None,
-    type=click.IntRange(min=1),
-    help="The maximal layer index toward OUTSIDE of tumors for the range window of H-Plot.",
-)
-@click.option(
-    "--hplot-range-min",
-    default=None,
-    type=click.IntRange(max=0),
-    help="The minimal layer index toward INSIDE of tumors for the range window of H-Plot.",
-)
-@click.option(
-    "--hplot-samples-with-valid-range-only",
-    is_flag=True,
-    default=False,
-    show_default=True,
-    help="Skip samples lacking both inner/outer layer bounds so only valid H-Plot ranges contribute to stats.",
-)
-@click.option(
-    "--hplot-overwrite",
-    is_flag=True,
-    default=False,
-    show_default=True,
-    help="Overwrite existing H-Plot results instead of skipping slides that already have outputs.",
-)
-@click.option(
-    "--ncomp",
-    is_flag=True,
-    default=False,
-    show_default=True,
-    help="Run neighborhood composition (ncomp) analysis after inference.",
-)
-@click.option(
-    "--ncomp-max-neighbor-distance",
-    default=25.0,
-    type=click.FloatRange(min=0),
-    help="Maximum distance (µm) between neighboring cells in the Delaunay graph for ncomp.",
-)
-@click.option(
-    "--ncomp-target-types",
-    callback=_csv_to_list,
-    default=None,
-    help="Cell type(s) to compute neighborhood composition for. Omit to process every cell.",
-)
-@click.option(
-    "--ncomp-k",
-    default=2,
-    type=click.IntRange(min=1),
-    show_default=True,
-    help="Number of hops defining the ncomp neighborhood radius.",
-)
-@click.option(
-    "--ncomp-overwrite",
-    is_flag=True,
-    default=False,
-    show_default=True,
-    help="Recompute and overwrite existing per-slide ncomp outputs.",
-)
 # @click.option(
 #     "--cme-cellular",
 #     is_flag=True,
@@ -808,14 +704,13 @@ def _optional_uri_paths(ctx: click.Context, param: click.Option, value):
 #     help="Resolution parameter using in clustering for cmes.",
 # )
 @click.option(
-    "--reg-overwrite",
+    "--overwrite",
     is_flag=True,
     default=False,
     show_default=True,
     help=(
-        "Overwrite existing region_* columns when using --region-inference-dir.  "
-        "Without this flag, slides whose object CSV already contains region_* columns "
-        "are skipped with a warning.  Requires --region-inference-dir."
+        "Overwrite existing outputs instead of skipping slides that already have results.  "
+        "Currently controls region_* column replacement when --region-inference-dir is used."
     ),
 )
 
@@ -851,23 +746,7 @@ def infer(
     # red_threshold: int = 0,
     # stardist_normalization_pmin: float = 1.0,
     # stardist_normalization_pmax: float = 99.8,
-    hplot: bool = False,
-    hplot_max_neighbor_distance: float = 25.0,
-    hplot_base_types: List | None = None,
-    hplot_target_types: List | None = None,
-    hplot_k: int = 2,
-    hplot_n: int = 8,
-    hplot_r: float = 0.5,
-    hplot_range_max: int = None,
-    hplot_range_min: int = None,
-    hplot_samples_with_valid_range_only: bool = False,
-    hplot_overwrite: bool = False,
-    ncomp: bool = False,
-    ncomp_max_neighbor_distance: float = 25.0,
-    ncomp_target_types: List | None = None,
-    ncomp_k: int = 2,
-    ncomp_overwrite: bool = False,
-    reg_overwrite: bool = False,
+    overwrite: bool = False,
     # cme_cellular: bool = False,
     # cme_annotation: bool = False,
     # cme_soft_mode: bool = False,
@@ -886,11 +765,10 @@ def infer(
     `model-outputs-csv`.
 
     Optional switches then:
-        • drive downstream spatial analytics such as H-Plot and ncomp (when
-            their respective flags are supplied)
         • synchronize metadata about the full session to `infer_metadata_*.json`.
 
     Use ``wsinsight export`` to convert results to GeoJSON / OME-CSV.
+    Use ``wsinsight hplot`` / ``wsinsight ncomp`` for downstream spatial analytics.
 
     The function treats all input/output paths as `URIPath` values, materializing
     local copies only when dependencies such as pandas/geopandas require filesystem
@@ -899,6 +777,14 @@ def infer(
 
     # --- Resolve --zoo-model-dir shorthand into --config + --model-path ------
     if zoo_model_dir is not None:
+        if model_name is not None:
+            raise click.UsageError(
+                "--zoo-model-dir is mutually exclusive with --model."
+            )
+        if config is not None or model_path is not None:
+            raise click.UsageError(
+                "--zoo-model-dir is mutually exclusive with --config and --model-path."
+            )
         config = zoo_model_dir / "config.json"
         model_path = zoo_model_dir / "torchscript_model.pt"
         if not config.exists():
@@ -911,33 +797,35 @@ def infer(
             )
 
     # --- Validate CLI combinations -----------------------------------------
-    if (
-        model_name is None
-        and config is None
-        and model_path is None
-        and qupath_detection_dir is None
-        and qupath_geojson_detection_dir is None
-        and qupath_geojson_annotation_dir is None
-    ):
+    has_model = model_name is not None
+    has_config = config is not None or model_path is not None
+    has_qupath = (
+        qupath_detection_dir is not None
+        or qupath_geojson_detection_dir is not None
+        or qupath_geojson_annotation_dir is not None
+    )
+
+    if not has_model and not has_config and not has_qupath:
         raise click.UsageError(
-            "one of --model or (--config and --model-path) or --zoo-model-dir or --qupath_detection_dir "
-            "or --qupath_geojson_detection_dir or --qupath_geojson_annotation_dir is required."
+            "one of --model or (--config and --model-path) or --zoo-model-dir "
+            "or --qupath-detection-dir or --qupath-geojson-detection-dir "
+            "or --qupath-geojson-annotation-dir is required."
         )
-    elif (
-        (config is not None or model_path is not None)
-        and model_name is not None
-        and (
-            qupath_detection_dir is not None
-            or qupath_geojson_detection_dir is not None
-            or qupath_geojson_annotation_dir is not None
-        )
-    ):
+    if has_model and has_config:
         raise click.UsageError(
-            "--config and --model-path are mutually exclusive with --model. "
-            "Both --qupath_detection_dir and --qupath_geojson_detection_dir and --qupath_geojson_annotation_dir "
-            "are mutually exclusive with --model, --config and --model-path."
+            "--model is mutually exclusive with --config and --model-path."
         )
-    elif (config is not None) ^ (model_path is not None):  # XOR
+    if has_model and has_qupath:
+        raise click.UsageError(
+            "--model is mutually exclusive with --qupath-detection-dir, "
+            "--qupath-geojson-detection-dir, and --qupath-geojson-annotation-dir."
+        )
+    if has_config and has_qupath:
+        raise click.UsageError(
+            "--config/--model-path are mutually exclusive with --qupath-detection-dir, "
+            "--qupath-geojson-detection-dir, and --qupath-geojson-annotation-dir."
+        )
+    if (config is not None) ^ (model_path is not None):  # XOR
         raise click.UsageError(
             "--config and --model-path must both be set if one is set."
         )
@@ -1133,9 +1021,6 @@ def infer(
 
     if region_inference_dir is not None and not object_based:
         raise click.ClickException("--region-inference-dir only works with object based model.")
-
-    if reg_overwrite and region_inference_dir is None:
-        raise click.ClickException("--reg-overwrite requires --region-inference-dir.")
     
     # Validating all overlap options
     nonzero_count = sum([
@@ -1210,7 +1095,7 @@ def infer(
         object_detection=object_detection,
         mixed_precision=mixed_precision,
         stitch_workers=stitch_workers,
-        region_overwrite=reg_overwrite,
+        region_overwrite=overwrite,
     )
 
     if failed_patching:
@@ -1221,89 +1106,6 @@ def infer(
             f"\nInference failed for {len(failed_inference)} slides", fg="yellow"
         )
         click.secho("\n".join(failed_inference), fg="yellow")
-
-    # --- H-Plot analytics ---------------------------------------------------
-    
-    if hplot and (len(hplot_base_types) != 0 and len(hplot_target_types) != 0):
-        target_type_list = [c.strip().replace(' ', '_').lower() for c in hplot_target_types]
-        base_type_list = [c.strip().replace(' ', '_').lower() for c in hplot_base_types]
-
-        manifest_records = _selected_slide_manifest()
-        slide_paths = [record.wsi_path for record in manifest_records]
-        slide_mpp_lookup = {
-            record.wsi_path.stem: record.slide_mpp
-            for record in manifest_records
-            if record.slide_mpp is not None
-        }
-        
-        for tp in base_type_list+target_type_list: 
-            if tp not in model_obj.config.class_names:
-                raise click.ClickException(f"\n--hplot-target-types and --hplot-base-types should include in the chosen model.")
-                click.secho("\n".join(failed_inference), fg="yellow")
-                        
-        click.secho("\nRunning H-Plot generation.\n", fg="green")
-        
-        failed_hplot_generation = hplot_generation(
-            wsi_dir=None,
-            slide_paths=slide_paths,
-            results_dir=results_dir,
-            base_type_list=base_type_list,
-            target_type_list=target_type_list,
-            max_neighbor_distance_um=hplot_max_neighbor_distance,
-            hplot_k=hplot_k,
-            hplot_N=hplot_n,
-            hplot_R=hplot_r, 
-            hplot_range_max=hplot_range_max,
-            hplot_range_min=hplot_range_min,
-            hplot_samples_with_valid_range_only=hplot_samples_with_valid_range_only,
-            num_workers=1 if num_workers == 0 else num_workers,
-            slide_mpp_lookup=slide_mpp_lookup or None,
-            overwrite=hplot_overwrite,
-        )
-        
-        if failed_hplot_generation:
-            click.secho(
-                f"\nH-Plot generation failed for {len(failed_hplot_generation)}"
-                " slides", fg="yellow"
-            )
-            
-            click.secho("\n".join(failed_hplot_generation), fg="yellow")
-
-    elif hplot and (len(hplot_base_types) == 0 or len(hplot_target_types) == 0):
-        raise click.ClickException(f"\nH-Plot requires both --hplot-base-types and --hplot-target-types.")
-        click.secho("\n".join(failed_inference), fg="yellow")
-
-    # --- ncomp analytics ----------------------------------------------------
-    if ncomp:
-        ncomp_target_list = [c.strip().replace(' ', '_').lower() for c in ncomp_target_types] if ncomp_target_types else []
-
-        manifest_records = _selected_slide_manifest()
-        ncomp_slide_paths = [record.wsi_path for record in manifest_records]
-        ncomp_mpp_lookup = {
-            record.wsi_path.stem: record.slide_mpp
-            for record in manifest_records
-            if record.slide_mpp is not None
-        }
-
-        click.secho("\nRunning neighborhood composition (ncomp) analysis.\n", fg="green")
-
-        failed_ncomp = ncomp_generation(
-            wsi_dir=None,
-            slide_paths=ncomp_slide_paths,
-            results_dir=results_dir,
-            target_type_list=ncomp_target_list,
-            max_neighbor_distance_um=ncomp_max_neighbor_distance,
-            ncomp_k=ncomp_k,
-            num_workers=1 if num_workers == 0 else num_workers,
-            slide_mpp_lookup=ncomp_mpp_lookup or None,
-            overwrite=ncomp_overwrite,
-        )
-
-        if failed_ncomp:
-            click.secho(
-                f"\nncomp failed for {len(failed_ncomp)} slide(s)", fg="yellow"
-            )
-            click.secho("\n".join(failed_ncomp), fg="yellow")
 
     # if cme_cellular or cme_annotation:
     #     click.secho("\nRunning cme generation.\n", fg="green")

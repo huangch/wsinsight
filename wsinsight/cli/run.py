@@ -20,9 +20,14 @@ from platformdirs import user_cache_dir
 
 import wsinfer_zoo.client
 from .infer import infer as infer_command
+from .hplot import hplot as hplot_command
+from .ncomp import ncomp as ncomp_command
 from .patch import patch as patch_command
+from ..export_helpers import build_export_csvs
 from ..qupath import make_qupath_project
 from ..uri_path import URIPath, URIPathType
+from ..write_geojson import write_geojsons
+from ..write_omecsv import write_omecsvs
 
 
 def _num_cpus() -> int:
@@ -144,7 +149,17 @@ _INFER_PARAM_NAMES: tuple[str, ...] = (
     "patch_overlap_ratio",
     "patch_size_um",
     "patch_size_px",
-    "hplot",
+    "overwrite",
+    # "cme_cellular",
+    # "cme_annotation",
+    # "cme_soft_mode",
+    # "cme_clustering_k",
+    # "cme_clustering_resolutions",
+)
+
+_HPLOT_PARAM_NAMES: tuple[str, ...] = (
+    "wsi_dir",
+    "results_dir",
     "hplot_max_neighbor_distance",
     "hplot_base_types",
     "hplot_target_types",
@@ -154,18 +169,18 @@ _INFER_PARAM_NAMES: tuple[str, ...] = (
     "hplot_range_max",
     "hplot_range_min",
     "hplot_samples_with_valid_range_only",
-    "hplot_overwrite",
-    "ncomp",
+    "overwrite",
+    "num_workers",
+)
+
+_NCOMP_PARAM_NAMES: tuple[str, ...] = (
+    "wsi_dir",
+    "results_dir",
     "ncomp_max_neighbor_distance",
     "ncomp_target_types",
     "ncomp_k",
-    "ncomp_overwrite",
-    "reg_overwrite",
-    # "cme_cellular",
-    # "cme_annotation",
-    # "cme_soft_mode",
-    # "cme_clustering_k",
-    # "cme_clustering_resolutions",
+    "overwrite",
+    "num_workers",
 )
 
 
@@ -387,7 +402,8 @@ def _select_kwargs(values: dict[str, Any], keys: tuple[str, ...]) -> dict[str, A
     default=None,
     help=(
         "Path to a folder containing config.json and torchscript_model.pt. "
-        "Shorthand for --config + --model-path. Mutually exclusive with --model."
+        "Shorthand for --config + --model-path. Mutually exclusive with --model, "
+        "--config, and --model-path."
     ),
 )
 @click.option(
@@ -595,11 +611,11 @@ def _select_kwargs(values: dict[str, Any], keys: tuple[str, ...]) -> dict[str, A
     help="H-Plot computing uses only samples with valid range of cellular-wise layers.",
 )
 @click.option(
-    "--hplot-overwrite",
+    "--overwrite",
     is_flag=True,
     default=False,
     show_default=True,
-    help="Overwrite existing H-Plot results instead of skipping slides that already have outputs.",
+    help="Overwrite existing outputs in all stages instead of skipping slides that already have results.",
 )
 @click.option(
     "--ncomp",
@@ -628,21 +644,24 @@ def _select_kwargs(values: dict[str, Any], keys: tuple[str, ...]) -> dict[str, A
     help="Number of hops defining the ncomp neighborhood radius.",
 )
 @click.option(
-    "--ncomp-overwrite",
-    is_flag=True,
-    default=False,
-    show_default=True,
-    help="Recompute and overwrite existing per-slide ncomp outputs.",
-)
-@click.option(
-    "--reg-overwrite",
+    "--export-geojson",
     is_flag=True,
     default=False,
     show_default=True,
     help=(
-        "Overwrite existing region_* columns when using --region-inference-dir.  "
-        "Without this flag, slides whose object CSV already contains region_* columns "
-        "are skipped with a warning.  Requires --region-inference-dir."
+        "After inference, merge all per-cell analytics and export to GeoJSON files "
+        "(export-geojson/).  Equivalent to running 'wsinsight export --geojson'."
+    ),
+)
+@click.option(
+    "--export-omecsv",
+    is_flag=True,
+    default=False,
+    show_default=True,
+    help=(
+        "After inference, merge all per-cell analytics and export to compressed "
+        "OME-CSV files (export-omecsv/).  Equivalent to running "
+        "'wsinsight export --omecsv'."
     ),
 )
 # @click.option(
@@ -721,13 +740,13 @@ def run(
     hplot_range_max: int | None = None,
     hplot_range_min: int | None = None,
     hplot_samples_with_valid_range_only: bool = False,
-    hplot_overwrite: bool = False,
+    overwrite: bool = False,
     ncomp: bool = False,
     ncomp_max_neighbor_distance: float = 25.0,
     ncomp_target_types: List | None = None,
     ncomp_k: int = 2,
-    ncomp_overwrite: bool = False,
-    reg_overwrite: bool = False,
+    export_geojson: bool = False,
+    export_omecsv: bool = False,
     # cme_cellular: bool = False,
     # cme_annotation: bool = False,
     # cme_soft_mode: bool = False,
@@ -743,6 +762,14 @@ def run(
 
     # --- Resolve --zoo-model-dir shorthand into --config + --model-path ------
     if zoo_model_dir is not None:
+        if model_name is not None:
+            raise click.UsageError(
+                "--zoo-model-dir is mutually exclusive with --model."
+            )
+        if config is not None or model_path is not None:
+            raise click.UsageError(
+                "--zoo-model-dir is mutually exclusive with --config and --model-path."
+            )
         config = zoo_model_dir / "config.json"
         model_path = zoo_model_dir / "torchscript_model.pt"
         if not config.exists():
@@ -765,8 +792,72 @@ def run(
     # Stage 1: segmentation + patch extraction.
     ctx.invoke(patch_command, **_select_kwargs(params, _PATCH_PARAM_NAMES))
 
-    # Stage 2: inference + downstream analytics/exports.
+    # Stage 2: inference.
     ctx.invoke(infer_command, **_select_kwargs(params, _INFER_PARAM_NAMES))
+
+    # Stage 3 (optional): H-Plot spatial analytics.
+    if hplot:
+        ctx.invoke(hplot_command, **_select_kwargs(params, _HPLOT_PARAM_NAMES))
+
+    # Stage 4 (optional): neighborhood composition analytics.
+    if ncomp:
+        ctx.invoke(ncomp_command, **_select_kwargs(params, _NCOMP_PARAM_NAMES))
+
+    # Stage 5 (optional): merged export to GeoJSON / OME-CSV.
+    if export_geojson or export_omecsv:
+        click.echo("\nMerging per-cell analytics into export CSVs...\n")
+        build_export_csvs(results_dir, overwrite=True)
+
+        export_dir = results_dir / "export-csv"
+        export_candidates = list(export_dir.iterdir(files_only=True))
+        export_csvs = [
+            Path(p.materialize()) if isinstance(p, URIPath) else Path(p)
+            for p in export_candidates
+            if p.suffix == ".csv"
+        ]
+
+        if export_csvs:
+            click.echo(f"  {len(export_csvs)} slide(s) ready for export.")
+            num_export_workers = min(4, _num_cpus() or 4)
+
+            if export_geojson:
+                click.echo("\nWriting results to GeoJSON files...\n")
+                write_geojsons(
+                    csvs=export_csvs,
+                    overlap=patch_overlap_ratio,
+                    results_dir=results_dir,
+                    output_dir="export-geojson",
+                    prefix="prob",
+                    num_workers=num_export_workers,
+                    object_type="detection",
+                    set_classification=True,
+                    overwrite=True,
+                )
+
+            if export_omecsv:
+                click.echo("\nWriting results to OME-CSV files...\n")
+                h5s: list[Path] = []
+                patches_dir = results_dir / "patches"
+                if patches_dir.exists():
+                    h5s = [
+                        Path(p.materialize()) if isinstance(p, URIPath) else Path(p)
+                        for p in patches_dir.iterdir(files_only=True)
+                        if p.suffix == ".h5"
+                    ]
+                write_omecsvs(
+                    csvs=export_csvs,
+                    h5s=h5s,
+                    overlap=patch_overlap_ratio,
+                    results_dir=results_dir,
+                    output_dir=URIPath("export-omecsv"),
+                    prefix="prob",
+                    num_workers=num_export_workers,
+                    overwrite=True,
+                )
+
+            click.echo("\nExport complete.")
+        else:
+            click.echo("\nNo export CSVs were produced — skipping export.")
 
     if qupath:
         click.echo("Creating QuPath project with results")

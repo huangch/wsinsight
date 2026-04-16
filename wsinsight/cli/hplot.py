@@ -144,7 +144,7 @@ _STORAGE_KWARGS = _storage_kwargs()
     help="H-Plot computing uses only samples with valid range of cellular-wise layers.",
 )
 @click.option(
-    "--hplot-overwrite",
+    "--overwrite",
     is_flag=True,
     default=False,
     show_default=True,
@@ -170,7 +170,7 @@ def hplot(
     hplot_range_max: int | None = None,
     hplot_range_min: int | None = None,
     hplot_samples_with_valid_range_only: bool = False,
-    hplot_overwrite: bool = False,
+    overwrite: bool = False,
     num_workers: int = 8,
 ) -> None:
     """Run H-Plot analysis on inference outputs held inside ``results_dir``."""
@@ -209,7 +209,7 @@ def hplot(
         hplot_range_min=hplot_range_min,
         hplot_samples_with_valid_range_only=hplot_samples_with_valid_range_only,
         num_workers=num_workers,
-        overwrite=hplot_overwrite,
+        overwrite=overwrite,
     )
 
     if failed_hplot_generation:
@@ -232,7 +232,7 @@ def hplot(
          "hplot-outputs.csv and hmetrics-outputs.csv will be written here.",
 )
 @click.option(
-    "--hplot-overwrite",
+    "--overwrite",
     is_flag=True,
     default=False,
     show_default=True,
@@ -241,7 +241,7 @@ def hplot(
 def hplot_finalize_cmd(
     *,
     results_dir: URIPath,
-    hplot_overwrite: bool = False,
+    overwrite: bool = False,
 ) -> None:
     """Rebuild hplot-outputs.csv and hmetrics-outputs.csv from per-slide intermediates.
 
@@ -253,5 +253,5 @@ def hplot_finalize_cmd(
     _assert_directory(results_dir, "--results-dir")
 
     click.secho("\nFinalizing H-Plot outputs.\n", fg="green")
-    hplot_finalize(output_dir=results_dir, overwrite=hplot_overwrite)
+    hplot_finalize(output_dir=results_dir, overwrite=overwrite)
     click.secho("\nH-Plot finalization complete.\n", fg="green")

@@ -54,7 +54,7 @@ def register_objects_to_regions(
         overwritten for the classes present in *annot_df*.
     """
     if max_workers is None:
-        max_workers = pick_workers_safe(max_workers=os.cpu_count() - 8, min_workers=8)
+        max_workers = pick_workers_safe(max_workers=(os.cpu_count() or 16) - 8, min_workers=8)
 
     # 1) object centres (local arrays — never written into slide_df)
     cx_all = (slide_df["minx"] + slide_df["width"] * 0.5).to_numpy()

@@ -24,6 +24,9 @@ pip install -c constraints.txt -e .
 # install CellViT training dependencies (optional):
 # pip install -c constraints.txt "numpy<2" cupy wandb albumentations colorama einops schema torchstain natsort geojson ujson ray torchmetrics "evalutils==0.5.0" torchinfo
 
+# Safety check: ensure numpy stayed below 2.0
+python -c "import numpy; v=numpy.__version__; assert int(v.split('.')[0]) < 2, f'ERROR: numpy {v} >= 2.0 detected; stardist will break. Re-run: pip install -c constraints.txt \"numpy<2\"'"
+
 # Test the main entry
 S3_STORAGE_OPTIONS='{"profile":"saml"}' \
 WSINFER_ZOO_REGISTRY_PATH='/workspace/wsinsight/devel/zoo/wsinfer-zoo-registry.json' \

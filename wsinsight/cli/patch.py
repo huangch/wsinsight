@@ -475,7 +475,8 @@ def _optional_uri_paths(ctx: click.Context, param: click.Option, value):
     default=None,
     help=(
         "Path to a folder containing config.json and torchscript_model.pt. "
-        "Shorthand for --config + --model-path. Mutually exclusive with --model."
+        "Shorthand for --config + --model-path. Mutually exclusive with --model, "
+        "--config, and --model-path."
     ),
 )
 @click.option(
@@ -614,6 +615,14 @@ def patch(
 
     # --- Resolve --zoo-model-dir shorthand into --config + --model-path ------
     if zoo_model_dir is not None:
+        if model_name is not None:
+            raise click.UsageError(
+                "--zoo-model-dir is mutually exclusive with --model."
+            )
+        if config is not None or model_path is not None:
+            raise click.UsageError(
+                "--zoo-model-dir is mutually exclusive with --config and --model-path."
+            )
         config = zoo_model_dir / "config.json"
         model_path = zoo_model_dir / "torchscript_model.pt"
         if not config.exists():
@@ -625,16 +634,35 @@ def patch(
                 f"--zoo-model-dir folder does not contain torchscript_model.pt: {zoo_model_dir}"
             )
 
-    if model_name is None and config is None and model_path is None and qupath_detection_dir is None and qupath_geojson_detection_dir is None and qupath_geojson_annotation_dir is None:
+    has_model = model_name is not None
+    has_config = config is not None or model_path is not None
+    has_qupath = (
+        qupath_detection_dir is not None
+        or qupath_geojson_detection_dir is not None
+        or qupath_geojson_annotation_dir is not None
+    )
+
+    if not has_model and not has_config and not has_qupath:
         raise click.UsageError(
-            "one of --model or (--config and --model-path) or --zoo-model-dir or --qupath_detection_dir or --qupath_geojson_detection_dir or --qupath_geojson_annotation_dir is required."
+            "one of --model or (--config and --model-path) or --zoo-model-dir "
+            "or --qupath-detection-dir or --qupath-geojson-detection-dir "
+            "or --qupath-geojson-annotation-dir is required."
         )
-    elif (config is not None or model_path is not None) and model_name is not None and (qupath_detection_dir is not None or qupath_geojson_detection_dir is not None or qupath_geojson_annotation_dir is not None ):
+    if has_model and has_config:
         raise click.UsageError(
-            "--config and --model-path are mutually exclusive with --model."
-            "Both --qupath_detection_dir and --qupath_geojson_detection_dir and --qupath_geojson_annotation_dir are mutually exclusive with --model, --config and --model-path."
+            "--model is mutually exclusive with --config and --model-path."
         )
-    elif (config is not None) ^ (model_path is not None):  # XOR
+    if has_model and has_qupath:
+        raise click.UsageError(
+            "--model is mutually exclusive with --qupath-detection-dir, "
+            "--qupath-geojson-detection-dir, and --qupath-geojson-annotation-dir."
+        )
+    if has_config and has_qupath:
+        raise click.UsageError(
+            "--config/--model-path are mutually exclusive with --qupath-detection-dir, "
+            "--qupath-geojson-detection-dir, and --qupath-geojson-annotation-dir."
+        )
+    if (config is not None) ^ (model_path is not None):  # XOR
         raise click.UsageError(
             "--config and --model-path must both be set if one is set."
         )

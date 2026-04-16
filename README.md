@@ -142,13 +142,13 @@ wsinsight --help
 - (Optional) Bring in TensorFlow/Keras if you plan to convert models or run StarDist.
 - Verify CUDA visibility with `python -c 'import torch; print(torch.cuda.is_available())'` and confirm your driver matches the [CUDA compatibility matrix](https://docs.nvidia.com/deploy/cuda-compatibility/).
 
-1. **Install WSInsight**
+2. **Install WSInsight**
 
 - Stable PyPI: `python -m pip install wsinsight`
 - Latest main: `python -m pip install git+https://github.com/huangch/wsinsight.git`
 - Conda-Forge: `conda install -c conda-forge wsinsight` (use `mamba install` for faster solving)
 
-1. **Install from source (development)**
+3. **Install from source (development)**
 
 ```bash
 git clone https://github.com/huangch/wsinsight.git
@@ -163,23 +163,29 @@ The editable install enables rapid iteration on CLI commands, model definitions,
 
 Command | Purpose
 --- | ---
-`wsinsight run` | Segment tissue, extract patches, execute model inference, and emit CSV/GeoJSON/OME-CSV outputs (one-shot orchestration of `patch` + `infer`). Accepts all `infer` options including `--hplot` and `--ncomp`.
+`wsinsight run` | Segment tissue, extract patches, execute model inference, and optionally run H-Plot/ncomp analytics and export (one-shot orchestration of `patch` → `infer` → `hplot` → `ncomp` → `export`). Pass `--hplot` / `--ncomp` to enable spatial analytics and `--export-geojson` / `--export-omecsv` to write GeoJSON / OME-CSV files at the end of the run.
 `wsinsight patch` | Perform tissue segmentation, cache/crop patches to HDF5, and prepare metadata for later inference runs; safe to rerun to resume interrupted jobs.
-`wsinsight infer` | Load cached patches, run the selected model, and export QuPath/GeoJSON/OME-CSV artifacts. Optionally run H-Plot analysis via `--hplot` and neighborhood composition via `--ncomp`. Enrich object CSVs with region-level probabilities via `--region-inference-dir` and `--reg-overwrite`.
-`wsinsight reg` | Post-hoc object-to-region registration: enrich existing object-level CSV outputs with `region_prob_*` columns derived from a separate region-level inference run (`-r`). Equivalent to running `infer` with `--region-inference-dir`, but works on already-completed runs without re-running inference. Use `--reg-overwrite` to replace existing `region_*` columns.
+`wsinsight infer` | Load cached patches, run the selected model, and produce per-cell CSV outputs. Enrich object CSVs with region-level probabilities via `--region-inference-dir` and `--overwrite`. Use the standalone `hplot`/`ncomp`/`export` commands (or `run`) for downstream analytics. Does **not** run H-Plot, ncomp, or export — use `run` for one-shot orchestration.
+`wsinsight reg` | Post-hoc object-to-region registration: enrich existing object-level CSV outputs with `region_prob_*` columns derived from a separate region-level inference run (`-r`). Equivalent to running `infer` with `--region-inference-dir`, but works on already-completed runs without re-running inference. Use `--overwrite` to replace existing `region_*` columns.
 `wsinsight hplot` | Standalone H-Plot analysis on existing inference outputs. Requires cell-type-aware model outputs and both `--hplot-base-types` and `--hplot-target-types`. Computes layer-wise cell-type proportions from tumour boundary outward.
 `wsinsight hplot-finalize` | Aggregate per-slide H-Plot intermediates into a single `hplot-outputs.csv` and `hmetrics-outputs.csv`. Use after running parallel `hplot` jobs that share the same `--results-dir`.
 `wsinsight ncomp` | Neighborhood composition analysis on existing cell-detection outputs. For each target cell, builds a Delaunay graph, collects k-hop neighbors, and records the cell-type composition of the local neighborhood. Outputs per-cell CSVs under `ncomp-outputs-csv/`.
+`wsinsight export` | Merge all available per-cell analytics (inference, H-Plot, ncomp) into `export-csv/` and write GeoJSON and/or OME-CSV files. Can be run any time after inference — and optionally after `hplot`/`ncomp` — without repeating the full pipeline.
 
-Pick `run` when you want a one-liner for single slides or small batches; switch to the explicit `patch` → `infer` flow to resume large jobs, share patch caches across model variants, or parallelize stages on separate machines. Both `infer` and `run` can trigger H-Plot and neighborhood composition inline via `--hplot` / `--ncomp`. Run the standalone `wsinsight hplot` or `wsinsight ncomp` commands to (re-)run analytics on existing inference outputs without repeating inference. Use `wsinsight hplot-finalize` to assemble the cohort-level summary after running parallel `hplot` jobs. All commands share global options such as `--log-level`. Use `wsinsight <command> --help` for the full option list, including QuPath integration flags and segmentation controls.
+Pick `run` when you want a one-liner for single slides or small batches; switch to the explicit `patch` → `infer` → `hplot` / `ncomp` → `export` flow to resume large jobs, share patch caches across model variants, or parallelize stages on separate machines. `run` is the only command that orchestrates all stages — `infer` focuses solely on model inference. Run the standalone `wsinsight hplot` or `wsinsight ncomp` commands to (re-)run analytics on existing inference outputs without repeating inference. Use `wsinsight hplot-finalize` to assemble the cohort-level summary after running parallel `hplot` jobs. All commands share global options such as `--log-level`. Use `wsinsight <command> --help` for the full option list, including QuPath integration flags and segmentation controls.
 
 ## Results Layout
 
 ```
 <results-dir>/
+├── masks/                          Tissue segmentation masks (produced by patch / run)
 ├── patches/                        HDF5 patch files (produced by patch / run)
 ├── model-outputs-csv/
 │   └── <slide>.csv                 Per-patch/cell inference results
+├── model-outputs-geojson/
+│   └── <slide>.geojson             GeoJSON from reg --geojson (region-enriched)
+├── model-outputs-omecsv/
+│   └── <slide>.ome.csv.gz          OME-CSV from reg --omecsv (region-enriched)
 ├── hplot-outputs-csv/
 │   ├── hplots/<slide>.csv          Per-layer H-Plot curve (one row per layer)
 │   ├── cells/<slide>.csv           Per-cell data with spatial annotations
@@ -188,8 +194,15 @@ Pick `run` when you want a one-liner for single slides or small batches; switch 
 ├── hmetrics-outputs.csv            Aggregated H-Plot metrics (all slides)
 ├── ncomp-outputs-csv/
 │   └── <slide>.csv                 Per-cell neighborhood composition
-└── enriched-outputs-csv/
-    └── <slide>.csv                 Merged per-cell CSV (inference + hplot + ncomp)
+├── enriched-outputs-csv/
+│   └── <slide>.csv                 Merged per-cell CSV (inference + hplot + ncomp)
+├── export-csv/
+│   └── <slide>.csv                 Merged per-cell CSV used by the export command
+├── export-geojson/
+│   └── <slide>.geojson             GeoJSON export (wsinsight export --geojson)
+├── export-omecsv/
+│   └── <slide>.ome.csv.gz          OME-CSV export (wsinsight export --omecsv)
+└── run_metadata_*.json             Configuration and runtime info
 ```
 
 ## Output File Formats
@@ -209,7 +222,7 @@ Produced by `infer`, `run`, and `reg`.
 
 ### `hplot-outputs-csv/hplots/<slide>.csv`
 
-Per-layer H-Plot curve produced by `hplot`, `infer --hplot`, or `run --hplot`.
+Per-layer H-Plot curve produced by `hplot` or `run --hplot`.
 
 | Column | Description |
 |---|---|
@@ -236,7 +249,7 @@ Per-cell file: the original `model-outputs-csv/<slide>.csv` extended with spatia
 
 ### `hplot-outputs.csv`
 
-Cohort-level H-Plot curve aggregated across all slides. Produced by `hplot`, `infer --hplot`, `run --hplot`, or `hplot-finalize`.
+Cohort-level H-Plot curve aggregated across all slides. Produced by `hplot`, `run --hplot`, or `hplot-finalize`.
 
 Columns: `id`, `layer`, `target_prop`, `target_count`, `base_prop`, `base_count`, `all_count`, `distance`
 
@@ -256,7 +269,7 @@ Per-slide spatial interaction metrics. One row per slide.
 
 ### `ncomp-outputs-csv/<slide>.csv`
 
-Per-cell neighborhood composition produced by `ncomp`, `infer --ncomp`, or `run --ncomp`.
+Per-cell neighborhood composition produced by `ncomp` or `run --ncomp`.
 
 | Column | Description |
 |---|---|
@@ -281,7 +294,7 @@ Merged per-cell CSV produced by `build_enriched_csvs()` (called programmatically
 
 ## Key Parameters
 
-### H-Plot (`--hplot-*` options in `infer`, `run`, and `wsinsight hplot`)
+### H-Plot (`--hplot-*` options in `run` and `wsinsight hplot`)
 
 | Option | Default | Description |
 |---|---|---|
@@ -294,25 +307,25 @@ Merged per-cell CSV produced by `build_enriched_csvs()` (called programmatically
 | `--hplot-range-min` | `None` | Innermost layer index (≤ 0) to include in metrics |
 | `--hplot-range-max` | `None` | Outermost layer index (≥ 1) to include in metrics |
 | `--hplot-samples-with-valid-range-only` | off | Exclude slides that do not fully cover `[range-min, range-max]` |
-| `--hplot-overwrite` | off | Recompute existing per-slide outputs |
+| `--overwrite` | off | Recompute existing per-slide outputs |
 
-### Neighborhood Composition (`--ncomp-*` options in `infer`, `run`, and `wsinsight ncomp`)
+### Neighborhood Composition (`--ncomp-*` options in `run` and `wsinsight ncomp`)
 
 | Option | Default | Description |
 |---|---|---|
 | `--ncomp-target-types` | all cells | Comma-separated cell types to compute neighborhoods for |
 | `--ncomp-max-neighbor-distance` | `25.0` | Maximum Delaunay edge length in µm |
 | `--ncomp-k` | `2` | k-hop neighborhood radius |
-| `--ncomp-overwrite` | off | Recompute existing per-slide outputs |
+| `--overwrite` | off | Recompute existing per-slide outputs |
 
 ### Model Selection
 
 | Option | Applies to | Description |
 |---|---|---|
-| `-m / --model` | `run`, `patch`, `infer` | Name of a registered model from the WSInsight / WSInfer Model Zoo. Mutually exclusive with `--config`. |
-| `-c / --config` | `run`, `patch`, `infer` | Path to a custom JSON model configuration file (see `wsinsight/schemas/model-config.schema.json`). Must be paired with `--model-path`. Mutually exclusive with `--model`. |
-| `-p / --model-path` | `run`, `patch`, `infer` | Path to the custom TorchScript weights. Required when `--config` is used. |
-| `-z / --zoo-model-dir` | `run`, `patch`, `infer` | Path to a folder containing `config.json` and `torchscript_model.pt`. Shorthand for `--config` + `--model-path`. Mutually exclusive with `--model`. |
+| `-m / --model` | `run`, `patch`, `infer` | Name of a registered model from the WSInsight / WSInfer Model Zoo. Mutually exclusive with `--config`, `--model-path`, and `--zoo-model-dir`. |
+| `-c / --config` | `run`, `patch`, `infer` | Path to a custom JSON model configuration file (see `wsinsight/schemas/model-config.schema.json`). Must be paired with `--model-path`. Mutually exclusive with `--model` and `--zoo-model-dir`. |
+| `-p / --model-path` | `run`, `patch`, `infer` | Path to the custom TorchScript weights. Required when `--config` is used. Mutually exclusive with `--model` and `--zoo-model-dir`. |
+| `-z / --zoo-model-dir` | `run`, `patch`, `infer` | Path to a folder containing `config.json` and `torchscript_model.pt`. Shorthand for `--config` + `--model-path`. Mutually exclusive with `--model`, `--config`, and `--model-path`. |
 
 ### Inference Performance
 
@@ -325,7 +338,7 @@ Merged per-cell CSV produced by `build_enriched_csvs()` (called programmatically
 
 ## Example Workflows
 
-### Run inference + H-Plot + ncomp in a single command
+### Run inference + H-Plot + ncomp + export in a single command
 
 ```bash
 wsinsight run \
@@ -339,7 +352,9 @@ wsinsight run \
   --hplot-range-min -5 \
   --hplot-range-max 5 \
   --ncomp \
-  --ncomp-target-types lymphocyte
+  --ncomp-target-types lymphocyte \
+  --export-geojson \
+  --export-omecsv
 ```
 
 ### Run H-Plot on existing inference outputs
@@ -370,20 +385,30 @@ wsinsight ncomp \
   --ncomp-k 2
 ```
 
+### Export merged analytics to GeoJSON / OME-CSV
+
+```bash
+wsinsight export \
+  --results-dir results/ \
+  --geojson \
+  --omecsv \
+  --export-workers 8
+```
+
 ### Enrich object CSVs with region probabilities post-hoc
 
 ```bash
 wsinsight reg \
   --results-dir results-cellvit/ \
   --region-inference-dir results-region/ \
-  --reg-overwrite
+  --overwrite
 ```
 
 ## Models and Configurations
 
 - Models registered in the WSInfer Zoo can be listed with `wsinfer-zoo ls`.
 - Bring-your-own models by supplying `--config` (JSON schema documented in `wsinsight/schemas/model-config.schema.json`) together with `--model-path` (TorchScript weights).
-- Use `--zoo-model-dir` / `-z` to point at a folder that already contains `config.json` and `torchscript_model.pt`. This is a shorthand for `--config` + `--model-path` and is mutually exclusive with `--model`.
+- Use `--zoo-model-dir` / `-z` to point at a folder that already contains `config.json` and `torchscript_model.pt`. This is a shorthand for `--config` + `--model-path` and is mutually exclusive with `--model`, `--config`, and `--model-path`.
 - QuPath-generated detections and annotations can be used to create pseudo-model runs via the `--qupath-*` options in `wsinsight run`.
 
 ## Environment Variables

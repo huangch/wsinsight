@@ -108,7 +108,7 @@ def _assert_directory(path: URIPath, option_name: str) -> None:
     help="Worker processes for GeoJSON/OME-CSV export.",
 )
 @click.option(
-    "--reg-overwrite",
+    "--overwrite",
     is_flag=True,
     default=False,
     show_default=True,
@@ -125,7 +125,7 @@ def reg(
     geojson: bool = False,
     omecsv: bool = False,
     export_workers: int = 4,
-    reg_overwrite: bool = False,
+    overwrite: bool = False,
 ) -> None:
     """Register object-prediction CSVs to region-prediction results.
 
@@ -198,14 +198,14 @@ def reg(
                 low_memory=False,
             )
 
-            if not reg_overwrite:
+            if not overwrite:
                 would_add = {"region_" + c for c in annot_df.columns}
                 already_present = would_add & set(slide_df.columns)
                 if already_present:
                     click.echo(
                         f"WARNING: skipping {obj_csv.name} — region_* columns already "
                         f"present ({', '.join(sorted(already_present)[:3])}{'...' if len(already_present) > 3 else ''}). "
-                        f"Use --reg-overwrite to replace."
+                        f"Use --overwrite to replace."
                     )
                     skipped += 1
                     continue

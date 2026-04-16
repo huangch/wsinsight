@@ -1,23 +1,27 @@
 Command reference
 =================
 
-Seven CLI entry points are available:
+Eight CLI entry points are available:
 
 ============================  ================================================================
 Command                       Purpose
 ============================  ================================================================
 ``wsinsight run``             One-shot workflow: tissue segmentation, patch extraction, model
-                              inference, and optional exports.  Accepts all ``infer`` options
-                              including ``--hplot`` and ``--ncomp``.
+                              inference, and optional spatial analytics and exports.
+                              Orchestrates ``patch`` → ``infer`` → ``hplot`` → ``ncomp``
+                              → ``export``.  Pass ``--hplot`` / ``--ncomp`` to enable
+                              spatial analytics and ``--export-geojson`` / ``--export-omecsv``
+                              to write GeoJSON / OME-CSV files at the end of the run.
 ``wsinsight patch``           Segment tissue and cache patches to HDF5; safe to rerun to
                               resume interrupted jobs.
-``wsinsight infer``           Reuse cached patches to run models and exporters.  Supports
-                              inline H-Plot (``--hplot``) and neighborhood composition
-                              (``--ncomp``) analytics, region registration via
-                              ``--region-inference-dir``, and ``--reg-overwrite``.
+``wsinsight infer``           Reuse cached patches to run models and produce per-cell CSV
+                              outputs.  Supports region registration via
+                              ``--region-inference-dir`` and ``--overwrite``.
+                              Use standalone ``hplot``/``ncomp``/``export`` commands
+                              (or ``run``) for downstream analytics.
 ``wsinsight reg``             Post-hoc object-to-region registration on already-completed
                               runs.  Enriches object CSVs with ``region_prob_*`` columns from
-                              a prior region-level run.  Use ``--reg-overwrite`` to replace
+                              a prior region-level run.  Use ``--overwrite`` to replace
                               existing region columns.
 ``wsinsight hplot``           Standalone H-Plot analysis on existing object-based inference
                               outputs.  Requires both ``--hplot-base-types`` and
@@ -28,14 +32,17 @@ Command                       Purpose
 ``wsinsight ncomp``           Neighborhood composition analysis on existing inference outputs.
                               For each target cell, builds a Delaunay graph, collects k-hop
                               neighbors, and records per-cell type counts and proportions.
-                              Can also run inline via ``wsinsight infer --ncomp`` or
-                              ``wsinsight run --ncomp``.
+                              Can also run inline via ``wsinsight run --ncomp``.
+``wsinsight export``          Merge all per-cell analytics (inference, H-Plot, ncomp) into
+                              ``export-csv/`` and write GeoJSON and/or OME-CSV files.  Can
+                              be run after inference — and optionally after ``hplot`` /
+                              ``ncomp`` — without repeating the full pipeline.
 ============================  ================================================================
 
 Use ``run`` for simple single-machine jobs, and switch to the explicit ``patch`` → ``infer``
 flow when you need to resume work, share caches across models, or process slides on
-multiple nodes.  Both ``infer`` and ``run`` can trigger H-Plot and neighborhood composition
-inline via ``--hplot`` / ``--ncomp``.  Use the standalone ``hplot`` and ``ncomp`` commands
+multiple nodes.  ``run`` is the only command that orchestrates all stages — ``infer``
+focuses solely on model inference.  Use the standalone ``hplot`` and ``ncomp`` commands
 to re-run analytics on existing inference outputs without repeating inference.  Run
 ``hplot-finalize`` to assemble the cohort-level summary after parallel ``hplot`` jobs.  Use
 ``reg`` to enrich earlier runs with region-level probabilities without re-running inference.
@@ -126,7 +133,7 @@ Per-cell file: the original ``model-outputs-csv/<slide>.csv`` extended with spat
 ~~~~~~~~~~~~~~~~~~~~~~
 
 Cohort-level H-Plot curve aggregated across all slides, produced by ``hplot``,
-``infer --hplot``, ``run --hplot``, or ``hplot-finalize``.
+``run --hplot``, or ``hplot-finalize``.
 
 Columns: ``id``, ``layer``, ``target_prop``, ``target_count``, ``base_prop``,
 ``base_count``, ``all_count``, ``distance``
@@ -152,7 +159,7 @@ Columns: ``id``, ``valid``,
 ``ncomp-outputs-csv/<slide>.csv``
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-Per-cell neighborhood composition produced by ``ncomp``, ``infer --ncomp``, or
+Per-cell neighborhood composition produced by ``ncomp`` or
 ``run --ncomp``.
 
 .. list-table::
@@ -171,6 +178,14 @@ Per-cell neighborhood composition produced by ``ncomp``, ``infer --ncomp``, or
      - Count of neighbors of each class; one column per model class
    * - ``neighborhood_<class>_prop``
      - Proportion of neighbors of each class; one column per model class
+
+
+``export-csv/<slide>.csv``
+~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Merged per-cell CSV produced by ``wsinsight export``.  Left-joins the base
+inference CSV, H-Plot cell features, and ncomp neighborhood data on shared
+geometry keys.  Same schema as ``enriched-outputs-csv/`` below.
 
 
 ``enriched-outputs-csv/<slide>.csv``
@@ -203,8 +218,8 @@ geometry keys.
 Key parameters
 --------------
 
-H-Plot (``--hplot-*`` in ``infer``, ``run``, and ``wsinsight hplot``)
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+H-Plot (``--hplot-*`` in ``run`` and ``wsinsight hplot``)
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 .. list-table::
    :header-rows: 1
@@ -240,12 +255,12 @@ H-Plot (``--hplot-*`` in ``infer``, ``run``, and ``wsinsight hplot``)
    * - ``--hplot-samples-with-valid-range-only``
      - off
      - Exclude slides that do not cover the full ``[range-min, range-max]`` window
-   * - ``--hplot-overwrite``
+   * - ``--overwrite``
      - off
      - Recompute and overwrite existing per-slide H-Plot outputs
 
-Neighborhood composition (``--ncomp-*`` in ``infer``, ``run``, and ``wsinsight ncomp``)
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+Neighborhood composition (``--ncomp-*`` in ``run`` and ``wsinsight ncomp``)
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 .. list-table::
    :header-rows: 1
@@ -263,7 +278,7 @@ Neighborhood composition (``--ncomp-*`` in ``infer``, ``run``, and ``wsinsight n
    * - ``--ncomp-k``
      - ``2``
      - k-hop neighborhood radius
-   * - ``--ncomp-overwrite``
+   * - ``--overwrite``
      - off
      - Recompute and overwrite existing per-slide ncomp outputs
 
@@ -281,20 +296,21 @@ Model selection
    * - ``-m / --model``
      - ``run``, ``patch``, ``infer``
      - Registered model from the WSInsight / WSInfer Model Zoo. Mutually exclusive
-       with ``--config``.
+       with ``--config``, ``--model-path``, and ``--zoo-model-dir``.
    * - ``-c / --config``
      - ``run``, ``patch``, ``infer``
      - Path to a custom JSON model configuration (schema:
        ``wsinsight/schemas/model-config.schema.json``). Must be paired with
-       ``--model-path``. Mutually exclusive with ``--model``.
+       ``--model-path``. Mutually exclusive with ``--model`` and ``--zoo-model-dir``.
    * - ``-p / --model-path``
      - ``run``, ``patch``, ``infer``
      - TorchScript weights file. Required when ``--config`` is used.
+       Mutually exclusive with ``--model`` and ``--zoo-model-dir``.
    * - ``-z / --zoo-model-dir``
      - ``run``, ``patch``, ``infer``
      - Folder containing ``config.json`` and ``torchscript_model.pt``.
        Shorthand for ``--config`` + ``--model-path``.  Mutually exclusive with
-       ``--model``.
+       ``--model``, ``--config``, and ``--model-path``.
 
 
 Inference performance
@@ -374,10 +390,18 @@ Enrich object CSVs with region probabilities post-hoc::
     wsinsight reg \
       --results-dir results-cellvit/ \
       --region-inference-dir results-region/ \
-      --reg-overwrite
+      --overwrite
+
+Export merged analytics to GeoJSON / OME-CSV::
+
+    wsinsight export \
+      --results-dir results/ \
+      --geojson \
+      --omecsv \
+      --export-workers 8
 
 
 .. click:: wsinsight.cli.cli:cli
    :prog: wsinsight
    :nested: full
-   :commands: run, patch, infer, hplot, hplot_finalize_cmd, reg, ncomp
+   :commands: run, patch, infer, export, hplot, hplot_finalize_cmd, reg, ncomp

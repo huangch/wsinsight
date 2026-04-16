@@ -46,16 +46,18 @@ WSInsight provides a CLI. Use :code:`--help` to explore available options:
    wsinsight --help
    wsinsight run --help
 
-Three commands are available today:
+Eight commands are available:
 
 =========================  ================================================================
 Command                    Purpose
 =========================  ================================================================
 ``wsinsight run``          Convenience wrapper that extracts patches then runs inference/exports.
+                           Pass ``--export-geojson`` and/or ``--export-omecsv`` to merge
+                           all per-cell analytics and write GeoJSON / OME-CSV at the end.
 ``wsinsight patch``        Generate tissue masks + patch caches inside ``--results-dir``.
 ``wsinsight infer``        Reuse cached patches to run models and emit GeoJSON/OME exports.
                            Supports inline region registration via
-                           ``--region-inference-dir`` and ``--reg-overwrite``.
+                           ``--region-inference-dir`` and ``--overwrite``.
 ``wsinsight reg``          Post-hoc object-to-region registration on already-completed runs.
                            Enriches object CSVs with ``region_prob_*`` columns.
 ``wsinsight hplot``        Standalone H-Plot analysis on existing object-based inference
@@ -66,7 +68,10 @@ Command                    Purpose
                            inference outputs.  For each target cell, builds a Delaunay
                            graph, collects k-hop neighbors, and records per-cell type
                            counts and proportions.
-=========================  ================================================================  ================================================================
+``wsinsight export``       Merge all per-cell analytics (inference, H-Plot, ncomp) into
+                           ``export-csv/`` and write GeoJSON and/or OME-CSV files.
+                           Can be run after inference without repeating the pipeline.
+=========================  ================================================================
 
 Pick ``run`` for one-shot processing. Switch to the explicit ``patch`` → ``infer`` flow
 for large cohorts, resumable jobs, or when you want to reuse the same patches across
@@ -118,6 +123,9 @@ WSInsight-native CellViT example:
       --num-workers 8
 
 Both flows handle patch extraction, batched inference, and exporter steps automatically.
+Pass ``--export-geojson`` and/or ``--export-omecsv`` to ``wsinsight run`` to additionally
+merge all per-cell analytics and write GeoJSON / OME-CSV files at the end of the run,
+equivalent to running ``wsinsight export`` as a separate step.
 
 Two-stage workflows
 -------------------
@@ -224,8 +232,8 @@ Optional options:
 * ``-i / --wsi-dir`` — when supplied, the slide list is derived from filenames in this
   directory (images are not opened).  This mirrors the shard-enumeration behaviour of
   ``run`` / ``infer`` / ``hplot``.
-* ``--reg-overwrite`` — by default, any slide whose object CSV already contains
-  ``region_*`` columns is skipped with a warning.  Pass ``--reg-overwrite`` to
+* ``--overwrite`` — by default, any slide whose object CSV already contains
+  ``region_*`` columns is skipped with a warning.  Pass ``--overwrite`` to
   unconditionally overwrite those columns.
 * ``--geojson`` / ``--omecsv`` — export the enriched CSVs to GeoJSON or OME-CSV after
   registration.
@@ -236,7 +244,7 @@ Example::
     wsinsight reg \
         --results-dir results/ \
         --region-inference-dir results-region/ \
-        --reg-overwrite \
+        --overwrite \
         --geojson
 
 
@@ -274,7 +282,7 @@ Tuning options:
 * ``--hplot-range-min`` — minimum layer index inward into the tumour to include.
 * ``--hplot-samples-with-valid-range-only`` — restrict H-Plot computation to slides
   that have cells at every layer within the range window.
-* ``--hplot-overwrite`` — overwrite existing per-slide H-Plot outputs instead of
+* ``--overwrite`` — overwrite existing per-slide H-Plot outputs instead of
   skipping slides that already have results.
 * ``--num-workers`` (default 8) — number of slides to process concurrently.
 
@@ -298,20 +306,20 @@ H-Plot finalization
 by one or more ``hplot`` jobs into a single cohort-level summary.  Run this command once
 after all parallel ``hplot`` workers have finished:
 
-* ``-o / --output-dir`` (required) — the shared ``--results-dir`` used by the ``hplot``
+* ``-o / --results-dir`` (required) — the shared ``--results-dir`` used by the ``hplot``
   jobs.  The command reads per-slide H-Plot files and writes two files into this
   directory:
 
   * ``hplot-outputs.csv`` — cohort-level H-Plot profiles
   * ``hmetrics-outputs.csv`` — cohort-level H-metric summary statistics
 
-* ``--hplot-overwrite`` — overwrite the aggregated CSVs if they already exist.
+* ``--overwrite`` — overwrite the aggregated CSVs if they already exist.
 
 Example::
 
     wsinsight hplot-finalize \
-        --output-dir results/ \
-        --hplot-overwrite
+        --results-dir results/ \
+        --overwrite
 
 
 Neighborhood composition
@@ -322,8 +330,7 @@ cell-detection inference outputs.  For each target cell (or every cell when no
 target types are given), it builds a Delaunay proximity graph, computes k-hop
 neighbors, and records the cell-type composition of each cell's local neighborhood.
 
-The same analysis can be run inline via ``wsinsight infer --ncomp`` or
-``wsinsight run --ncomp``.
+The same analysis can be run inline via ``wsinsight run --ncomp``.
 
 Required options:
 
@@ -338,7 +345,7 @@ Tuning options:
   Omit to process every cell.
 * ``--ncomp-max-neighbor-distance`` (default 25.0 µm) — maximum Delaunay edge length.
 * ``--ncomp-k`` (default 2) — k-hop neighborhood radius.
-* ``--ncomp-overwrite`` — overwrite existing per-slide ncomp outputs.
+* ``--overwrite`` — overwrite existing per-slide ncomp outputs.
 * ``--num-workers`` (default 8) — number of slides to process concurrently.
 
 Example::
@@ -387,14 +394,17 @@ Output structure
    results/
    ├── masks/                  # tissue masks with contours
    ├── model-outputs-csv/      # per-patch and per-cell classification tables
-   ├── model-outputs-geojson/  # spatial annotations for QuPath/Geo viewers
-   ├── model-outputs-omecsv/   # OME-compatible CSV exports (gzip)
+   ├── model-outputs-geojson/  # GeoJSON from wsinsight reg --geojson
+   ├── model-outputs-omecsv/   # OME-CSV from wsinsight reg --omecsv
    ├── patches/                # HDF5 with patch coordinates
-   ├── hplot-outputs/          # per-slide H-Plot intermediates
+   ├── hplot-outputs-csv/      # per-slide H-Plot intermediates
    ├── hplot-outputs.csv       # cohort-level H-Plot summary (after hplot-finalize)
    ├── hmetrics-outputs.csv    # cohort-level H-metrics summary (after hplot-finalize)
    ├── ncomp-outputs-csv/      # per-cell neighborhood composition
    ├── enriched-outputs-csv/   # merged per-cell CSV (inference + hplot + ncomp)
+   ├── export-csv/             # merged per-cell CSV (wsinsight export)
+   ├── export-geojson/         # GeoJSON export (wsinsight export --geojson)
+   ├── export-omecsv/          # OME-CSV export (wsinsight export --omecsv)
    └── run_metadata_*.json     # configuration and runtime info
 
 GeoJSON/OME outputs can be loaded into QuPath, napari, or GIS tools for spatial analysis.
@@ -452,3 +462,38 @@ The :code:`model-outputs-geojson/` and :code:`model-outputs-omecsv/` folders are
 automatically when :code:`wsinsight run` completes. They can be copied directly into
 QuPath projects or ingested into downstream analytics pipelines without additional CLI
 steps.
+
+For more control, use the standalone ``wsinsight export`` command.  It merges all
+available per-cell analytics — base inference CSVs, H-Plot cell features, and ncomp
+neighborhood composition — into ``export-csv/``, then writes the merged data to
+``export-geojson/`` and/or ``export-omecsv/`` depending on the flags provided.  This
+command can be run at any time after inference, and optionally after ``hplot`` or
+``ncomp``, without re-running the full pipeline.
+
+At least one of ``--geojson`` or ``--omecsv`` must be supplied.
+
+Required options:
+
+* ``-o / --results-dir`` — results directory produced by a prior ``run`` / ``infer`` /
+  ``hplot`` / ``ncomp`` invocation.  Must contain a ``model-outputs-csv/`` subfolder.
+
+Optional options:
+
+* ``--geojson`` — export per-cell data to GeoJSON files (``export-geojson/``).
+* ``--omecsv`` — export per-cell data to compressed OME-CSV files (``export-omecsv/``).
+  Compatible with QuPath and OMERO+.
+* ``--patch-overlap-ratio`` (default 0.0) — overlap ratio used during inference (must
+  match the original run).  Controls tile-box shrinkage in exported features.
+* ``--object-type`` (default ``detection``) — QuPath object-type label embedded in each
+  exported feature.  Choices: ``tile``, ``detection``, ``annotation``.
+* ``--export-workers`` (default 4) — worker processes for parallel serialisation.
+* ``--overwrite`` — re-build export CSVs even when ``export-csv/`` already contains
+  up-to-date files.  Useful after re-running ``hplot`` or ``ncomp``.
+
+Example::
+
+    wsinsight export \
+        --results-dir results/ \
+        --geojson \
+        --omecsv \
+        --export-workers 8

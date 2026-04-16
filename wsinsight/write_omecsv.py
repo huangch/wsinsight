@@ -258,16 +258,16 @@ def write_omecsvs(
     output = results_dir / output_dir
 
     if not results_dir.exists():
-        raise FileExistsError(f"results_dir does not exist: {results_dir}")
+        raise FileNotFoundError(f"results_dir does not exist: {results_dir}")
 
     missing_dirs = sorted({p.parent for p in csvs if not p.parent.exists()}, key=lambda d: str(d))
     if missing_dirs:
         if (results_dir / "patches").exists():
-            raise FileExistsError(
+            raise FileNotFoundError(
                 "Model outputs have not been generated yet. Please run model inference."
             )
         missing_str = ", ".join(str(d) for d in missing_dirs)
-        raise FileExistsError(
+        raise FileNotFoundError(
             "Expected the following directories to contain model-output CSVs but they do not exist: "
             f"{missing_str}"
         )

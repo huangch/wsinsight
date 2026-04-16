@@ -15,6 +15,7 @@ Per slide
 
 from __future__ import annotations
 
+import logging
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 from typing import List, Mapping, Sequence
@@ -33,6 +34,8 @@ from .insight_helpers import (
     k_hop_neighbors,
 )
 
+_logger = logging.getLogger(__name__)
+
 _WORKER_STEPS = [
     "load CSV",
     "cell centers",
@@ -46,7 +49,7 @@ _WORKER_STEPS = [
 def _worker(
     wsi_path: URIPath,
     model_output_csv: URIPath,
-    ncomp_dir: URIPath,
+    results_dir: URIPath,
     max_neighbor_distance_um: float,
     target_type_list: Sequence[str],
     ncomp_k: int,
@@ -57,7 +60,7 @@ def _worker(
     """Process a single slide to compute per-cell neighborhood composition."""
 
     slide_id = wsi_path.stem
-    ncomp_csv = ncomp_dir / "ncomp-outputs-csv" / f"{slide_id}.csv"
+    ncomp_csv = results_dir / "ncomp-outputs-csv" / f"{slide_id}.csv"
 
     if not overwrite and ncomp_csv.exists():
         return slide_id, True
@@ -88,7 +91,8 @@ def _worker(
     try:
         with model_output_csv.open("r", encoding="utf-8") as fp:
             nodes_df = pd.read_csv(fp)
-    except Exception:
+    except Exception as exc:
+        _logger.warning("Failed to load CSV for %s: %s", slide_id, exc)
         inner.close()
         return slide_id, None
     _step("load CSV")

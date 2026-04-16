@@ -7,6 +7,7 @@ From the original paper (https://www.ncbi.nlm.nih.gov/pmc/articles/PMC7369575/):
 
 from __future__ import annotations
 
+import logging
 import os
 # from pathlib import Path
 import gc
@@ -23,6 +24,8 @@ import h5py
 from math import ceil
 from concurrent.futures import ProcessPoolExecutor, ThreadPoolExecutor, as_completed
 from typing import List
+
+logger = logging.getLogger(__name__)
 
 from .. import errors
 from ..wsi import _validate_wsi_directory
@@ -243,7 +246,8 @@ def run_inference(
                         patch_path=patch_path,
                         use_hdf5_images=use_hdf5_images,
                     )
-                except Exception:
+                except Exception as exc:
+                    logger.warning("Stain normalization failed for %s: %s", wsi_path.stem, exc)
                     failed_inference.append(wsi_path.stem)
                     pbar.update(1)
                     continue
@@ -281,7 +285,8 @@ def run_inference(
                     W_est=W_est,
                     W_def=W_def,
                 )
-            except Exception:
+            except Exception as exc:
+                logger.warning("Failed to create dataset for %s: %s", wsi_path.stem, exc)
                 failed_inference.append(wsi_path.stem)
                 pbar.update(1)
                 continue
