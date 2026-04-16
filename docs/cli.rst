@@ -1,7 +1,7 @@
 Command reference
 =================
 
-Eight CLI entry points are available:
+Seven CLI entry points are available:
 
 ============================  ================================================================
 Command                       Purpose
@@ -39,8 +39,10 @@ inline via ``--hplot`` / ``--ncomp``.  Use the standalone ``hplot`` and ``ncomp`
 to re-run analytics on existing inference outputs without repeating inference.  Run
 ``hplot-finalize`` to assemble the cohort-level summary after parallel ``hplot`` jobs.  Use
 ``reg`` to enrich earlier runs with region-level probabilities without re-running inference.
-All commands share the same URI-aware options for local folders, ``s3://`` buckets, and
-``gdc-manifest://`` manifests.
+All commands share the same URI-aware options for local folders, ``s3://`` buckets,
+``gdc-manifest://`` manifests, and ``image-list://`` file lists (a text file with one
+slide path per line; blank lines and ``#`` comments are ignored).  When ``--wsi-dir``
+points to a plain local text file it is automatically coerced to ``image-list://``.
 
 
 Output file formats
@@ -171,6 +173,33 @@ Per-cell neighborhood composition produced by ``ncomp``, ``infer --ncomp``, or
      - Proportion of neighbors of each class; one column per model class
 
 
+``enriched-outputs-csv/<slide>.csv``
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Merged per-cell CSV produced by ``build_enriched_csvs()``.  Left-joins the base
+inference CSV, H-Plot cell features, and ncomp neighborhood data on shared
+geometry keys.
+
+.. list-table::
+   :header-rows: 1
+   :widths: 35 65
+
+   * - Column
+     - Description
+   * - All columns from ``model-outputs-csv/<slide>.csv``
+     - Inherited inference + region columns
+   * - ``center_x``, ``center_y``
+     - Cell centre (added if absent)
+   * - ``is_base_type``, ``is_target_type``
+     - From H-Plot cells output (when available)
+   * - ``signed_distance_to_border``
+     - From H-Plot cells output (when available)
+   * - ``cell_type``, ``neighborhood_size``
+     - From ncomp output (when available)
+   * - ``neighborhood_<class>_count``, ``neighborhood_<class>_prop``
+     - From ncomp output (when available)
+
+
 Key parameters
 --------------
 
@@ -237,6 +266,67 @@ Neighborhood composition (``--ncomp-*`` in ``infer``, ``run``, and ``wsinsight n
    * - ``--ncomp-overwrite``
      - off
      - Recompute and overwrite existing per-slide ncomp outputs
+
+
+Model selection
+~~~~~~~~~~~~~~~
+
+.. list-table::
+   :header-rows: 1
+   :widths: 30 20 50
+
+   * - Option
+     - Applies to
+     - Description
+   * - ``-m / --model``
+     - ``run``, ``patch``, ``infer``
+     - Registered model from the WSInsight / WSInfer Model Zoo. Mutually exclusive
+       with ``--config``.
+   * - ``-c / --config``
+     - ``run``, ``patch``, ``infer``
+     - Path to a custom JSON model configuration (schema:
+       ``wsinsight/schemas/model-config.schema.json``). Must be paired with
+       ``--model-path``. Mutually exclusive with ``--model``.
+   * - ``-p / --model-path``
+     - ``run``, ``patch``, ``infer``
+     - TorchScript weights file. Required when ``--config`` is used.
+   * - ``-z / --zoo-model-dir``
+     - ``run``, ``patch``, ``infer``
+     - Folder containing ``config.json`` and ``torchscript_model.pt``.
+       Shorthand for ``--config`` + ``--model-path``.  Mutually exclusive with
+       ``--model``.
+
+
+Inference performance
+~~~~~~~~~~~~~~~~~~~~~
+
+.. list-table::
+   :header-rows: 1
+   :widths: 30 15 15 40
+
+   * - Option
+     - Default
+     - Applies to
+     - Description
+   * - ``-b / --batch-size``
+     - ``32``
+     - ``run``, ``infer``
+     - Batch size for model inference.  Increase for multi-GPU setups.
+   * - ``-n / --num-workers``
+     - auto
+     - ``run``, ``infer``
+     - Dataloader workers feeding patches to PyTorch.  Default heuristic:
+       ``min(2 × GPU count, CPU count)``.
+   * - ``--export-workers``
+     - auto
+     - ``infer``
+     - Worker processes for GeoJSON / OME-CSV export.  Default reserves headroom
+       for inference.
+   * - ``--stitch-workers``
+     - auto
+     - ``infer``
+     - Thread pool size for TileFuse object-based detection stitching.  Default:
+       ``min(8, CPU // 2)``.
 
 
 Example workflows

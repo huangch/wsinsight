@@ -62,15 +62,21 @@ Command                    Purpose
                            outputs.
 ``wsinsight hplot-finalize``  Aggregate per-slide H-Plot intermediates into a cohort-level
                            summary.
-=========================  ================================================================
+``wsinsight ncomp``        Standalone neighborhood composition analysis on existing
+                           inference outputs.  For each target cell, builds a Delaunay
+                           graph, collects k-hop neighbors, and records per-cell type
+                           counts and proportions.
+=========================  ================================================================  ================================================================
 
 Pick ``run`` for one-shot processing. Switch to the explicit ``patch`` → ``infer`` flow
 for large cohorts, resumable jobs, or when you want to reuse the same patches across
 multiple model configurations. Run ``hplot`` on completed cell-detection outputs to
 compute spatial tumour-microenvironment metrics, then ``hplot-finalize`` to assemble the
-cohort-level summary. Use ``reg`` to enrich an earlier run with region-level probabilities
-without re-running inference. All commands share the same URI-aware options and support
-local folders, ``s3://`` buckets, and ``gdc-manifest://`` manifests.
+cohort-level summary. Use ``ncomp`` to compute per-cell neighborhood composition on
+existing inference outputs. Use ``reg`` to enrich an earlier run with region-level
+probabilities without re-running inference. All commands share the same URI-aware options
+and support local folders, ``s3://`` buckets, ``gdc-manifest://`` manifests, and
+``image-list://`` file lists.
 
 
 Model catalogs
@@ -172,8 +178,12 @@ Remote data sources and caching
 
 All CLI commands accept the same URI-aware options:
 
-* ``--wsi-dir`` may point to local folders, ``s3://bucket/prefix`` paths, or
-   ``gdc-manifest://`` manifests. GDC manifests stream WSIs through the built-in cache.
+* ``--wsi-dir`` may point to local folders, ``s3://bucket/prefix`` paths,
+  ``gdc-manifest://`` manifests, or ``image-list:///path/to/filelist.txt`` URIs.
+  An ``image-list://`` URI references a plain text file listing one slide path per
+  line (blank lines and ``#`` comments are ignored).  When ``--wsi-dir`` is a plain
+  local text file it is automatically coerced to ``image-list://``.
+  GDC manifests stream WSIs through the built-in cache.
 * ``--results-dir`` (and the derived GeoJSON/OME outputs) may target local disks or S3
    buckets. Remote destinations do **not** need to exist beforehand; they are created as
    needed.
@@ -304,6 +314,71 @@ Example::
         --hplot-overwrite
 
 
+Neighborhood composition
+------------------------
+
+``wsinsight ncomp`` computes per-cell neighborhood composition from existing
+cell-detection inference outputs.  For each target cell (or every cell when no
+target types are given), it builds a Delaunay proximity graph, computes k-hop
+neighbors, and records the cell-type composition of each cell's local neighborhood.
+
+The same analysis can be run inline via ``wsinsight infer --ncomp`` or
+``wsinsight run --ncomp``.
+
+Required options:
+
+* ``-i / --wsi-dir`` — slide directory (used for slide enumeration and µm-per-pixel
+  spacing; images are not fully read).
+* ``-o / --results-dir`` — directory containing a ``model-outputs-csv/`` subfolder from
+  a prior inference run.
+
+Tuning options:
+
+* ``--ncomp-target-types`` — comma-separated cell type(s) to compute neighborhoods for.
+  Omit to process every cell.
+* ``--ncomp-max-neighbor-distance`` (default 25.0 µm) — maximum Delaunay edge length.
+* ``--ncomp-k`` (default 2) — k-hop neighborhood radius.
+* ``--ncomp-overwrite`` — overwrite existing per-slide ncomp outputs.
+* ``--num-workers`` (default 8) — number of slides to process concurrently.
+
+Example::
+
+    wsinsight ncomp \
+        --wsi-dir slides/ \
+        --results-dir results/ \
+        --ncomp-target-types lymphocyte \
+        --ncomp-k 2 \
+        --num-workers 16
+
+
+Enriched outputs
+----------------
+
+The ``enriched-outputs-csv/`` directory contains merged per-cell CSVs that left-join
+all available analysis outputs into a single file per slide.  It combines columns from
+``model-outputs-csv/`` (base inference + region registration), ``hplot-outputs-csv/cells/``
+(H-Plot per-cell features), and ``ncomp-outputs-csv/`` (neighborhood composition) on
+shared geometry keys (``minx``/``miny`` and ``center_x``/``center_y``).
+
+This can be produced programmatically via ``wsinsight.enrich.build_enriched_csvs()``.
+
+
+Inference performance tuning
+----------------------------
+
+``wsinsight infer`` (and ``wsinsight run``, which calls ``infer`` internally) expose
+several knobs for throughput:
+
+* ``-b / --batch-size`` (default 32) — batch size for model inference.  Increase for
+  multi-GPU setups.
+* ``-n / --num-workers`` (default: auto) — number of dataloader workers feeding patches
+  to PyTorch.  The default heuristic is ``min(2 × GPU count, CPU count)``.
+* ``--export-workers`` (default: auto) — worker processes for GeoJSON / OME-CSV export.
+  The default reserves headroom for the OS and inference.
+* ``--stitch-workers`` (default: auto) — thread pool size for TileFuse object-based
+  detection stitching.  Default: ``min(8, CPU // 2)``.
+
+
 Output structure
 ----------------
 
@@ -318,6 +393,8 @@ Output structure
    ├── hplot-outputs/          # per-slide H-Plot intermediates
    ├── hplot-outputs.csv       # cohort-level H-Plot summary (after hplot-finalize)
    ├── hmetrics-outputs.csv    # cohort-level H-metrics summary (after hplot-finalize)
+   ├── ncomp-outputs-csv/      # per-cell neighborhood composition
+   ├── enriched-outputs-csv/   # merged per-cell CSV (inference + hplot + ncomp)
    └── run_metadata_*.json     # configuration and runtime info
 
 GeoJSON/OME outputs can be loaded into QuPath, napari, or GIS tools for spatial analysis.
@@ -355,6 +432,17 @@ editor and run inference with:
       --results-dir results/ \
       --model-path path/to/model.ts \
       --config my-config.json
+
+Alternatively, point ``-z / --zoo-model-dir`` at a folder that already contains
+``config.json`` and ``torchscript_model.pt``. This shorthand replaces the
+``--config`` + ``--model-path`` pair:
+
+::
+
+   wsinsight run \
+      --wsi-dir slides/ \
+      --results-dir results/ \
+      --zoo-model-dir path/to/zoo-model/
 
 
 Exporting predictions

@@ -186,8 +186,10 @@ Pick `run` when you want a one-liner for single slides or small batches; switch 
 │   └── hmetrics/<slide>.json       Per-slide H-Plot metrics (intermediate)
 ├── hplot-outputs.csv               Aggregated H-Plot curve (all slides)
 ├── hmetrics-outputs.csv            Aggregated H-Plot metrics (all slides)
-└── ncomp-outputs-csv/
-    └── <slide>.csv                 Per-cell neighborhood composition
+├── ncomp-outputs-csv/
+│   └── <slide>.csv                 Per-cell neighborhood composition
+└── enriched-outputs-csv/
+    └── <slide>.csv                 Merged per-cell CSV (inference + hplot + ncomp)
 ```
 
 ## Output File Formats
@@ -264,6 +266,19 @@ Per-cell neighborhood composition produced by `ncomp`, `infer --ncomp`, or `run 
 | `neighborhood_<class>_count` | Count of neighbors of each class; one column per model class |
 | `neighborhood_<class>_prop` | Proportion of neighbors of each class; one column per model class |
 
+### `enriched-outputs-csv/<slide>.csv`
+
+Merged per-cell CSV produced by `build_enriched_csvs()` (called programmatically). Left-joins `model-outputs-csv`, `hplot-outputs-csv/cells`, and `ncomp-outputs-csv` on shared geometry keys.
+
+| Column | Description |
+|---|---|
+| All columns from `model-outputs-csv/<slide>.csv` | Inherited inference + region columns |
+| `center_x`, `center_y` | Cell centre (added if absent) |
+| `is_base_type`, `is_target_type` | From H-Plot cells output (when available) |
+| `signed_distance_to_border` | From H-Plot cells output (when available) |
+| `cell_type`, `neighborhood_size` | From ncomp output (when available) |
+| `neighborhood_<class>_count`, `neighborhood_<class>_prop` | From ncomp output (when available) |
+
 ## Key Parameters
 
 ### H-Plot (`--hplot-*` options in `infer`, `run`, and `wsinsight hplot`)
@@ -289,6 +304,24 @@ Per-cell neighborhood composition produced by `ncomp`, `infer --ncomp`, or `run 
 | `--ncomp-max-neighbor-distance` | `25.0` | Maximum Delaunay edge length in µm |
 | `--ncomp-k` | `2` | k-hop neighborhood radius |
 | `--ncomp-overwrite` | off | Recompute existing per-slide outputs |
+
+### Model Selection
+
+| Option | Applies to | Description |
+|---|---|---|
+| `-m / --model` | `run`, `patch`, `infer` | Name of a registered model from the WSInsight / WSInfer Model Zoo. Mutually exclusive with `--config`. |
+| `-c / --config` | `run`, `patch`, `infer` | Path to a custom JSON model configuration file (see `wsinsight/schemas/model-config.schema.json`). Must be paired with `--model-path`. Mutually exclusive with `--model`. |
+| `-p / --model-path` | `run`, `patch`, `infer` | Path to the custom TorchScript weights. Required when `--config` is used. |
+| `-z / --zoo-model-dir` | `run`, `patch`, `infer` | Path to a folder containing `config.json` and `torchscript_model.pt`. Shorthand for `--config` + `--model-path`. Mutually exclusive with `--model`. |
+
+### Inference Performance
+
+| Option | Default | Applies to | Description |
+|---|---|---|---|
+| `-b / --batch-size` | `32` | `run`, `infer` | Batch size for model inference. Increase for multi-GPU setups. |
+| `-n / --num-workers` | auto | `run`, `infer` | Dataloader workers feeding patches to PyTorch. Default heuristic: `min(2 × GPU count, CPU count)`. |
+| `--export-workers` | auto | `infer` | Worker processes for GeoJSON/OME-CSV export. Default reserves headroom for inference. |
+| `--stitch-workers` | auto | `infer` | Thread pool size for TileFuse object-based detection stitching. Default: `min(8, CPU // 2)`. |
 
 ## Example Workflows
 
@@ -350,6 +383,7 @@ wsinsight reg \
 
 - Models registered in the WSInfer Zoo can be listed with `wsinfer-zoo ls`.
 - Bring-your-own models by supplying `--config` (JSON schema documented in `wsinsight/schemas/model-config.schema.json`) together with `--model-path` (TorchScript weights).
+- Use `--zoo-model-dir` / `-z` to point at a folder that already contains `config.json` and `torchscript_model.pt`. This is a shorthand for `--config` + `--model-path` and is mutually exclusive with `--model`.
 - QuPath-generated detections and annotations can be used to create pseudo-model runs via the `--qupath-*` options in `wsinsight run`.
 
 ## Environment Variables
@@ -369,7 +403,7 @@ Variable | Purpose | Example
 ## Remote and Large-Scale Data
 
 - S3 URIs are supported out of the box; configure credentials via `S3_STORAGE_OPTIONS`.
-- `--wsi-dir` can point to local folders, `s3://bucket/prefix` locations, or `gdc://path/to/manifest.tsv`; `--results-dir`, GeoJSON, and OME-CSV outputs can be written to local disks or S3 buckets with the same URI syntax.
+- `--wsi-dir` can point to local folders, `s3://bucket/prefix` locations, `gdc://path/to/manifest.tsv`, or an `image-list:///path/to/filelist.txt` URI that references a text file listing one slide path per line (blank lines and `#` comments are ignored). When `--wsi-dir` is a plain local text file, it is automatically coerced to `image-list://`. `--results-dir`, GeoJSON, and OME-CSV outputs can be written to local disks or S3 buckets with the same URI syntax.
 - Every CLI that accepts `--wsi-dir`, `--results-dir`, `--region-inference-dir`, or QuPath directories uses the same URI resolver as `wsinsight patch`/`infer`. Local paths require `exists=True`, while remote paths honor the `S3_STORAGE_OPTIONS` profile without checking for pre-existence—making it safe to point `--results-dir` at a brand-new bucket/key.
 - `WSINSIGHT_REMOTE_CACHE_DIR` determines where remote assets are materialized locally (default: `~/.cache/wsinsight`). Set it to a fast SSD mount when you process tera-scale cohorts.
 - GDC manifests can be referenced directly, and the downloaded tiles are cached via the same mechanism.
