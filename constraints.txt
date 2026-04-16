@@ -42,8 +42,7 @@ fonttools==4.60.1
 frozenlist==1.8.0
 fsspec==2025.9.0
 gast==0.6.0
-# GDAL pinned by conda, not pip.
-# GDAL @ file:///home/conda/feedstock_root/build_artifacts/libgdal-core_1756983290971/work/build/swig/python
+# GDAL: installed via conda, not pip — intentionally omitted.
 geopandas==1.1.1
 girder-client==3.2.11
 girder-slicer-cli-web==1.5.14
