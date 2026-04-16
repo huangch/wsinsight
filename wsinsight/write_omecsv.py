@@ -19,6 +19,13 @@ from .uri_path import URIPath
 
 PathLike = Union[Path, URIPath]
 
+# Columns that carry geometry/identity — excluded from per-cell measurements.
+_GEOM_COLS = frozenset({
+    "minx", "miny", "width", "height",
+    "center_x", "center_y",
+    "polygon_wkt",
+})
+
 
 def _dataframe_to_omecsv(
     df: pd.DataFrame,
@@ -54,12 +61,21 @@ def _dataframe_to_omecsv(
         len(minx2) == len(miny2) == len(maxx2) == len(maxy2) == num_rows
     ), "Coordinate arrays must match DataFrame length"
 
-    # 1. Header line
+    # 1. All numeric non-geometry columns → measurements (prob_* + hplot_*, ncomp_*, etc.)
+    all_meas_cols = [
+        c for c in df.columns
+        if c not in _GEOM_COLS and pd.api.types.is_numeric_dtype(df[c])
+    ]
+
+    # Pre-build string rows (NaN → "NaN") for fast joining
+    all_meas_rows = df[all_meas_cols].fillna("NaN").astype(str).values.tolist()
+
+    # 2. Header line
     head_str = ",".join(
-        ["object", "secondary_object", "polygon", "objectType", "classification", *prob_cols]
+        ["object", "secondary_object", "polygon", "objectType", "classification", *all_meas_cols]
     )
 
-    # 2. Probabilities & class labels (vectorized)
+    # 3. Probabilities & class labels (vectorized, for classification only)
     prob_arr = df[prob_cols].to_numpy(copy=False)  # shape (N, C)
     class_names = np.array([c[len(class_prefix):] for c in prob_cols])
     best_idx = prob_arr.argmax(axis=1)             # shape (N,)
@@ -84,7 +100,7 @@ def _dataframe_to_omecsv(
         poly_str = '"POLYGON ((' + ",".join(coords) + '))"'
 
         probs = prob_arr[i]
-        mvals = ",".join(map(str, probs))  # "p1,p2,..."
+        mvals = ",".join(all_meas_rows[i])
         cls = cls_arr[i]
 
         # object,secondary_object,polygon,objectType,classification,<prob_cols...>
@@ -210,6 +226,7 @@ def write_omecsvs(
     output_dir: PathLike,
     prefix: str,
     num_workers: int,
+    overwrite: bool = False,
     usecols: Optional[List[str]] = None,
     dtype: Optional[Dict] = None,
 ) -> None:
@@ -264,7 +281,7 @@ def write_omecsvs(
         )
 
     # Skip CSVs that already have corresponding OME-CSV outputs
-    if output.exists():
+    if not overwrite and output.exists():
         omecsvs = list(_iter_files(output, suffix=".ome.csv.gz"))
         omecsv_filenames = []
         for p in omecsvs:

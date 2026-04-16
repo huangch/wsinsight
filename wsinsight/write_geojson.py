@@ -21,6 +21,13 @@ from .uri_path import URIPath
 
 PathLike = Union[Path, URIPath]
 
+# Columns that carry geometry/identity — excluded from per-cell measurements.
+_GEOM_COLS = frozenset({
+    "minx", "miny", "width", "height",
+    "center_x", "center_y",
+    "polygon_wkt",
+})
+
 # from .num_worker_optimizer import pick_workers_safe, throttle_when_busy
 
 # ---- fast JSON encoder ----
@@ -102,7 +109,7 @@ def _dataframe_to_geojson_box_fast(
         np.stack([maxx2, miny2], axis=1),
     ], axis=1)
 
-    # Probs as matrix, argmax vectorized
+    # Probs as matrix, argmax vectorized (classification only)
     probs = df[prob_cols].to_numpy(dtype=np.float32, copy=False)
     arg = probs.argmax(axis=1)
 
@@ -114,10 +121,20 @@ def _dataframe_to_geojson_box_fast(
         for c in prob_cols
     ]
 
+    # All numeric non-geometry columns → measurements (includes prob_*, hplot_*, ncomp_*, etc.)
+    measure_cols = [
+        c for c in df.columns
+        if c not in _GEOM_COLS and pd.api.types.is_numeric_dtype(df[c])
+    ]
+    meas_arr = df[measure_cols].to_numpy(dtype=np.float64, copy=False)
+
     # Build features in one tight Python loop (no pandas ops inside)
     features = []
     for i in range(len(df)):
-        measurements = {prob_cols[j]: float(probs[i, j]) for j in range(len(prob_cols))}
+        measurements = {
+            c: (None if np.isnan(v) else v)
+            for c, v in zip(measure_cols, meas_arr[i])
+        }
         feat = {
             "type": "Feature",
             "id": str(uuid.uuid4()),
@@ -171,13 +188,23 @@ def _dataframe_to_geojson_polygon_fast(
     if color_list is None:
         color_list = _make_distinct_colors(len(prob_cols))
 
+    # All numeric non-geometry columns → measurements (includes prob_*, hplot_*, ncomp_*, etc.)
+    measure_cols = [
+        c for c in props.columns
+        if c not in _GEOM_COLS and pd.api.types.is_numeric_dtype(props[c])
+    ]
+    meas_arr = props[measure_cols].to_numpy(dtype=np.float64, copy=False)
+
     # Pack your custom fields
     props["objectType"] = object_type
     if set_classification:
         props["classification"] = [
             {"name": names[i], "color": list(color_list[i]["rgb"])} for i in idx
         ]
-    props["measurements"] = [dict(zip(prob_cols, map(float, row))) for row in probs]
+    props["measurements"] = [
+        {c: (None if np.isnan(v) else v) for c, v in zip(measure_cols, row)}
+        for row in meas_arr
+    ]
     props["isLocked"] = True  # match box path
 
     # GeoDataFrame with final columns
@@ -420,6 +447,7 @@ def write_geojsons(
     set_classification: bool = False,
     annotation_shape: str = "box",  # "box" or "polygon"
     atomic_writes: bool = True,
+    overwrite: bool = False,
     usecols: Optional[List[str]] = None,  # e.g., ["minx","miny","width","height", "polygon_wkt", *prob_cols]
     dtype: Optional[Dict] = None,        # e.g., {"minx":"int32", ...}
     show_progress: bool = True,
@@ -441,8 +469,11 @@ def write_geojsons(
     out_root = results_dir / output_dir
     out_root.mkdir(parents=True, exist_ok=True)
 
-    # Skip those already done
-    already = {p.stem for p in _iter_files(out_root, suffix=".geojson")}
+    # Skip those already done (unless overwrite requested)
+    if overwrite:
+        already = set()
+    else:
+        already = {p.stem for p in _iter_files(out_root, suffix=".geojson")}
     csvs = [p for p in csvs if p.stem not in already]
     total = len(csvs)
     if total == 0:

@@ -12,6 +12,7 @@ from .run import run
 from .infer import infer
 from .patch import patch
 # from .convert_csv_to_sbubmi import tosbu
+from .export import export
 from .hplot import hplot, hplot_finalize_cmd
 from .reg import reg
 from .ncomp import ncomp
@@ -53,6 +54,7 @@ cli.add_command(run)
 cli.add_command(patch)
 cli.add_command(infer)
 # cli.add_command(tosbu)
+cli.add_command(export)
 cli.add_command(hplot)
 cli.add_command(hplot_finalize_cmd)
 cli.add_command(reg)

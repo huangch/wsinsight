@@ -1,4 +1,4 @@
-"""Merge per-cell results from all available analyses into a single enriched CSV per slide."""
+"""Helpers for the export command: merge per-cell results and write combined CSVs."""
 
 from __future__ import annotations
 
@@ -45,24 +45,26 @@ def _ensure_center(df: pd.DataFrame) -> pd.DataFrame:
     return df
 
 
-def build_enriched_csvs(
+def build_export_csvs(
     results_dir: PathLike,
     *,
     overwrite: bool = True,
 ) -> List[PathLike]:
-    """Left-join all per-cell analysis outputs into ``enriched-outputs-csv/``.
+    """Left-join all per-cell analysis outputs into ``export-csv/``.
 
     Sources (all optional — skipped when absent):
     * ``model-outputs-csv/<slide>.csv``  — base inference + reg columns
     * ``hplot-outputs-csv/cells/<slide>.csv`` — H-Plot per-cell features
     * ``ncomp-outputs-csv/<slide>.csv`` — neighbourhood composition
 
-    Returns the list of enriched CSV paths that were written.
+    Returns the list of combined CSV paths that were written.
     """
     base_dir = results_dir / "model-outputs-csv"
+    if not base_dir.exists():
+        return []
     hplot_cells_dir = results_dir / "hplot-outputs-csv" / "cells"
     ncomp_dir = results_dir / "ncomp-outputs-csv"
-    enriched_dir = results_dir / "enriched-outputs-csv"
+    enriched_dir = results_dir / "export-csv"
     enriched_dir.mkdir(parents=True, exist_ok=True)
 
     if isinstance(base_dir, URIPath):
@@ -72,7 +74,7 @@ def build_enriched_csvs(
 
     written: list[PathLike] = []
 
-    for base_csv in tqdm(base_csvs, desc="Enriching CSVs", unit="slide"):
+    for base_csv in tqdm(base_csvs, desc="Building export CSVs", unit="slide"):
         slide_id = base_csv.stem
         out_csv = enriched_dir / f"{slide_id}.csv"
 

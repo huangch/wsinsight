@@ -34,8 +34,6 @@ from ..modellib import models
 from ..modellib.run_inference import run_inference
 # QuPath project export relies on optional dependencies; import remains disabled until re-enabled.
 from ..uri_path import URIPath, URIPathType
-from ..write_geojson import write_geojsons
-from ..write_omecsv import write_omecsvs
 
 
 # --- System inspection helpers -------------------------------------------------
@@ -70,15 +68,6 @@ def _default_infer_workers_value() -> int:
     return min(cpu, 4) if cpu else 0
 
 
-def _default_export_workers_value() -> int:
-    """Reserve part of the CPU budget for inference, cap exports at 16 workers."""
-    cpu = max(_num_cpus(), 1)
-    if cpu <= 2:
-        return 1
-    reserve = max(2, cpu // 4)
-    return max(1, min(cpu - reserve, 16))
-
-
 def _default_stitch_workers_value() -> int:
     """Keep TileFuse CPU usage gentle by using half the cores, capped at eight."""
     cpu = max(_num_cpus(), 1)
@@ -88,7 +77,6 @@ def _default_stitch_workers_value() -> int:
 
 
 DEFAULT_INFER_WORKERS = _default_infer_workers_value()
-DEFAULT_EXPORT_WORKERS = _default_export_workers_value()
 DEFAULT_STITCH_WORKERS = _default_stitch_workers_value()
 
 
@@ -636,13 +624,6 @@ def _optional_uri_paths(ctx: click.Context, param: click.Option, value):
     " Default heuristics use min(2 × GPU count, CPU count).",
 )
 @click.option(
-    "--export-workers",
-    default=DEFAULT_EXPORT_WORKERS,
-    show_default=True,
-    type=click.IntRange(min=1),
-    help="Worker processes for GeoJSON/OME-CSV export; leave headroom for the OS.",
-)
-@click.option(
     "--stitch-workers",
     default=DEFAULT_STITCH_WORKERS,
     show_default=True,
@@ -665,20 +646,6 @@ def _optional_uri_paths(ctx: click.Context, param: click.Option, value):
 #     show_default=True,
 #     help="Create a QuPath project containing the inference results",
 # )
-@click.option(
-    "--geojson",
-    is_flag=True,
-    default=False,
-    show_default=True,
-    help="Create a GeoJSON directory containing the inference results",
-)
-@click.option(
-    "--omecsv",
-    is_flag=True,
-    default=False,
-    show_default=True,
-    help="Create a OMECSV directory containing the inference results",
-)
 # Segmentation knobs for regenerating patches when inference needs different tiling.
 @click.option(
     "--patch-overlap-ratio",
@@ -874,12 +841,9 @@ def infer(
     zoo_model_dir: Path | None = None,
     batch_size: int = 32,
     num_workers: int = DEFAULT_INFER_WORKERS,
-    export_workers: int = DEFAULT_EXPORT_WORKERS,
     stitch_workers: int = DEFAULT_STITCH_WORKERS,
     # speedup: bool = False,
     # qupath: bool = False,
-    geojson: bool = False,
-    omecsv: bool = False,
     patch_overlap_ratio: float = 0.0,
     patch_size_um: float = 0.0,
     patch_size_px: int = 0,
@@ -922,10 +886,11 @@ def infer(
     `model-outputs-csv`.
 
     Optional switches then:
-        • export CSV predictions to GeoJSON/OME-CSV formats (`--geojson`, `--omecsv`)
-        • drive downstream spatial analytics such as H-Plot and CME generation (when
+        • drive downstream spatial analytics such as H-Plot and ncomp (when
             their respective flags are supplied)
         • synchronize metadata about the full session to `infer_metadata_*.json`.
+
+    Use ``wsinsight export`` to convert results to GeoJSON / OME-CSV.
 
     The function treats all input/output paths as `URIPath` values, materializing
     local copies only when dependencies such as pandas/geopandas require filesystem
@@ -1248,38 +1213,6 @@ def infer(
         region_overwrite=reg_overwrite,
     )
 
-    # --- Optional exports: GeoJSON / OME-CSV -------------------------------
-    csv_exports: list[Path] | None = None
-    if geojson or omecsv:
-        csv_candidates = list((results_dir / "model-outputs-csv").iterdir(files_only=True))
-        csv_exports = _materialize_local_files([p for p in csv_candidates if p.suffix == ".csv"])
-
-    if geojson:
-        click.echo("\nWriting inference results to GeoJSON files\n")
-        # Convert inference CSV outputs to GeoJSON for downstream visualization.
-        write_geojsons(csvs=csv_exports or [], 
-                   overlap=overlap, 
-                   results_dir=results_dir, 
-                   output_dir="model-outputs-geojson", 
-                   prefix="prob", 
-                   num_workers=export_workers,
-                   object_type="detection" if object_based else "tile", 
-                   set_classification=True if object_based else False)
-
-    if omecsv:
-        click.echo("\nWriting inference results to OMECSV files\n")
-        h5_candidates = list((results_dir / "patches").iterdir(files_only=True))
-        h5s = _materialize_local_files([p for p in h5_candidates if p.suffix == ".h5"])
-        # Pair CSV probabilities with the cached HDF5 patches for OME exports.
-        write_omecsvs(csvs=csv_exports or [], 
-                  h5s=h5s, 
-                  overlap=overlap, 
-                  results_dir=results_dir, 
-                  output_dir=URIPath("model-outputs-omecsv"), 
-                  prefix="prob",
-                  num_workers=export_workers,
-                  )
-            
     if failed_patching:
         click.secho(f"\nPatching failed for {len(failed_patching)} slides", fg="yellow")
         click.secho("\n".join(failed_patching), fg="yellow")
@@ -1335,35 +1268,7 @@ def infer(
             )
             
             click.secho("\n".join(failed_hplot_generation), fg="yellow")
-            
-        if geojson:
-            click.echo("\nWriting H-Plot cellular results to GeoJSON files\n")
-            # Persist cellular layer metrics for visualization clients.
-            hplot_cell_csv_uris = list((results_dir / "hplot-outputs-csv" / "cells").iterdir(files_only=True))
-            hplot_cell_csvs = _materialize_local_files([p for p in hplot_cell_csv_uris if p.suffix == ".csv"])
-            write_geojsons(csvs=hplot_cell_csvs, 
-                           overlap=overlap, 
-                           results_dir=results_dir, 
-                           output_dir=URIPath("hplot-outputs-geojson"), 
-                           prefix="hplot",
-                           num_workers=export_workers,
-                           object_type="detection",
-                           set_classification=True,
-                           annotation_shape="box")
-        
-        if omecsv:
-            click.echo("\nWriting H-Plot cellular results to OMECSV files\n")
-            h5s = _materialize_local_files([p for p in (results_dir / "patches").iterdir(files_only=True) if p.suffix == ".h5"])
-            # Write per-cell embeddings in a format QuPath/OME tooling can ingest.
-            write_omecsvs(csvs=hplot_cell_csvs, 
-                          h5s=h5s, 
-                          overlap=overlap, 
-                          results_dir=results_dir, 
-                          output_dir=URIPath("hplot-outputs-omecsv"), 
-                          prefix="hplot",
-                          num_workers=export_workers,
-                          )
-    
+
     elif hplot and (len(hplot_base_types) == 0 or len(hplot_target_types) == 0):
         raise click.ClickException(f"\nH-Plot requires both --hplot-base-types and --hplot-target-types.")
         click.secho("\n".join(failed_inference), fg="yellow")
@@ -1399,6 +1304,7 @@ def infer(
                 f"\nncomp failed for {len(failed_ncomp)} slide(s)", fg="yellow"
             )
             click.secho("\n".join(failed_ncomp), fg="yellow")
+
     # if cme_cellular or cme_annotation:
     #     click.secho("\nRunning cme generation.\n", fg="green")
     #     wsi_paths = _selected_wsi_paths()

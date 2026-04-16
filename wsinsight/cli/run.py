@@ -141,8 +141,6 @@ _INFER_PARAM_NAMES: tuple[str, ...] = (
     "batch_size",
     "num_workers",
     # "speedup",
-    "geojson",
-    "omecsv",
     "patch_overlap_ratio",
     "patch_size_um",
     "patch_size_px",
@@ -431,20 +429,6 @@ def _select_kwargs(values: dict[str, Any], keys: tuple[str, ...]) -> dict[str, A
     show_default=True,
     help="Create a QuPath project containing the inference results",
 )
-@click.option(
-    "--geojson",
-    is_flag=True,
-    default=False,
-    show_default=True,
-    help="Create a GeoJSON directory containing the inference results",
-)
-@click.option(
-    "--omecsv",
-    is_flag=True,
-    default=False,
-    show_default=True,
-    help="Create a OMECSV directory containing the inference results",
-)
 # Options for segmentation.
 @click.option(
     "--histoqc-dir",
@@ -717,8 +701,6 @@ def run(
     # speedup: bool = False,
     cache_image_patches: bool = False,
     qupath: bool = False,
-    geojson: bool = False,
-    omecsv: bool = False,
     histoqc_dir: URIPath | None,
     seg_thumbsize: tuple[int, int],
     seg_median_filter_size: int,
