@@ -64,8 +64,8 @@ def build_export_csvs(
         return []
     hplot_cells_dir = results_dir / "hplot-outputs-csv" / "cells"
     ncomp_dir = results_dir / "ncomp-outputs-csv"
-    enriched_dir = results_dir / "export-csv"
-    enriched_dir.mkdir(parents=True, exist_ok=True)
+    export_dir = results_dir / "export-csv"
+    export_dir.mkdir(parents=True, exist_ok=True)
 
     if isinstance(base_dir, URIPath):
         base_csvs = [p for p in base_dir.iterdir(files_only=True) if p.suffix == ".csv"]
@@ -76,7 +76,7 @@ def build_export_csvs(
 
     for base_csv in tqdm(base_csvs, desc="Building export CSVs", unit="slide"):
         slide_id = base_csv.stem
-        out_csv = enriched_dir / f"{slide_id}.csv"
+        out_csv = export_dir / f"{slide_id}.csv"
 
         if not overwrite and out_csv.exists():
             written.append(out_csv)

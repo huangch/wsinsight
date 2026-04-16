@@ -185,14 +185,6 @@ Per-cell neighborhood composition produced by ``ncomp`` or
 
 Merged per-cell CSV produced by ``wsinsight export``.  Left-joins the base
 inference CSV, H-Plot cell features, and ncomp neighborhood data on shared
-geometry keys.  Same schema as ``enriched-outputs-csv/`` below.
-
-
-``enriched-outputs-csv/<slide>.csv``
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-Merged per-cell CSV produced by ``build_enriched_csvs()``.  Left-joins the base
-inference CSV, H-Plot cell features, and ncomp neighborhood data on shared
 geometry keys.
 
 .. list-table::

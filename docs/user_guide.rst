@@ -235,7 +235,7 @@ Optional options:
 * ``--overwrite`` — by default, any slide whose object CSV already contains
   ``region_*`` columns is skipped with a warning.  Pass ``--overwrite`` to
   unconditionally overwrite those columns.
-* ``--geojson`` / ``--omecsv`` — export the enriched CSVs to GeoJSON or OME-CSV after
+* ``--geojson`` / ``--omecsv`` — export the object CSVs to GeoJSON or OME-CSV after
   registration.
 * ``--export-workers`` (default 4) — worker processes for the export step.
 
@@ -358,16 +358,16 @@ Example::
         --num-workers 16
 
 
-Enriched outputs
-----------------
+Export outputs
+--------------
 
-The ``enriched-outputs-csv/`` directory contains merged per-cell CSVs that left-join
+The ``export-csv/`` directory contains merged per-cell CSVs that left-join
 all available analysis outputs into a single file per slide.  It combines columns from
 ``model-outputs-csv/`` (base inference + region registration), ``hplot-outputs-csv/cells/``
 (H-Plot per-cell features), and ``ncomp-outputs-csv/`` (neighborhood composition) on
 shared geometry keys (``minx``/``miny`` and ``center_x``/``center_y``).
 
-This can be produced programmatically via ``wsinsight.enrich.build_enriched_csvs()``.
+This can be produced programmatically via ``wsinsight.export_helpers.build_export_csvs()``.
 
 
 Inference performance tuning
@@ -401,7 +401,7 @@ Output structure
    ├── hplot-outputs.csv       # cohort-level H-Plot summary (after hplot-finalize)
    ├── hmetrics-outputs.csv    # cohort-level H-metrics summary (after hplot-finalize)
    ├── ncomp-outputs-csv/      # per-cell neighborhood composition
-   ├── enriched-outputs-csv/   # merged per-cell CSV (inference + hplot + ncomp)
+   ├── export-csv/             # merged per-cell CSV (inference + hplot + ncomp)
    ├── export-csv/             # merged per-cell CSV (wsinsight export)
    ├── export-geojson/         # GeoJSON export (wsinsight export --geojson)
    ├── export-omecsv/          # OME-CSV export (wsinsight export --omecsv)

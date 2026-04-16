@@ -183,9 +183,9 @@ Pick `run` when you want a one-liner for single slides or small batches; switch 
 ├── model-outputs-csv/
 │   └── <slide>.csv                 Per-patch/cell inference results
 ├── model-outputs-geojson/
-│   └── <slide>.geojson             GeoJSON from reg --geojson (region-enriched)
+│   └── <slide>.geojson             GeoJSON from reg --geojson (region-registered)
 ├── model-outputs-omecsv/
-│   └── <slide>.ome.csv.gz          OME-CSV from reg --omecsv (region-enriched)
+│   └── <slide>.ome.csv.gz          OME-CSV from reg --omecsv (region-registered)
 ├── hplot-outputs-csv/
 │   ├── hplots/<slide>.csv          Per-layer H-Plot curve (one row per layer)
 │   ├── cells/<slide>.csv           Per-cell data with spatial annotations
@@ -194,7 +194,7 @@ Pick `run` when you want a one-liner for single slides or small batches; switch 
 ├── hmetrics-outputs.csv            Aggregated H-Plot metrics (all slides)
 ├── ncomp-outputs-csv/
 │   └── <slide>.csv                 Per-cell neighborhood composition
-├── enriched-outputs-csv/
+├── export-csv/
 │   └── <slide>.csv                 Merged per-cell CSV (inference + hplot + ncomp)
 ├── export-csv/
 │   └── <slide>.csv                 Merged per-cell CSV used by the export command
@@ -279,9 +279,9 @@ Per-cell neighborhood composition produced by `ncomp` or `run --ncomp`.
 | `neighborhood_<class>_count` | Count of neighbors of each class; one column per model class |
 | `neighborhood_<class>_prop` | Proportion of neighbors of each class; one column per model class |
 
-### `enriched-outputs-csv/<slide>.csv`
+### `export-csv/<slide>.csv`
 
-Merged per-cell CSV produced by `build_enriched_csvs()` (called programmatically). Left-joins `model-outputs-csv`, `hplot-outputs-csv/cells`, and `ncomp-outputs-csv` on shared geometry keys.
+Merged per-cell CSV produced by `build_export_csvs()` (called programmatically via `wsinsight.export_helpers`). Left-joins `model-outputs-csv`, `hplot-outputs-csv/cells`, and `ncomp-outputs-csv` on shared geometry keys.
 
 | Column | Description |
 |---|---|

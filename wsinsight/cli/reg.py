@@ -86,7 +86,7 @@ def _assert_directory(path: URIPath, option_name: str) -> None:
     default=False,
     show_default=True,
     help=(
-        "Export enriched object CSVs to GeoJSON files.  Object-level probabilities "
+        "Export registered object CSVs to GeoJSON files.  Object-level probabilities "
         "(prob_*) are written to model-outputs-geojson/."
     ),
 )
@@ -96,7 +96,7 @@ def _assert_directory(path: URIPath, option_name: str) -> None:
     default=False,
     show_default=True,
     help=(
-        "Export enriched object CSVs to OME-CSV files.  Object-level probabilities "
+        "Export registered object CSVs to OME-CSV files.  Object-level probabilities "
         "(prob_*) are written to model-outputs-omecsv/."
     ),
 )
@@ -131,7 +131,7 @@ def reg(
 
     Reads CSVs in RESULTS_DIR/model-outputs-csv/, looks up the matching region
     CSV in REGION_INFERENCE_DIR/model-outputs-csv/, spatially assigns each
-    object to its enclosing region, and writes the enriched CSV back in-place
+    object to its enclosing region, and writes the updated CSV back in-place
     with added region_prob_* columns.
 
     When --wsi-dir is supplied the slide list is derived from the image
@@ -143,7 +143,7 @@ def reg(
     If a region_prob_* column with the same name already exists it is
     overwritten; columns from a different region model are preserved.
 
-    With --geojson or --omecsv, the enriched object CSVs are exported using
+    With --geojson or --omecsv, the registered object CSVs are exported using
     only the object-level prob_* columns.
     """
     obj_csv_dir = results_dir / "model-outputs-csv"
