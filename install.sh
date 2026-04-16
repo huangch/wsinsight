@@ -22,7 +22,7 @@ pip install --trusted-host github.com --trusted-host raw.githubusercontent.com -
 pip install -c constraints.txt -e .
 
 # install CellViT training dependencies (optional):
-# pip install -c constraints.txt "numpy<2" cupy wandb albumentations colorama einops
+# pip install -c constraints.txt "numpy<2" cupy wandb albumentations colorama einops schema torchstain natsort geojson ujson ray torchmetrics "evalutils==0.5.0" torchinfo
 
 # Test the main entry
 S3_STORAGE_OPTIONS='{"profile":"saml"}' \

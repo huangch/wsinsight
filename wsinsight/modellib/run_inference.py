@@ -187,6 +187,12 @@ def run_inference(
 
     failed_patching = [p.stem for p in patch_paths if not p.exists()]
     failed_inference: list[str] = []
+    # Binary-search brackets shared across slides.
+    # _bs_lo: largest batch size confirmed safe (0 = not yet known).
+    # _bs_hi: smallest batch size confirmed OOM (batch_size+1 = none seen yet).
+    current_batch_size = batch_size
+    _bs_lo: int = 0
+    _bs_hi: int = batch_size + 1
 
     # for i, (wsi_path, patch_path) in enumerate(zip(wsi_paths, patch_paths)):
     #     slide_csv_name = Path(wsi_path).with_suffix(".csv").name
@@ -285,14 +291,14 @@ def run_inference(
             
             if num_workers == 0:
                 dset.worker_init()
-            
+
             loader = torch.utils.data.DataLoader(
                 dset,
-                batch_size=batch_size,
+                batch_size=current_batch_size,
                 shuffle=False,
                 num_workers=num_workers,
                 worker_init_fn=dset.worker_init,
-                pin_memory=True,                # add this for better performance?
+                pin_memory=torch.cuda.is_available() or torch.backends.mps.is_available(),
                 # persistent_workers=True,      # add this for better performance?
                 persistent_workers=False,       # Useless as wsinsight is working in eval only
                 # prefetch_factor=2,              # add this for better performance?
@@ -443,45 +449,73 @@ def run_inference(
                 continue
 
             elif object_based and object_detection=="end2end":
-                stitcher = TileRemapStitcher(n_classes=len(model_info.config.class_names), 
-                                             slide_width=slide_width,
-                                             slide_height=slide_height,
-                                             slide_patch_size=slide_patch_size,
-                                             slide_halo_size=slide_halo_size,
-                                             slide_mpp=mpp,
-                                             model_mpp=model_info.config.spacing_um_px,
-                                             min_object_size=20,
-                                             device=device)
-                
-                with tqdm.tqdm(total=len(loader), desc="Inference", position=1, leave=False) as qbar:
-                    for batch_imgs, batch_coords in loader:                               
-                        assert batch_imgs.shape[0] == batch_coords.shape[0], "length mismatch"
-                        
-                        if mixed_precision:
-                            with torch.no_grad():
-                                with torch.autocast(device_type=device.type, dtype=torch.float16):
-                                    pred_dict = model(batch_imgs.to(device,
-                                                                    non_blocking=True,
-                                                                    ))
-                        else:
-                            with torch.no_grad():
-                                pred_dict = model(batch_imgs.to(device,
-                                                                non_blocking=True,
-                                                                ))
-                            
-                        stitcher.accumulate_batch_torch(pred_dict, batch_coords.to(device))
-                        qbar.update(1)
-           
-                        gc.collect()
-                
-                with tqdm.tqdm(desc="Stitching", mininterval=0, miniters=1, smoothing=0, dynamic_ncols=True, position=1, leave=False) as qbar:
-                    slide_coords, slide_probs, slide_polys = stitcher.finalize(
-                        pbar=qbar,
-                        num_workers=stitch_workers,
+                _oom_skip = False
+                while True:
+                    stitcher = TileRemapStitcher(
+                        n_classes=len(model_info.config.class_names),
+                        slide_width=slide_width,
+                        slide_height=slide_height,
+                        slide_patch_size=slide_patch_size,
+                        slide_halo_size=slide_halo_size,
+                        slide_mpp=mpp,
+                        model_mpp=model_info.config.spacing_um_px,
+                        min_object_size=20,
+                        device=device,
                     )
-                    qbar.close()
-                
-                gc.collect()
+                    try:
+                        with tqdm.tqdm(total=len(loader), desc="Inference", position=1, leave=False) as qbar:
+                            for batch_imgs, batch_coords in loader:
+                                assert batch_imgs.shape[0] == batch_coords.shape[0], "length mismatch"
+                                if mixed_precision:
+                                    with torch.no_grad():
+                                        with torch.autocast(device_type=device.type, dtype=torch.float16):
+                                            pred_dict = model(batch_imgs.to(device, non_blocking=True))
+                                else:
+                                    with torch.no_grad():
+                                        pred_dict = model(batch_imgs.to(device, non_blocking=True))
+                                stitcher.accumulate_batch_torch(pred_dict, batch_coords.to(device))
+                                qbar.update(1)
+                                gc.collect()
+                        with tqdm.tqdm(desc="Stitching", mininterval=0, miniters=1, smoothing=0, dynamic_ncols=True, position=1, leave=False) as qbar:
+                            slide_coords, slide_probs, slide_polys = stitcher.finalize(
+                                pbar=qbar,
+                                num_workers=stitch_workers,
+                            )
+                            qbar.close()
+                        gc.collect()
+                        _bs_lo = current_batch_size
+                        if _bs_hi <= batch_size:
+                            _next = (_bs_lo + _bs_hi) // 2
+                            current_batch_size = _next if _next > _bs_lo else _bs_lo
+                        else:
+                            current_batch_size = min(_bs_lo * 2, batch_size)
+                        break
+                    except (torch.cuda.OutOfMemoryError, RuntimeError) as _oom_err:
+                        if isinstance(_oom_err, RuntimeError) and "out of memory" not in str(_oom_err).lower():
+                            raise
+                        torch.cuda.empty_cache()
+                        gc.collect()
+                        if current_batch_size <= 1:
+                            tqdm.tqdm.write(f"[OOM] batch_size=1 still OOM — skipping {wsi_path.stem}")
+                            failed_inference.append(wsi_path.stem)
+                            _oom_skip = True
+                            break
+                        _bs_hi = current_batch_size
+                        current_batch_size = max(1, (_bs_lo + _bs_hi) // 2)
+                        tqdm.tqdm.write(f"[OOM] batch_size → {current_batch_size} (lo={_bs_lo} hi={_bs_hi}) — retrying {wsi_path.stem}")
+                        loader = torch.utils.data.DataLoader(
+                            dset,
+                            batch_size=current_batch_size,
+                            shuffle=False,
+                            num_workers=num_workers,
+                            worker_init_fn=dset.worker_init,
+                            pin_memory=torch.cuda.is_available() or torch.backends.mps.is_available(),
+                            persistent_workers=False,
+                            multiprocessing_context="spawn",
+                        )
+                if _oom_skip:
+                    pbar.update(1)
+                    continue
                 
             #     if slide_polys is not None and len(slide_polys) > 0:
             #         with h5py.File(patch_path, "a") as f:
@@ -548,29 +582,61 @@ def run_inference(
 
                 slide_superior_structure = None
                 
-            else: 
-                with tqdm.tqdm(total=len(loader), position=1, leave=False) as qbar:
-                    for batch_imgs, batch_coords in loader:
-                        assert batch_imgs.shape[0] == batch_coords.shape[0], "length mismatch"
-                        
-                        with torch.no_grad():
-                            logits: torch.Tensor = model(batch_imgs.to(device,
-                                                                       non_blocking=True, # add this for better performance?
-                                                                       )).detach().cpu()
-                                
-                        # probs has shape (batch_size, num_classes) or (batch_size,)
-                        if len(logits.shape) > 1 and logits.shape[1] > 1:
-                            probs = torch.nn.functional.softmax(logits, dim=1)
+            else:
+                _oom_skip = False
+                while True:
+                    slide_coords = []
+                    slide_probs = []
+                    try:
+                        with tqdm.tqdm(total=len(loader), position=1, leave=False) as qbar:
+                            for batch_imgs, batch_coords in loader:
+                                assert batch_imgs.shape[0] == batch_coords.shape[0], "length mismatch"
+                                with torch.no_grad():
+                                    logits: torch.Tensor = model(
+                                        batch_imgs.to(device, non_blocking=True)
+                                    ).detach().cpu()
+                                # probs has shape (batch_size, num_classes) or (batch_size,)
+                                if len(logits.shape) > 1 and logits.shape[1] > 1:
+                                    probs = torch.nn.functional.softmax(logits, dim=1)
+                                else:
+                                    probs = torch.sigmoid(logits.squeeze(1))
+                                # Cloning prevents memory accumulation / "Too many open files" on WSL.
+                                slide_coords.append(batch_coords.clone().numpy())
+                                slide_probs.append(probs.numpy())
+                                qbar.update(1)
+                        _bs_lo = current_batch_size
+                        if _bs_hi <= batch_size:
+                            _next = (_bs_lo + _bs_hi) // 2
+                            current_batch_size = _next if _next > _bs_lo else _bs_lo
                         else:
-                            probs = torch.sigmoid(logits.squeeze(1))
-                        # Cloning the tensor prevents memory accumulation and prevents
-                        # the error "RuntimeError: Too many open files". Jakub ran into this
-                        # error when running wsinsight on a slide in Windows Subsystem for Linux.
-                        slide_coords.append(batch_coords.clone().numpy())
-                        slide_probs.append(probs.numpy())
-                        
-                        qbar.update(1)
-                
+                            current_batch_size = min(_bs_lo * 2, batch_size)
+                        break
+                    except (torch.cuda.OutOfMemoryError, RuntimeError) as _oom_err:
+                        if isinstance(_oom_err, RuntimeError) and "out of memory" not in str(_oom_err).lower():
+                            raise
+                        torch.cuda.empty_cache()
+                        gc.collect()
+                        if current_batch_size <= 1:
+                            tqdm.tqdm.write(f"[OOM] batch_size=1 still OOM — skipping {wsi_path.stem}")
+                            failed_inference.append(wsi_path.stem)
+                            _oom_skip = True
+                            break
+                        _bs_hi = current_batch_size
+                        current_batch_size = max(1, (_bs_lo + _bs_hi) // 2)
+                        tqdm.tqdm.write(f"[OOM] batch_size → {current_batch_size} (lo={_bs_lo} hi={_bs_hi}) — retrying {wsi_path.stem}")
+                        loader = torch.utils.data.DataLoader(
+                            dset,
+                            batch_size=current_batch_size,
+                            shuffle=False,
+                            num_workers=num_workers,
+                            worker_init_fn=dset.worker_init,
+                            pin_memory=torch.cuda.is_available() or torch.backends.mps.is_available(),
+                            persistent_workers=False,
+                            multiprocessing_context="spawn",
+                        )
+                if _oom_skip:
+                    pbar.update(1)
+                    continue
                 slide_superior_structure = None
             #
             # Until here, we've obtained both slide coords and slide_probs

@@ -26,6 +26,7 @@ class URIPath:
       - Local filesystem paths
       - fsspec remotes (e.g., s3://bucket/key)
       - gdc-manifest:///abs/path/to/manifest.tsv/<filename>
+      - image-list:///abs/path/to/filelist.txt  (one slide URI per line)
 
     Features:
       - open(): stream (local/remote) or local-open after materialize (gdc-manifest)
@@ -83,6 +84,9 @@ class URIPath:
             self._gdc_manifest_path = manifest_abs
             self._gdc_filename_in_manifest = "/".join([p for p in rel if p])  # may be ""
             self._path = Path(self._gdc_filename_in_manifest or "manifest/")
+        elif self.scheme == "image-list":
+            self._image_list_path: str = parsed.path  # absolute local path to list file
+            self._path = Path(self._image_list_path)
         else:
             base = os.path.basename(self.uri.rstrip("/"))
             self._path = Path(self.uri) if self.is_local else Path(base or "remote.file")
@@ -97,6 +101,8 @@ class URIPath:
     def __str__(self) -> str: return self.uri
     def __repr__(self) -> str: return f"URIPath({self.uri!r})"
     def __fspath__(self) -> str:
+        if self.scheme == "image-list":
+            raise IsADirectoryError(f"image-list:// is a virtual directory; access entries via iterdir(): {self.uri}")
         return os.fspath(self._path) if self.is_local and self.scheme != "gdc-manifest" else self._ensure_local()
 
     def __truediv__(self, other: os.PathLike | str) -> "URIPath":
@@ -120,8 +126,8 @@ class URIPath:
         exist_ok: bool = False,
         **overrides: Any,
     ) -> None:
-        if self.scheme == "gdc-manifest":
-            raise IOError("gdc-manifest URIs are read-only")
+        if self.scheme in ("gdc-manifest", "image-list"):
+            raise IOError(f"{self.scheme} URIs are read-only virtual directories")
 
         if self.is_local:
             Path(self._path).mkdir(mode=mode, parents=parents, exist_ok=exist_ok)
@@ -188,6 +194,8 @@ class URIPath:
 
     # ------------------------ Public I/O ------------------------
     def open(self, mode: str = "rb", **overrides: Any):
+        if self.scheme == "image-list":
+            raise IsADirectoryError(f"image-list:// is a virtual directory; access entries via iterdir(): {self.uri}")
         write_mode = self._is_write_mode(mode)
 
         if self.scheme == "gdc-manifest":
@@ -222,6 +230,8 @@ class URIPath:
         return open(local_path, mode)
 
     def materialize(self, dest_path: Optional[str | os.PathLike] = None, **overrides: Any) -> str:
+        if self.scheme == "image-list":
+            raise IsADirectoryError(f"image-list:// is a virtual directory; access entries via iterdir(): {self.uri}")
         if self.is_local and self.scheme != "gdc-manifest":
             self._materialized_path = os.fspath(self._path)
             # local file — no cache to clean, no finalizer needed
@@ -283,6 +293,8 @@ class URIPath:
     def exists(self, **overrides: Any) -> bool:
         if self.scheme == "gdc-manifest":
             return self._exists_gdc_manifest()
+        if self.scheme == "image-list":
+            return self._exists_image_list()
         if self.is_local:
             return self._exists_local()
         return self._exists_remote(**overrides)
@@ -290,6 +302,8 @@ class URIPath:
     def is_file(self, **overrides: Any) -> bool:
         if self.scheme == "gdc-manifest":
             return self._is_file_gdc_manifest()
+        if self.scheme == "image-list":
+            return False
         if self.is_local:
             return self._path.is_file()
         return self._is_file_remote(**overrides)
@@ -297,6 +311,8 @@ class URIPath:
     def is_dir(self, **overrides: Any) -> bool:
         if self.scheme == "gdc-manifest":
             return self._is_dir_gdc_manifest()
+        if self.scheme == "image-list":
+            return self._exists_image_list()
         if self.is_local:
             return self._path.is_dir()
         return self._is_dir_remote(**overrides)
@@ -304,6 +320,9 @@ class URIPath:
     def iterdir(self, recursive: bool = False, files_only: bool = True, **overrides: Any) -> Iterator["URIPath"]:
         if self.scheme == "gdc-manifest":
             yield from self._iterdir_gdc_manifest()
+            return
+        if self.scheme == "image-list":
+            yield from self._iterdir_image_list()
             return
         if self.is_local:
             yield from self._iterdir_local(recursive=recursive, files_only=files_only)
@@ -347,6 +366,19 @@ class URIPath:
                           token=self._gdc_token, token_path=self._gdc_token_path,
                           _skip_validation=True,
                           **self.storage_options)
+
+    # ------------------------ Scheme helpers: IMAGE-LIST ------------------------
+    def _exists_image_list(self) -> bool:
+        return os.path.isfile(self._image_list_path)
+
+    def _iterdir_image_list(self) -> Iterator["URIPath"]:
+        if not os.path.isfile(self._image_list_path):
+            return
+        with open(self._image_list_path, encoding="utf-8") as fh:
+            for line in fh:
+                line = line.strip()
+                if line and not line.startswith("#"):
+                    yield URIPath(line, cache_dir=self._cache_dir, _skip_validation=True, **self.storage_options)
 
     # ------------------------ Scheme helpers: REMOTE (fsspec, e.g., S3) ------------------------
     def _exists_remote(self, **overrides: Any) -> bool:
@@ -436,7 +468,10 @@ class URIPath:
         # Local or manifest without token -> nothing to validate
         if self.is_local and self.scheme != "gdc-manifest":
             return
-    
+
+        if self.scheme == "image-list":
+            return  # local text file, no credentials needed
+
         if self.scheme == "gdc-manifest":
             token = getattr(self, "_gdc_token", None)
             if not token:
@@ -639,6 +674,8 @@ class URIPath:
             return ("gdc-manifest",
                     os.path.abspath(self._gdc_manifest_path),
                     self._gdc_filename_in_manifest or "")
+        if self.scheme == "image-list":
+            return ("image-list", os.path.abspath(self._image_list_path))
         if self.is_local:
             # absolute local path
             return ("file", os.path.abspath(os.fspath(self._path)))

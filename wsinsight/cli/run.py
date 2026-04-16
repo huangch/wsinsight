@@ -69,8 +69,17 @@ def _cache_dir() -> Path | str:
     return Path(user_cache_dir(appname="wsinsight", appauthor=False))
 
 
+def _coerce_image_list(wsi_dir: URIPath) -> URIPath:
+    """If wsi_dir is a plain local file, treat it as an image-list:// virtual directory."""
+    if wsi_dir.is_local and wsi_dir._path.is_file():
+        abs_path = os.path.abspath(os.fspath(wsi_dir._path))
+        return URIPath(f"image-list://{abs_path}", cache_dir=wsi_dir._cache_dir, _skip_validation=True, **wsi_dir.storage_options)
+    return wsi_dir
+
+
 def _enumerate_slide_paths(wsi_dir: URIPath) -> list[URIPath]:
     """List slide files once so patch + infer reuse the same ordering."""
+    wsi_dir = _coerce_image_list(wsi_dir)
     if not wsi_dir.exists():
         raise FileNotFoundError(f"Whole slide image directory not found: {wsi_dir}")
 
@@ -80,7 +89,7 @@ def _enumerate_slide_paths(wsi_dir: URIPath) -> list[URIPath]:
             for path in tqdm.tqdm(
                 wsi_dir.iterdir(), desc="Count files in slide directory"
             )
-            if path.is_file()
+            if wsi_dir.scheme == "image-list" or path.is_file()
         ]
     )
     return slide_paths
@@ -191,8 +200,8 @@ def _select_kwargs(values: dict[str, Any], keys: tuple[str, ...]) -> dict[str, A
         )
     ),               
     required=True,
-    help="Directory containing whole slide images. This directory can *only* contain"
-    " whole slide images.",
+    help="Directory containing whole slide images, or an image-list:///path/to/filelist.txt"
+    " URI pointing to a text file with one slide path per line (blank lines and # comments ignored).",
 )
 @click.option(
     "-o",
@@ -370,6 +379,17 @@ def _select_kwargs(values: dict[str, Any], keys: tuple[str, ...]) -> dict[str, A
     help=(
         "Path to the pretrained model. Use only when --config is passed. Mutually "
         "exclusive with --model."
+    ),
+)
+@click.option(
+    "-z",
+    "--zoo-model-dir",
+    "zoo_model_dir",
+    type=click.Path(exists=True, file_okay=False, dir_okay=True, path_type=Path),
+    default=None,
+    help=(
+        "Path to a folder containing config.json and torchscript_model.pt. "
+        "Shorthand for --config + --model-path. Mutually exclusive with --model."
     ),
 )
 @click.option(
@@ -691,7 +711,8 @@ def run(
     model_name: str | None,
     config: Path | None,
     model_path: Path | None,
-    batch_size: int,
+    zoo_model_dir: Path | None = None,
+    batch_size: int = 32,
     num_workers: int = 4,
     # speedup: bool = False,
     cache_image_patches: bool = False,
@@ -737,6 +758,22 @@ def run(
     arguments into the standalone `patch` and `infer` commands. Optional QuPath
     project generation reuses the combined results directory.
     """
+
+    # --- Resolve --zoo-model-dir shorthand into --config + --model-path ------
+    if zoo_model_dir is not None:
+        config = zoo_model_dir / "config.json"
+        model_path = zoo_model_dir / "torchscript_model.pt"
+        if not config.exists():
+            raise click.UsageError(
+                f"--zoo-model-dir folder does not contain config.json: {zoo_model_dir}"
+            )
+        if not model_path.exists():
+            raise click.UsageError(
+                f"--zoo-model-dir folder does not contain torchscript_model.pt: {zoo_model_dir}"
+            )
+
+    # --- Coerce a plain txt file into an image-list:// virtual directory ----
+    wsi_dir = _coerce_image_list(wsi_dir)
 
     params = locals().copy()
     params.pop("ctx", None)

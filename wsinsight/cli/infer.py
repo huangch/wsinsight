@@ -607,6 +607,17 @@ def _optional_uri_paths(ctx: click.Context, param: click.Option, value):
     ),
 )
 @click.option(
+    "-z",
+    "--zoo-model-dir",
+    "zoo_model_dir",
+    type=click.Path(exists=True, file_okay=False, dir_okay=True, path_type=Path),
+    default=None,
+    help=(
+        "Path to a folder containing config.json and torchscript_model.pt. "
+        "Shorthand for --config + --model-path. Mutually exclusive with --model."
+    ),
+)
+@click.option(
     "-b",
     "--batch-size",
     type=click.IntRange(min=1),
@@ -860,7 +871,8 @@ def infer(
     model_name: str | None,
     config: Path | None,
     model_path: Path | None,
-    batch_size: int,
+    zoo_model_dir: Path | None = None,
+    batch_size: int = 32,
     num_workers: int = DEFAULT_INFER_WORKERS,
     export_workers: int = DEFAULT_EXPORT_WORKERS,
     stitch_workers: int = DEFAULT_STITCH_WORKERS,
@@ -920,6 +932,19 @@ def infer(
     paths. Usage mirrors the CLI: `wsinsight infer --results-dir ... [options]`.
     """
 
+    # --- Resolve --zoo-model-dir shorthand into --config + --model-path ------
+    if zoo_model_dir is not None:
+        config = zoo_model_dir / "config.json"
+        model_path = zoo_model_dir / "torchscript_model.pt"
+        if not config.exists():
+            raise click.UsageError(
+                f"--zoo-model-dir folder does not contain config.json: {zoo_model_dir}"
+            )
+        if not model_path.exists():
+            raise click.UsageError(
+                f"--zoo-model-dir folder does not contain torchscript_model.pt: {zoo_model_dir}"
+            )
+
     # --- Validate CLI combinations -----------------------------------------
     if (
         model_name is None
@@ -930,7 +955,7 @@ def infer(
         and qupath_geojson_annotation_dir is None
     ):
         raise click.UsageError(
-            "one of --model or (--config and --model-path) or --qupath_detection_dir "
+            "one of --model or (--config and --model-path) or --zoo-model-dir or --qupath_detection_dir "
             "or --qupath_geojson_detection_dir or --qupath_geojson_annotation_dir is required."
         )
     elif (
@@ -1182,13 +1207,16 @@ def infer(
         raise click.ClickException(_PATCH_DIR_MISSING_HINT)
     
     if wsi_dir is not None and slide_paths is None:
+        if wsi_dir.is_local and wsi_dir._path.is_file():
+            _abs = os.path.abspath(os.fspath(wsi_dir._path))
+            wsi_dir = URIPath(f"image-list://{_abs}", cache_dir=wsi_dir._cache_dir, _skip_validation=True, **wsi_dir.storage_options)
         slide_paths = sorted(
             [
                 p
                 for p in tqdm.tqdm(
                     wsi_dir.iterdir(), desc="Count files in slide directory"
                 )
-                if p.is_file()
+                if wsi_dir.scheme == "image-list" or p.is_file()
             ]
         )
 

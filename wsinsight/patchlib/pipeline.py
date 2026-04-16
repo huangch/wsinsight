@@ -35,6 +35,9 @@ from .segment import segment_tissue
 os.environ["TF_CPP_MIN_LOG_LEVEL"] = "2"
 
 logger = logging.getLogger(__name__)
+logger.setLevel(logging.WARNING)
+logging.getLogger("wsinsight.patchlib.patch").setLevel(logging.WARNING)
+logging.getLogger("wsinsight.patchlib.io").setLevel(logging.WARNING)
 tf.get_logger().setLevel(logging.ERROR)
 absl_logging.set_verbosity(absl_logging.ERROR)
 
@@ -473,33 +476,36 @@ def segment_and_patch_directory_of_slides(
 
     _validate_wsi_directory(wsi_dir)
 
-    for i, slide_path in enumerate(slide_paths):
-        logger.info(f"Slide {i+1} of {len(slide_paths)} ({(i+1)/len(slide_paths):.2%})")
-        try:
-            segment_and_patch_one_slide(
-                slide_path=slide_path,
-                save_dir=save_dir,
-                qupath_detection_dir=qupath_detection_dir,
-                qupath_geojson_detection_dir=qupath_geojson_detection_dir,
-                qupath_geojson_annotation_dir=qupath_geojson_annotation_dir,
-                patch_size_px=patch_size_px,
-                patch_spacing_um_px=patch_spacing_um_px,
-                halo_size_px=halo_size_px,
-                histoqc_dir=histoqc_dir,
-                thumbsize=thumbsize,
-                median_filter_size=median_filter_size,
-                binary_threshold=binary_threshold,
-                closing_kernel_size=closing_kernel_size,
-                min_object_size_um2=min_object_size_um2,
-                min_hole_size_um2=min_hole_size_um2,
-                overlap=overlap,
-                object_based=object_based,
-                object_detection=object_detection,
-                stardist_normalization_pmin=stardist_normalization_pmin,
-                stardist_normalization_pmax=stardist_normalization_pmax,
-                cache_image_patches=cache_image_patches,
-            )
-        except Exception as e:  # pragma: no cover - logged for operators
-            logger.error(f"Failed to segment and patch slide\n{slide_path}", exc_info=e)
+    with tqdm.tqdm(total=len(slide_paths), desc="Slides", position=0) as pbar:
+        for i, slide_path in enumerate(slide_paths):
+            logger.info(f"Slide {i+1} of {len(slide_paths)} ({(i+1)/len(slide_paths):.2%})")
+            try:
+                segment_and_patch_one_slide(
+                    slide_path=slide_path,
+                    save_dir=save_dir,
+                    qupath_detection_dir=qupath_detection_dir,
+                    qupath_geojson_detection_dir=qupath_geojson_detection_dir,
+                    qupath_geojson_annotation_dir=qupath_geojson_annotation_dir,
+                    patch_size_px=patch_size_px,
+                    patch_spacing_um_px=patch_spacing_um_px,
+                    halo_size_px=halo_size_px,
+                    histoqc_dir=histoqc_dir,
+                    thumbsize=thumbsize,
+                    median_filter_size=median_filter_size,
+                    binary_threshold=binary_threshold,
+                    closing_kernel_size=closing_kernel_size,
+                    min_object_size_um2=min_object_size_um2,
+                    min_hole_size_um2=min_hole_size_um2,
+                    overlap=overlap,
+                    object_based=object_based,
+                    object_detection=object_detection,
+                    stardist_normalization_pmin=stardist_normalization_pmin,
+                    stardist_normalization_pmax=stardist_normalization_pmax,
+                    cache_image_patches=cache_image_patches,
+                )
+            except Exception as e:  # pragma: no cover - logged for operators
+                logger.error(f"Failed to segment and patch slide\n{slide_path}", exc_info=e)
+            finally:
+                pbar.update(1)
 
     return None

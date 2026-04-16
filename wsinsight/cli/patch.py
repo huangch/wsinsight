@@ -468,6 +468,17 @@ def _optional_uri_paths(ctx: click.Context, param: click.Option, value):
     ),
 )
 @click.option(
+    "-z",
+    "--zoo-model-dir",
+    "zoo_model_dir",
+    type=click.Path(exists=True, file_okay=False, dir_okay=True, path_type=Path),
+    default=None,
+    help=(
+        "Path to a folder containing config.json and torchscript_model.pt. "
+        "Shorthand for --config + --model-path. Mutually exclusive with --model."
+    ),
+)
+@click.option(
     "--cache-image-patches",
     is_flag=True,
     default=False,
@@ -580,6 +591,7 @@ def patch(
     model_name: str | None,
     config: Path | None,
     model_path: Path | None,
+    zoo_model_dir: Path | None = None,
     cache_image_patches: bool = False,
     histoqc_dir: URIPath | None,
     seg_thumbsize: tuple[int, int],
@@ -600,9 +612,22 @@ def patch(
     `RESULTS_DIR/model-outputs-*` for downstream inference.
     """
 
+    # --- Resolve --zoo-model-dir shorthand into --config + --model-path ------
+    if zoo_model_dir is not None:
+        config = zoo_model_dir / "config.json"
+        model_path = zoo_model_dir / "torchscript_model.pt"
+        if not config.exists():
+            raise click.UsageError(
+                f"--zoo-model-dir folder does not contain config.json: {zoo_model_dir}"
+            )
+        if not model_path.exists():
+            raise click.UsageError(
+                f"--zoo-model-dir folder does not contain torchscript_model.pt: {zoo_model_dir}"
+            )
+
     if model_name is None and config is None and model_path is None and qupath_detection_dir is None and qupath_geojson_detection_dir is None and qupath_geojson_annotation_dir is None:
         raise click.UsageError(
-            "one of --model or (--config and --model-path) or --qupath_detection_dir or --qupath_geojson_detection_dir or --qupath_geojson_annotation_dir is required."
+            "one of --model or (--config and --model-path) or --zoo-model-dir or --qupath_detection_dir or --qupath_geojson_detection_dir or --qupath_geojson_annotation_dir is required."
         )
     elif (config is not None or model_path is not None) and model_name is not None and (qupath_detection_dir is not None or qupath_geojson_detection_dir is not None or qupath_geojson_annotation_dir is not None ):
         raise click.UsageError(
@@ -613,7 +638,12 @@ def patch(
         raise click.UsageError(
             "--config and --model-path must both be set if one is set."
         )
-        
+
+    # --- Coerce a plain txt file into an image-list:// virtual directory ----
+    if wsi_dir.is_local and wsi_dir._path.is_file():
+        _abs = os.path.abspath(os.fspath(wsi_dir._path))
+        wsi_dir = URIPath(f"image-list://{_abs}", cache_dir=wsi_dir._cache_dir, _skip_validation=True, **wsi_dir.storage_options)
+
     # remote_cache_dir = remote_cache_dir / ("s3" if str(wsi_dir).startswith("s3") else "gdc-manifest" if str(wsi_dir).startswith("gdc-manifest") else "")
     # wsi_dir = URIPath(wsi_dir, cache_dir=remote_cache_dir)
     
@@ -638,13 +668,16 @@ def patch(
     #     raise FileNotFoundError(f"no files exist in the slide directory: {wsi_dir}")
 
     if slide_paths is None:
+        if wsi_dir.is_local and wsi_dir._path.is_file():
+            _abs = os.path.abspath(os.fspath(wsi_dir._path))
+            wsi_dir = URIPath(f"image-list://{_abs}", cache_dir=wsi_dir._cache_dir, _skip_validation=True, **wsi_dir.storage_options)
         slide_paths = sorted(
             [
                 p
                 for p in tqdm.tqdm(
                     wsi_dir.iterdir(), desc="Count files in slide directory"
                 )
-                if p.is_file()
+                if wsi_dir.scheme == "image-list" or p.is_file()
             ]
         )
 
@@ -689,7 +722,7 @@ def patch(
         if not wsi_dir.exists():
             raise errors.WholeSlideImageDirectoryNotFound(f"directory not found: {wsi_dir}")
         
-        wsi_paths = [p for p in wsi_dir.iterdir() if p.is_file()]
+        wsi_paths = [p for p in wsi_dir.iterdir() if wsi_dir.scheme == "image-list" or p.is_file()]
         
         if not wsi_paths:
             raise errors.WholeSlideImagesNotFound(wsi_dir)
@@ -734,7 +767,7 @@ def patch(
         if not wsi_dir.exists():
             raise errors.WholeSlideImageDirectoryNotFound(f"directory not found: {wsi_dir}")
         
-        wsi_paths = [p for p in wsi_dir.iterdir() if p.is_file()]
+        wsi_paths = [p for p in wsi_dir.iterdir() if wsi_dir.scheme == "image-list" or p.is_file()]
         
         if not wsi_paths:
             raise errors.WholeSlideImagesNotFound(wsi_dir)
@@ -777,7 +810,7 @@ def patch(
         if not wsi_dir.exists():
             raise errors.WholeSlideImageDirectoryNotFound(f"directory not found: {wsi_dir}")
         
-        wsi_paths = [p for p in wsi_dir.iterdir() if p.is_file()]
+        wsi_paths = [p for p in wsi_dir.iterdir() if wsi_dir.scheme == "image-list" or p.is_file()]
         
         if not wsi_paths:
             raise errors.WholeSlideImagesNotFound(wsi_dir)
