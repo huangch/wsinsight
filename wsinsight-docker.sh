@@ -1,4 +1,4 @@
-#! /bin/sh
+c
 
 IMAGE_ID=https://hub.docker.com/r/huangchtw/wsinsight:latest
 docker pull ${IMAGE_ID}
