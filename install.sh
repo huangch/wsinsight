@@ -53,7 +53,7 @@ python -c "import numpy; v=numpy.__version__; assert int(v.split('.')[0]) < 2, f
 S3_STORAGE_OPTIONS='{"profile":"saml"}' \
 WSINFER_ZOO_REGISTRY_PATH='/workspace/wsinsight/devel/zoo/wsinfer-zoo-registry.json' \
 WSINSIGHT_REMOTE_CACHE_DIR='/tmp' \
-KERAS_HOME='/workspace/wsinsight/wsinsight/keras' \
+KERAS_HOME='/workspace/wsinsight/devel/keras' \
 wsinsight
 
 
