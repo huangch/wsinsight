@@ -76,20 +76,22 @@ WORKDIR /app/wsinsight
 COPY . .
 
 # ------------------------------------
-# Install ML libraries (Torch + TensorFlow + keras)
+# Install ML libraries (Torch + TensorFlow + Keras + StarDist)
+# pynvml conflicts with nvidia-ml-py; uninstall pynvml after install
 # ------------------------------------
-RUN pip install -c constraints.txt "numpy<2" torch torchvision torch-geometric tensorflow keras nvidia-ml-py
-RUN pip uninstall -y pynvml || true
-
-# ------------------------------------
-# Install stardist for cell prediction (based on TensorFlow + Keras)
-# ------------------------------------
-RUN pip install -c constraints.txt "numpy<2" stardist
+RUN pip install --retries 10 -c constraints.txt "numpy<2" \
+    torch torchvision torch-geometric tensorflow keras nvidia-ml-py stardist && \
+    pip uninstall -y pynvml || true
 
 # ------------------------------------
 # Install HistomicsTK for staining normalization
 # ------------------------------------
-RUN pip install -c constraints.txt --trusted-host github.com --trusted-host raw.githubusercontent.com --trusted-host girder.github.io --find-links https://girder.github.io/large_image_wheels "numpy<2" histomicstk
+RUN pip install --retries 10 -c constraints.txt \
+    --trusted-host github.com \
+    --trusted-host raw.githubusercontent.com \
+    --trusted-host girder.github.io \
+    --find-links https://girder.github.io/large_image_wheels \
+    "numpy<2" histomicstk
 
 # ------------------------------------
 # Install H-Plot and WSInsight packages
