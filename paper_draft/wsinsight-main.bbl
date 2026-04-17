@@ -1,0 +1,384 @@
+%% BioMed_Central_Bib_Style_v1.01
+
+\begin{thebibliography}{25}
+% BibTex style file: bmc-mathphys.bst (version 2.1), 2014-07-24
+\ifx \bisbn   \undefined \def \bisbn  #1{ISBN #1}\fi
+\ifx \binits  \undefined \def \binits#1{#1}\fi
+\ifx \bauthor  \undefined \def \bauthor#1{#1}\fi
+\ifx \batitle  \undefined \def \batitle#1{#1}\fi
+\ifx \bjtitle  \undefined \def \bjtitle#1{#1}\fi
+\ifx \bvolume  \undefined \def \bvolume#1{\textbf{#1}}\fi
+\ifx \byear  \undefined \def \byear#1{#1}\fi
+\ifx \bissue  \undefined \def \bissue#1{#1}\fi
+\ifx \bfpage  \undefined \def \bfpage#1{#1}\fi
+\ifx \blpage  \undefined \def \blpage #1{#1}\fi
+\ifx \burl  \undefined \def \burl#1{\textsf{#1}}\fi
+\ifx \doiurl  \undefined \def \doiurl#1{\url{https://doi.org/#1}}\fi
+\ifx \betal  \undefined \def \betal{et~al.}\fi
+\ifx \binstitute  \undefined \def \binstitute#1{#1}\fi
+\ifx \binstitutionaled  \undefined \def \binstitutionaled#1{#1}\fi
+\ifx \bctitle  \undefined \def \bctitle#1{#1}\fi
+\ifx \beditor  \undefined \def \beditor#1{#1}\fi
+\ifx \bpublisher  \undefined \def \bpublisher#1{#1}\fi
+\ifx \bbtitle  \undefined \def \bbtitle#1{#1}\fi
+\ifx \bedition  \undefined \def \bedition#1{#1}\fi
+\ifx \bseriesno  \undefined \def \bseriesno#1{#1}\fi
+\ifx \blocation  \undefined \def \blocation#1{#1}\fi
+\ifx \bsertitle  \undefined \def \bsertitle#1{#1}\fi
+\ifx \bsnm \undefined \def \bsnm#1{#1}\fi
+\ifx \bsuffix \undefined \def \bsuffix#1{#1}\fi
+\ifx \bparticle \undefined \def \bparticle#1{#1}\fi
+\ifx \barticle \undefined \def \barticle#1{#1}\fi
+\bibcommenthead
+\ifx \bconfdate \undefined \def \bconfdate #1{#1}\fi
+\ifx \botherref \undefined \def \botherref #1{#1}\fi
+\ifx \url \undefined \def \url#1{\textsf{#1}}\fi
+\ifx \bchapter \undefined \def \bchapter#1{#1}\fi
+\ifx \bbook \undefined \def \bbook#1{#1}\fi
+\ifx \bcomment \undefined \def \bcomment#1{#1}\fi
+\ifx \oauthor \undefined \def \oauthor#1{#1}\fi
+\ifx \citeauthoryear \undefined \def \citeauthoryear#1{#1}\fi
+\ifx \endbibitem  \undefined \def \endbibitem {}\fi
+\ifx \bconflocation  \undefined \def \bconflocation#1{#1}\fi
+\ifx \arxivurl  \undefined \def \arxivurl#1{\textsf{#1}}\fi
+\csname PreBibitemsHook\endcsname
+
+%%% 1
+\bibitem[\protect\citeauthoryear{Gupta et~al.}{2019}]{Gupta:2019}
+\begin{barticle}
+\bauthor{\bsnm{Gupta}, \binits{R.}},
+\bauthor{\bsnm{Kurc}, \binits{T.}},
+\bauthor{\bsnm{Sharma}, \binits{A.}},
+\bauthor{\bsnm{Almeida}, \binits{J.S.}},
+\bauthor{\bsnm{Saltz}, \binits{J.}}:
+\batitle{The emergence of pathomics}.
+\bjtitle{Current Pathobiology Reports}
+\bvolume{7},
+\bfpage{73}--\blpage{84}
+(\byear{2019})
+\end{barticle}
+\endbibitem
+
+%%% 2
+\bibitem[\protect\citeauthoryear{Echle et~al.}{2020}]{Echle:2020}
+\begin{barticle}
+\bauthor{\bsnm{Echle}, \binits{A.}}, \betal:
+\batitle{Deep learning in cancer pathology: a new generation of clinical
+  biomarkers}.
+\bjtitle{British Journal of Cancer 2020 124:4}
+\bvolume{124},
+\bfpage{686}--\blpage{696}
+(\byear{2020})
+\end{barticle}
+\endbibitem
+
+%%% 3
+\bibitem[\protect\citeauthoryear{van~der Laak et~al.}{2021}]{Laak:2021}
+\begin{barticle}
+\bauthor{\bsnm{Laak}, \binits{J.}},
+\bauthor{\bsnm{Litjens}, \binits{G.}},
+\bauthor{\bsnm{Ciompi}, \binits{F.}}:
+\batitle{Deep learning in histopathology: the path to the clinic}.
+\bjtitle{Nature Medicine 2021 27:5}
+\bvolume{27},
+\bfpage{775}--\blpage{784}
+(\byear{2021})
+\end{barticle}
+\endbibitem
+
+%%% 4
+\bibitem[\protect\citeauthoryear{Kaczmarzyk et~al.}{2024}]{Kaczmarzyk:2024}
+\begin{barticle}
+\bauthor{\bsnm{Kaczmarzyk}, \binits{J.R.}}, \betal:
+\batitle{Open and reusable deep learning for pathology with wsinfer and
+  qupath}.
+\bjtitle{Nature Precision Oncology}
+\bvolume{8},
+\bfpage{9}
+(\byear{2024})
+\end{barticle}
+\endbibitem
+
+%%% 5
+\bibitem[\protect\citeauthoryear{Luik et~al.}{2024}]{Luik:2024}
+\begin{barticle}
+\bauthor{\bsnm{Luik}, \binits{T.T.}},
+\bauthor{\bsnm{Rosas-Bertolini}, \binits{R.}},
+\bauthor{\bsnm{Reits}, \binits{E.A.J.}},
+\bauthor{\bsnm{Hoebe}, \binits{R.A.}},
+\bauthor{\bsnm{Krawczyk}, \binits{P.M.}}:
+\batitle{Biomero: A scalable and extensible image analysis framework}.
+\bjtitle{Patterns}
+\bvolume{5},
+\bfpage{101024}
+(\byear{2024})
+\end{barticle}
+\endbibitem
+
+%%% 6
+\bibitem[\protect\citeauthoryear{Pocock et~al.}{2022}]{Pocock:2022}
+\begin{barticle}
+\bauthor{\bsnm{Pocock}, \binits{J.}}, \betal:
+\batitle{Tiatoolbox as an end-to-end library for advanced tissue image
+  analytics}.
+\bjtitle{Communications Medicine}
+\bvolume{2},
+\bfpage{120}
+(\byear{2022})
+\end{barticle}
+\endbibitem
+
+%%% 7
+\bibitem[\protect\citeauthoryear{Cardoso et~al.}{2022}]{Cardoso:2022}
+\begin{botherref}
+\oauthor{\bsnm{Cardoso}, \binits{M.J.}}, \betal:
+Monai: An open-source framework for deep learning in healthcare.
+arXiv,
+2211--02701
+(2022)
+\end{botherref}
+\endbibitem
+
+%%% 8
+\bibitem[\protect\citeauthoryear{Dolezal et~al.}{2024}]{Dolezal:2024}
+\begin{barticle}
+\bauthor{\bsnm{Dolezal}, \binits{J.M.}}, \betal:
+\batitle{Slideflow: deep learning for digital histopathology with real-time
+  whole-slide visualization}.
+\bjtitle{BMC Bioinformatics}
+\bvolume{25},
+\bfpage{134}
+(\byear{2024})
+\end{barticle}
+\endbibitem
+
+%%% 9
+\bibitem[\protect\citeauthoryear{Faust et~al.}{2024}]{Faust:2024}
+\begin{botherref}
+\oauthor{\bsnm{Faust}, \binits{K.}}, \betal:
+Pharaoh: A collaborative crowdsourcing platform for phenotyping and regional
+  analysis of histology.
+bioRxiv,
+2024--0320585977
+(2024)
+\end{botherref}
+\endbibitem
+
+%%% 10
+\bibitem[\protect\citeauthoryear{}{}]{TheCancerGenomeAtlasProgramTCGA}
+\begin{botherref}
+The Cancer Genome Atlas Program (TCGA).
+\url{https://www.cancer.gov/ccg/research/genome-sequencing/tcga}
+\end{botherref}
+\endbibitem
+
+%%% 11
+\bibitem[\protect\citeauthoryear{}{}]{CloudObjectStorage--AmazonS3--AmazonWebServices}
+\begin{botherref}
+Cloud Object Storage -- Amazon S3 -- Amazon Web Services.
+\url{https://aws.amazon.com/s3/}
+\end{botherref}
+\endbibitem
+
+%%% 12
+\bibitem[\protect\citeauthoryear{Page et~al.}{2023}]{Page:2023}
+\begin{barticle}
+\bauthor{\bsnm{Page}, \binits{D.B.}}, \betal:
+\batitle{Spatial analyses of immune cell infiltration in cancer: current
+  methods and future directions: A report of the international immuno-oncology
+  biomarker working group on breast cancer}.
+\bjtitle{The Journal of pathology}
+\bvolume{260},
+\bfpage{514}
+(\byear{2023})
+\end{barticle}
+\endbibitem
+
+%%% 13
+\bibitem[\protect\citeauthoryear{Saltz et~al.}{2018}]{Saltz:2018}
+\begin{barticle}
+\bauthor{\bsnm{Saltz}, \binits{J.}}, \betal:
+\batitle{Spatial organization and molecular correlation of tumor-infiltrating
+  lymphocytes using deep learning on pathology images}.
+\bjtitle{Cell Reports}
+\bvolume{23},
+\bfpage{181}--\blpage{1937}
+(\byear{2018})
+\end{barticle}
+\endbibitem
+
+%%% 14
+\bibitem[\protect\citeauthoryear{Bankhead et~al.}{2017}]{Bankhead:2017}
+\begin{barticle}
+\bauthor{\bsnm{Bankhead}, \binits{P.}}, \betal:
+\batitle{Qupath: Open source software for digital pathology image analysis}.
+\bjtitle{Scientific Reports}
+\bvolume{7},
+\bfpage{16878}
+(\byear{2017})
+\end{barticle}
+\endbibitem
+
+%%% 15
+\bibitem[\protect\citeauthoryear{Allan et~al.}{2012}]{Allan:2012}
+\begin{barticle}
+\bauthor{\bsnm{Allan}, \binits{C.}}, \betal:
+\batitle{Omero: flexible, model-driven data management for experimental
+  biology}.
+\bjtitle{Nature methods}
+\bvolume{9},
+\bfpage{245}--\blpage{253}
+(\byear{2012})
+\end{barticle}
+\endbibitem
+
+%%% 16
+\bibitem[\protect\citeauthoryear{Le et~al.}{2020}]{Le:2020}
+\begin{barticle}
+\bauthor{\bsnm{Le}, \binits{H.}}, \betal:
+\batitle{Utilizing automated breast cancer detection to identify spatial
+  distributions of tumor-infiltrating lymphocytes in invasive breast cancer}.
+\bjtitle{The American Journal of Pathology}
+\bvolume{190},
+\bfpage{1491}--\blpage{1504}
+(\byear{2020})
+\end{barticle}
+\endbibitem
+
+%%% 17
+\bibitem[\protect\citeauthoryear{Veeling et~al.}{2018}]{Veeling:2018}
+\begin{barticle}
+\bauthor{\bsnm{Veeling}, \binits{B.S.}},
+\bauthor{\bsnm{Linmans}, \binits{J.}},
+\bauthor{\bsnm{Winkens}, \binits{J.}},
+\bauthor{\bsnm{Cohen}, \binits{T.}},
+\bauthor{\bsnm{Welling}, \binits{M.}}:
+\batitle{Rotation equivariant cnns for digital pathology}.
+\bjtitle{Lecture Notes in Computer Science (including subseries Lecture Notes
+  in Artificial Intelligence and Lecture Notes in Bioinformatics)}
+\bvolume{11071 LNCS},
+\bfpage{210}--\blpage{218}
+(\byear{2018})
+\end{barticle}
+\endbibitem
+
+%%% 18
+\bibitem[\protect\citeauthoryear{Litjens et~al.}{2018}]{Litjens:2018}
+\begin{barticle}
+\bauthor{\bsnm{Litjens}, \binits{G.}}, \betal:
+\batitle{1399 h\&e-stained sentinel lymph node sections of breast cancer
+  patients: the camelyon dataset}.
+\bjtitle{GigaScience}
+\bvolume{7},
+\bfpage{1}--\blpage{8}
+(\byear{2018})
+\end{barticle}
+\endbibitem
+
+%%% 19
+\bibitem[\protect\citeauthoryear{H\"{o}rst et~al.}{2024}]{Horst:2024}
+\begin{barticle}
+\bauthor{\bsnm{H\"{o}rst}, \binits{F.}}, \betal:
+\batitle{Cellvit: Vision transformers for precise cell segmentation and
+  classification}.
+\bjtitle{Medical Image Analysis}
+\bvolume{94},
+\bfpage{103143}
+(\byear{2024})
+\end{barticle}
+\endbibitem
+
+%%% 20
+\bibitem[\protect\citeauthoryear{Janowczyk et~al.}{2019}]{Janowczyk:2019}
+\begin{barticle}
+\bauthor{\bsnm{Janowczyk}, \binits{A.}},
+\bauthor{\bsnm{Zuo}, \binits{R.}},
+\bauthor{\bsnm{Gilmore}, \binits{H.}},
+\bauthor{\bsnm{Feldman}, \binits{M.}},
+\bauthor{\bsnm{Madabhushi}, \binits{A.}}:
+\batitle{Histoqc: An open-source quality control tool for digital pathology
+  slides}.
+\bjtitle{JCO clinical cancer informatics}
+\bvolume{3},
+\bfpage{1}--\blpage{7}
+(\byear{2019})
+\end{barticle}
+\endbibitem
+
+%%% 21
+\bibitem[\protect\citeauthoryear{Gamper et~al.}{2019}]{Gamper:2019}
+\begin{barticle}
+\bauthor{\bsnm{Gamper}, \binits{J.}},
+\bauthor{\bsnm{Koohbanani}, \binits{N.A.}},
+\bauthor{\bsnm{Benet}, \binits{K.}},
+\bauthor{\bsnm{Khuram}, \binits{A.}},
+\bauthor{\bsnm{Rajpoot}, \binits{N.}}:
+\batitle{Pannuke: An open pan-cancer histology dataset for nuclei instance
+  segmentation and classification}.
+\bjtitle{Lecture Notes in Computer Science (including subseries Lecture Notes
+  in Artificial Intelligence and Lecture Notes in Bioinformatics)}
+\bvolume{11435 LNCS},
+\bfpage{11}--\blpage{19}
+(\byear{2019})
+\end{barticle}
+\endbibitem
+
+%%% 22
+\bibitem[\protect\citeauthoryear{Huang et~al.}{2025}]{Huang:2025}
+\begin{barticle}
+\bauthor{\bsnm{Huang}, \binits{C.H.}},
+\bauthor{\bsnm{Lichtarge}, \binits{S.}},
+\bauthor{\bsnm{Fernandez}, \binits{D.}}:
+\batitle{Integrative whole slide image and spatial transcriptomics analysis
+  with qust and qupath}.
+\bjtitle{npj Precision Oncology 2025 9:1}
+\bvolume{9},
+\bfpage{70}
+(\byear{2025})
+\end{barticle}
+\endbibitem
+
+%%% 23
+\bibitem[\protect\citeauthoryear{Graham et~al.}{2019}]{Graham:2019}
+\begin{barticle}
+\bauthor{\bsnm{Graham}, \binits{S.}}, \betal:
+\batitle{Hover-net: Simultaneous segmentation and classification of nuclei in
+  multi-tissue histology images}.
+\bjtitle{Medical Image Analysis}
+\bvolume{58},
+\bfpage{101563}
+(\byear{2019})
+\end{barticle}
+\endbibitem
+
+%%% 24
+\bibitem[\protect\citeauthoryear{Schmidt et~al.}{2018}]{Schmidt:2018}
+\begin{bchapter}
+\bauthor{\bsnm{Schmidt}, \binits{U.}},
+\bauthor{\bsnm{Weigert}, \binits{M.}},
+\bauthor{\bsnm{Broaddus}, \binits{C.}},
+\bauthor{\bsnm{Myers}, \binits{G.}}:
+\bctitle{Cell detection with star-convex polygons}.
+In: \bbtitle{Medical Image Computing and Computer Assisted Intervention
+  (MICCAI)},
+pp. \bfpage{265}--\blpage{273}
+(\byear{2018})
+\end{bchapter}
+\endbibitem
+
+%%% 25
+\bibitem[\protect\citeauthoryear{He et~al.}{2016}]{He:2016}
+\begin{bchapter}
+\bauthor{\bsnm{He}, \binits{K.}},
+\bauthor{\bsnm{Zhang}, \binits{X.}},
+\bauthor{\bsnm{Ren}, \binits{S.}},
+\bauthor{\bsnm{Sun}, \binits{J.}}:
+\bctitle{Deep residual learning for image recognition}.
+In: \bbtitle{29th IEEE Computer Vision and Pattern Recognition (CVPR)},
+vol. \bseriesno{2016-December},
+pp. \bfpage{770}--\blpage{778}
+(\byear{2016})
+\end{bchapter}
+\endbibitem
+
+\end{thebibliography}

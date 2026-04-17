@@ -1,0 +1,71 @@
+This is BibTeX, Version 0.99d (TeX Live 2024)
+Capacity: max_strings=200000, hash_size=200000, hash_prime=170003
+The top-level auxiliary file: wsinsight-main.aux
+The style file: sn-mathphys-num.bst
+Reallocated glb_str_ptr (elt_size=4) to 20 items from 10.
+Reallocated global_strs (elt_size=200001) to 20 items from 10.
+Reallocated glb_str_end (elt_size=4) to 20 items from 10.
+Reallocated singl_function (elt_size=4) to 100 items from 50.
+Reallocated singl_function (elt_size=4) to 100 items from 50.
+Reallocated singl_function (elt_size=4) to 100 items from 50.
+Reallocated singl_function (elt_size=4) to 100 items from 50.
+Reallocated singl_function (elt_size=4) to 100 items from 50.
+Reallocated wiz_functions (elt_size=4) to 6000 items from 3000.
+Reallocated singl_function (elt_size=4) to 100 items from 50.
+Reallocated singl_function (elt_size=4) to 100 items from 50.
+Reallocated singl_function (elt_size=4) to 100 items from 50.
+Reallocated singl_function (elt_size=4) to 100 items from 50.
+Reallocated singl_function (elt_size=4) to 100 items from 50.
+Reallocated singl_function (elt_size=4) to 100 items from 50.
+Reallocated singl_function (elt_size=4) to 100 items from 50.
+Reallocated singl_function (elt_size=4) to 100 items from 50.
+Database file #1: wsinsight-main.bib
+Reallocated wiz_functions (elt_size=4) to 9000 items from 6000.
+Reallocated singl_function (elt_size=4) to 100 items from 50.
+Warning--to sort, need author or key in TheCancerGenomeAtlasProgramTCGA
+Warning--to sort, need author or key in CloudObjectStorage--AmazonS3--AmazonWebServices
+Reallocated singl_function (elt_size=4) to 100 items from 50.
+Reallocated singl_function (elt_size=4) to 100 items from 50.
+Reallocated singl_function (elt_size=4) to 100 items from 50.
+You've used 25 entries,
+            7465 wiz_defined-function locations,
+            1353 strings with 14284 characters,
+and the built_in function-call counts, 181025 in all, are:
+= -- 30920
+> -- 790
+< -- 380
++ -- 16776
+- -- 182
+* -- 5781
+:= -- 32429
+add.period$ -- 25
+call.type$ -- 25
+change.case$ -- 141
+chr.to.int$ -- 1000
+cite$ -- 29
+duplicate$ -- 1078
+empty$ -- 4511
+format.name$ -- 540
+if$ -- 45964
+int.to.chr$ -- 1
+int.to.str$ -- 44
+missing$ -- 0
+newline$ -- 365
+num.names$ -- 115
+pop$ -- 480
+preamble$ -- 1
+purify$ -- 102
+quote$ -- 0
+skip$ -- 18870
+stack$ -- 0
+substring$ -- 17346
+swap$ -- 585
+text.length$ -- 283
+text.prefix$ -- 0
+top$ -- 0
+type$ -- 1056
+warning$ -- 2
+while$ -- 677
+width$ -- 0
+write$ -- 527
+(There were 2 warnings)
