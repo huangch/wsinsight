@@ -160,11 +160,12 @@ def reg(
         )
 
     if wsi_dir is not None:
+        wsi_dir = wsi_dir.coerce_image_list()
         _assert_directory(wsi_dir, "--wsi-dir")
         obj_csvs = sorted(
             obj_csv_dir / p.with_suffix(".csv").name
             for p in wsi_dir.iterdir()
-            if p.is_file()
+            if wsi_dir.scheme == "image-list" or p.is_file()
         )
     else:
         obj_csvs = sorted(p for p in obj_csv_dir.iterdir() if p.suffix == ".csv")

@@ -175,10 +175,11 @@ def hplot(
 ) -> None:
     """Run H-Plot analysis on inference outputs held inside ``results_dir``."""
 
+    wsi_dir = wsi_dir.coerce_image_list()
     _assert_directory(wsi_dir, "--wsi-dir")
     _assert_directory(results_dir, "--results-dir")
 
-    slide_paths = sorted([p for p in wsi_dir.iterdir() if p.is_file()])
+    slide_paths = sorted([p for p in wsi_dir.iterdir() if wsi_dir.scheme == "image-list" or p.is_file()])
     if not slide_paths:
         raise click.ClickException(f"no files exist in the slide directory: {wsi_dir}")
 

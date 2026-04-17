@@ -174,10 +174,11 @@ def ncomp(
       ncomp-outputs-csv/<slide_id>.csv   per-cell neighborhood composition
     """
 
+    wsi_dir = wsi_dir.coerce_image_list()
     _assert_directory(wsi_dir, "--wsi-dir")
     _assert_directory(results_dir, "--results-dir")
 
-    slide_paths = sorted([p for p in wsi_dir.iterdir() if p.is_file()])
+    slide_paths = sorted([p for p in wsi_dir.iterdir() if wsi_dir.scheme == "image-list" or p.is_file()])
     if not slide_paths:
         raise click.ClickException(f"No files found in slide directory: {wsi_dir}")
 
