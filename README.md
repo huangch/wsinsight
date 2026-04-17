@@ -436,7 +436,7 @@ finish, finalize any H-plot or ncomp analytics:
 wsinsight hplot-finalize --results-dir results/
 ```
 
-See `tmux-8gpu-example.sh` in the repository root for a ready-to-use script.
+See `tmux-multi-gpu.sh` in the repository root for a ready-to-use script.
 
 > [!TIP]
 > Adapt the number of panes and GPU assignments to your hardware. For 4 GPUs, use a 2×2

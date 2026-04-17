@@ -223,7 +223,7 @@ launch one ``wsinsight run`` per GPU inside a tmux session.
 2. **Launch a tmux session** with one pane per GPU.  The repository includes a ready-made
    script for 8-GPU nodes::
 
-       bash tmux-8gpu-example.sh
+       bash tmux-multi-gpu.sh
 
    Each pane pins a single GPU via ``CUDA_VISIBLE_DEVICES`` and processes its own shard.
    All panes write to the same ``--results-dir``, so outputs merge automatically.
@@ -236,7 +236,7 @@ launch one ``wsinsight run`` per GPU inside a tmux session.
 
    Adapt the number of panes and GPU assignments to your hardware.  For 4 GPUs, use a
    2×2 grid; for 2 GPUs, a simple horizontal split suffices.  See
-   ``tmux-8gpu-example.sh`` in the repository root for the full 8-GPU layout.
+   ``tmux-multi-gpu.sh`` in the repository root for the full 8-GPU layout.
 
 
 Region registration
