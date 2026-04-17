@@ -90,7 +90,7 @@ WSInsight supports both a fully reproducible conda workflow and lighter manual i
 
 ### Option A: Reproducible conda setup (recommended)
 
-Run the following commands from the repository root to recreate the tested environment. Adjust the environment name if you need to keep multiple copies side-by-side.
+Run the following commands from the repository root to recreate the tested environment. Adjust the environment name if you need to keep multiple copies side-by-side. The steps below are also captured in [`conda-setup.sh`](conda-setup.sh) for convenience.
 
 ```bash
 # reset any previous environment
@@ -505,6 +505,8 @@ Variable | Purpose | Example
 - Ensure `ruff`, `black`, and other lint tools remain clean by running `pre-commit run --all-files`.
 - Execute the test suite with `pytest` from the project root.
 - Documentation lives in `docs/`; build locally with `make -C docs html`.
+- Build and push the Docker image with [`docker-build-push.sh`](docker-build-push.sh).
+- Pull and run the published image with [`docker-run.sh`](docker-run.sh).
 
 ## Support and Feedback
 

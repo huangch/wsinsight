@@ -15,8 +15,9 @@ Reproducible conda workflow
 ---------------------------
 
 This option recreates the reference environment used for development and publications.
-Run the commands below from the repository root. Adjust the path to :code:`conda.sh` and
-the environment name if needed.
+Run the commands below from the repository root (also available as :code:`conda-setup.sh`
+in the repository root). Adjust the path to :code:`conda.sh` and the environment name if
+needed.
 
 .. code-block:: bash
 
