@@ -94,7 +94,7 @@ RUN pip install --retries 10 -c constraints.txt \
     "numpy<2" histomicstk
 
 # ------------------------------------
-# Install H-Plot and WSInsight packages
+# Install H-plot and WSInsight packages
 # ------------------------------------
 # RUN pip install --upgrade "numpy<2" -e ./hplot
 RUN pip install -c constraints.txt "numpy<2" -e .

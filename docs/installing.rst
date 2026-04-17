@@ -26,26 +26,37 @@ the environment name if needed.
    conda env remove -n wsinsight -y || true
 
    # create a clean env with Python 3.11 and GDAL 3.11.3
-   conda create -n wsinsight python=3.11 gdal=3.11.3 -c conda-forge -y
+   conda create -n wsinsight python=3.11 gdal=3.11.3 "setuptools<67" -c conda-forge -y
    conda activate wsinsight
    python -m pip install --upgrade pip
 
    # pin numpy across every install step via constraints.txt
-   python -m pip install -c ./wsinsight/constraints.txt "numpy<2"
+   python -m pip install -c constraints.txt "numpy<2"
 
    # install heavy ML stacks first so CUDA dependencies settle early
-   python -m pip install -c ./wsinsight/constraints.txt \
+   python -m pip install -c constraints.txt \
      torch torchvision torch-geometric tensorflow keras stardist nvidia-ml-py
-   pip uninstall -y pynvml
 
    # HistomicsTK wheels live on girder.github.io; keep numpy pinned for ABI safety
-   python -m pip install --no-cache-dir --trusted-host github.com \
-     --trusted-host raw.githubusercontent.com --trusted-host girder.github.io \
-     --find-links https://girder.github.io/large_image_wheels --upgrade \
-     "numpy<2" histomicstk
+   python -m pip install \
+     --trusted-host github.com \
+     --trusted-host raw.githubusercontent.com \
+     --trusted-host girder.github.io \
+     --find-links https://girder.github.io/large_image_wheels \
+     -c constraints.txt "numpy<2" pyvips histomicstk
 
-   # finally, install WSInsight itself in editable mode with the same constraints
-   python -m pip install -c ./wsinsight/constraints.txt -e ./wsinsight
+   # pre-install remaining heavy deps to reduce pip resolver backtracking
+   python -m pip install -c constraints.txt "numpy<2" \
+     scikit-learn shapely geopandas pyproj rasterio pyogrio \
+     openslide-python wsidicom paquo "wsinfer-zoo>=0.6.2" \
+     igraph leidenalg s3fs boto3 platformdirs timm \
+     tiffslide imagecodecs opencv-python-headless orjson click
+
+   # install WSInsight itself in editable mode (--no-build-isolation speeds up resolve)
+   python -m pip install -c constraints.txt --no-build-isolation -e .
+
+   # safety check: ensure numpy stayed below 2.0 (stardist requires it)
+   python -c "import numpy; v=numpy.__version__; assert int(v.split('.')[0]) < 2, f'numpy {v} >= 2.0'"
 
 Smoke-test the CLI (optional) with representative environment variables:
 

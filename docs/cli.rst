@@ -23,17 +23,17 @@ Command                       Purpose
                               runs.  Enriches object CSVs with ``region_prob_*`` columns from
                               a prior region-level run.  Use ``--overwrite`` to replace
                               existing region columns.
-``wsinsight hplot``           Standalone H-Plot analysis on existing object-based inference
+``wsinsight hplot``           Standalone H-plot analysis on existing object-based inference
                               outputs.  Requires both ``--hplot-base-types`` and
                               ``--hplot-target-types``.
-``wsinsight hplot-finalize``  Aggregate per-slide H-Plot intermediates into cohort-level
+``wsinsight hplot-finalize``  Aggregate per-slide H-plot intermediates into cohort-level
                               ``hplot-outputs.csv`` and ``hmetrics-outputs.csv``.  Run this
                               after parallel ``hplot`` jobs that share an output directory.
 ``wsinsight ncomp``           Neighborhood composition analysis on existing inference outputs.
                               For each target cell, builds a Delaunay graph, collects k-hop
                               neighbors, and records per-cell type counts and proportions.
                               Can also run inline via ``wsinsight run --ncomp``.
-``wsinsight export``          Merge all per-cell analytics (inference, H-Plot, ncomp) into
+``wsinsight export``          Merge all per-cell analytics (inference, H-plot, ncomp) into
                               ``export-csv/`` and write GeoJSON and/or OME-CSV files.  Can
                               be run after inference — and optionally after ``hplot`` /
                               ``ncomp`` — without repeating the full pipeline.
@@ -83,7 +83,7 @@ Produced by ``infer``, ``run``, and ``reg``.
 ``hplot-outputs-csv/hplots/<slide>.csv``
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-Per-layer H-Plot curve.  One row per integer layer index.
+Per-layer H-plot curve.  One row per integer layer index.
 
 .. list-table::
    :header-rows: 1
@@ -132,7 +132,7 @@ Per-cell file: the original ``model-outputs-csv/<slide>.csv`` extended with spat
 ``hplot-outputs.csv``
 ~~~~~~~~~~~~~~~~~~~~~~
 
-Cohort-level H-Plot curve aggregated across all slides, produced by ``hplot``,
+Cohort-level H-plot curve aggregated across all slides, produced by ``hplot``,
 ``run --hplot``, or ``hplot-finalize``.
 
 Columns: ``id``, ``layer``, ``target_prop``, ``target_count``, ``base_prop``,
@@ -184,7 +184,7 @@ Per-cell neighborhood composition produced by ``ncomp`` or
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 Merged per-cell CSV produced by ``wsinsight export``.  Left-joins the base
-inference CSV, H-Plot cell features, and ncomp neighborhood data on shared
+inference CSV, H-plot cell features, and ncomp neighborhood data on shared
 geometry keys.
 
 .. list-table::
@@ -198,9 +198,9 @@ geometry keys.
    * - ``center_x``, ``center_y``
      - Cell centre (added if absent)
    * - ``is_base_type``, ``is_target_type``
-     - From H-Plot cells output (when available)
+     - From H-plot cells output (when available)
    * - ``signed_distance_to_border``
-     - From H-Plot cells output (when available)
+     - From H-plot cells output (when available)
    * - ``cell_type``, ``neighborhood_size``
      - From ncomp output (when available)
    * - ``neighborhood_<class>_count``, ``neighborhood_<class>_prop``
@@ -210,7 +210,7 @@ geometry keys.
 Key parameters
 --------------
 
-H-Plot (``--hplot-*`` in ``run`` and ``wsinsight hplot``)
+H-plot (``--hplot-*`` in ``run`` and ``wsinsight hplot``)
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 .. list-table::
@@ -249,7 +249,7 @@ H-Plot (``--hplot-*`` in ``run`` and ``wsinsight hplot``)
      - Exclude slides that do not cover the full ``[range-min, range-max]`` window
    * - ``--overwrite``
      - off
-     - Recompute and overwrite existing per-slide H-Plot outputs
+     - Recompute and overwrite existing per-slide H-plot outputs
 
 Neighborhood composition (``--ncomp-*`` in ``run`` and ``wsinsight ncomp``)
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -340,7 +340,7 @@ Inference performance
 Example workflows
 -----------------
 
-Run inference + H-Plot + ncomp in a single command::
+Run inference + H-plot + ncomp in a single command::
 
     wsinsight run \
       --wsi-dir slides/ \
@@ -355,7 +355,7 @@ Run inference + H-Plot + ncomp in a single command::
       --ncomp \
       --ncomp-target-types lymphocyte
 
-Run H-Plot on existing inference outputs::
+Run H-plot on existing inference outputs::
 
     wsinsight hplot \
       --wsi-dir slides/ \
@@ -365,7 +365,7 @@ Run H-Plot on existing inference outputs::
       --hplot-range-min -5 \
       --hplot-range-max 5
 
-Aggregate H-Plot results after parallel per-slide runs::
+Aggregate H-plot results after parallel per-slide runs::
 
     wsinsight hplot-finalize --results-dir results/
 

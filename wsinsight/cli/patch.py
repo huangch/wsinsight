@@ -668,9 +668,7 @@ def patch(
         )
 
     # --- Coerce a plain txt file into an image-list:// virtual directory ----
-    if wsi_dir.is_local and wsi_dir._path.is_file():
-        _abs = os.path.abspath(os.fspath(wsi_dir._path))
-        wsi_dir = URIPath(f"image-list://{_abs}", cache_dir=wsi_dir._cache_dir, _skip_validation=True, **wsi_dir.storage_options)
+    wsi_dir = wsi_dir.coerce_image_list()
 
     # remote_cache_dir = remote_cache_dir / ("s3" if str(wsi_dir).startswith("s3") else "gdc-manifest" if str(wsi_dir).startswith("gdc-manifest") else "")
     # wsi_dir = URIPath(wsi_dir, cache_dir=remote_cache_dir)
@@ -696,9 +694,7 @@ def patch(
     #     raise FileNotFoundError(f"no files exist in the slide directory: {wsi_dir}")
 
     if slide_paths is None:
-        if wsi_dir.is_local and wsi_dir._path.is_file():
-            _abs = os.path.abspath(os.fspath(wsi_dir._path))
-            wsi_dir = URIPath(f"image-list://{_abs}", cache_dir=wsi_dir._cache_dir, _skip_validation=True, **wsi_dir.storage_options)
+        wsi_dir = wsi_dir.coerce_image_list()
         slide_paths = sorted(
             [
                 p

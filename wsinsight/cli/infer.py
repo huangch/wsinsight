@@ -1057,9 +1057,7 @@ def infer(
         raise click.ClickException(_PATCH_DIR_MISSING_HINT)
     
     if wsi_dir is not None and slide_paths is None:
-        if wsi_dir.is_local and wsi_dir._path.is_file():
-            _abs = os.path.abspath(os.fspath(wsi_dir._path))
-            wsi_dir = URIPath(f"image-list://{_abs}", cache_dir=wsi_dir._cache_dir, _skip_validation=True, **wsi_dir.storage_options)
+        wsi_dir = wsi_dir.coerce_image_list()
         slide_paths = sorted(
             [
                 p

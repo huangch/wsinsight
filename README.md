@@ -94,31 +94,42 @@ Run the following commands from the repository root to recreate the tested envir
 
 ```bash
 # reset any previous environment
-source /opt/anaconda3/etc/profile.d/conda.sh  # adapt if conda lives elsewhere
+source /opt/anaconda3/etc/profile.d/conda.sh   # adapt if conda lives elsewhere
 conda deactivate || true
 conda env remove -n wsinsight -y || true
 
 # create a clean env with Python 3.11 + GDAL 3.11.3
-conda create -n wsinsight python=3.11 gdal=3.11.3 -c conda-forge -y
+conda create -n wsinsight python=3.11 gdal=3.11.3 "setuptools<67" -c conda-forge -y
 conda activate wsinsight
 python -m pip install --upgrade pip
 
-# shared constraints keep numpy < 2 across every install step
-python -m pip install -c ./wsinsight/constraints.txt "numpy<2"
+# pin numpy < 2 across every install step via constraints.txt
+python -m pip install -c constraints.txt "numpy<2"
 
 # install heavy ML stacks first so CUDA dependencies settle early
-python -m pip install -c ./wsinsight/constraints.txt \
+python -m pip install -c constraints.txt \
   torch torchvision torch-geometric tensorflow keras stardist nvidia-ml-py
-python -m pip uninstall -y pynvml
 
 # HistomicsTK wheels are hosted externally; keep numpy pinned for ABI safety
-python -m pip install --no-cache-dir --trusted-host github.com \
-  --trusted-host raw.githubusercontent.com --trusted-host girder.github.io \
-  --find-links https://girder.github.io/large_image_wheels --upgrade \
-  "numpy<2" histomicstk
+python -m pip install \
+  --trusted-host github.com \
+  --trusted-host raw.githubusercontent.com \
+  --trusted-host girder.github.io \
+  --find-links https://girder.github.io/large_image_wheels \
+  -c constraints.txt "numpy<2" pyvips histomicstk
 
-# finally, install WSInsight itself in editable mode with the same constraints
-python -m pip install -c ./wsinsight/constraints.txt -e ./wsinsight
+# pre-install remaining heavy deps to reduce pip resolver backtracking
+python -m pip install -c constraints.txt "numpy<2" \
+  scikit-learn shapely geopandas pyproj rasterio pyogrio \
+  openslide-python wsidicom paquo "wsinfer-zoo>=0.6.2" \
+  igraph leidenalg s3fs boto3 platformdirs timm \
+  tiffslide imagecodecs opencv-python-headless orjson click
+
+# install WSInsight itself in editable mode (--no-build-isolation speeds up resolve)
+python -m pip install -c constraints.txt --no-build-isolation -e .
+
+# safety check: ensure numpy stayed below 2.0 (stardist requires it)
+python -c "import numpy; v=numpy.__version__; assert int(v.split('.')[0]) < 2, f'numpy {v} >= 2.0; re-run: pip install -c constraints.txt \"numpy<2\"'"
 ```
 
 Optionally, run a smoke test to ensure the CLI starts with representative environment variables:
@@ -163,14 +174,14 @@ The editable install enables rapid iteration on CLI commands, model definitions,
 
 Command | Purpose
 --- | ---
-`wsinsight run` | Segment tissue, extract patches, execute model inference, and optionally run H-Plot/ncomp analytics and export (one-shot orchestration of `patch` → `infer` → `hplot` → `ncomp` → `export`). Pass `--hplot` / `--ncomp` to enable spatial analytics and `--export-geojson` / `--export-omecsv` to write GeoJSON / OME-CSV files at the end of the run.
+`wsinsight run` | Segment tissue, extract patches, execute model inference, and optionally run H-plot/ncomp analytics and export (one-shot orchestration of `patch` → `infer` → `hplot` → `ncomp` → `export`). Pass `--hplot` / `--ncomp` to enable spatial analytics and `--export-geojson` / `--export-omecsv` to write GeoJSON / OME-CSV files at the end of the run.
 `wsinsight patch` | Perform tissue segmentation, cache/crop patches to HDF5, and prepare metadata for later inference runs; safe to rerun to resume interrupted jobs.
-`wsinsight infer` | Load cached patches, run the selected model, and produce per-cell CSV outputs. Enrich object CSVs with region-level probabilities via `--region-inference-dir` and `--overwrite`. Use the standalone `hplot`/`ncomp`/`export` commands (or `run`) for downstream analytics. Does **not** run H-Plot, ncomp, or export — use `run` for one-shot orchestration.
+`wsinsight infer` | Load cached patches, run the selected model, and produce per-cell CSV outputs. Enrich object CSVs with region-level probabilities via `--region-inference-dir` and `--overwrite`. Use the standalone `hplot`/`ncomp`/`export` commands (or `run`) for downstream analytics. Does **not** run H-plot, ncomp, or export — use `run` for one-shot orchestration.
 `wsinsight reg` | Post-hoc object-to-region registration: enrich existing object-level CSV outputs with `region_prob_*` columns derived from a separate region-level inference run (`-r`). Equivalent to running `infer` with `--region-inference-dir`, but works on already-completed runs without re-running inference. Use `--overwrite` to replace existing `region_*` columns.
-`wsinsight hplot` | Standalone H-Plot analysis on existing inference outputs. Requires cell-type-aware model outputs and both `--hplot-base-types` and `--hplot-target-types`. Computes layer-wise cell-type proportions from tumour boundary outward.
-`wsinsight hplot-finalize` | Aggregate per-slide H-Plot intermediates into a single `hplot-outputs.csv` and `hmetrics-outputs.csv`. Use after running parallel `hplot` jobs that share the same `--results-dir`.
+`wsinsight hplot` | Standalone H-plot analysis on existing inference outputs. Requires cell-type-aware model outputs and both `--hplot-base-types` and `--hplot-target-types`. Computes layer-wise cell-type proportions from tumour boundary outward.
+`wsinsight hplot-finalize` | Aggregate per-slide H-plot intermediates into a single `hplot-outputs.csv` and `hmetrics-outputs.csv`. Use after running parallel `hplot` jobs that share the same `--results-dir`.
 `wsinsight ncomp` | Neighborhood composition analysis on existing cell-detection outputs. For each target cell, builds a Delaunay graph, collects k-hop neighbors, and records the cell-type composition of the local neighborhood. Outputs per-cell CSVs under `ncomp-outputs-csv/`.
-`wsinsight export` | Merge all available per-cell analytics (inference, H-Plot, ncomp) into `export-csv/` and write GeoJSON and/or OME-CSV files. Can be run any time after inference — and optionally after `hplot`/`ncomp` — without repeating the full pipeline.
+`wsinsight export` | Merge all available per-cell analytics (inference, H-plot, ncomp) into `export-csv/` and write GeoJSON and/or OME-CSV files. Can be run any time after inference — and optionally after `hplot`/`ncomp` — without repeating the full pipeline.
 
 Pick `run` when you want a one-liner for single slides or small batches; switch to the explicit `patch` → `infer` → `hplot` / `ncomp` → `export` flow to resume large jobs, share patch caches across model variants, or parallelize stages on separate machines. `run` is the only command that orchestrates all stages — `infer` focuses solely on model inference. Run the standalone `wsinsight hplot` or `wsinsight ncomp` commands to (re-)run analytics on existing inference outputs without repeating inference. Use `wsinsight hplot-finalize` to assemble the cohort-level summary after running parallel `hplot` jobs. All commands share global options such as `--log-level`. Use `wsinsight <command> --help` for the full option list, including QuPath integration flags and segmentation controls.
 
@@ -187,11 +198,11 @@ Pick `run` when you want a one-liner for single slides or small batches; switch 
 ├── model-outputs-omecsv/
 │   └── <slide>.ome.csv.gz          OME-CSV from reg --omecsv (region-registered)
 ├── hplot-outputs-csv/
-│   ├── hplots/<slide>.csv          Per-layer H-Plot curve (one row per layer)
+│   ├── hplots/<slide>.csv          Per-layer H-plot curve (one row per layer)
 │   ├── cells/<slide>.csv           Per-cell data with spatial annotations
-│   └── hmetrics/<slide>.json       Per-slide H-Plot metrics (intermediate)
-├── hplot-outputs.csv               Aggregated H-Plot curve (all slides)
-├── hmetrics-outputs.csv            Aggregated H-Plot metrics (all slides)
+│   └── hmetrics/<slide>.json       Per-slide H-plot metrics (intermediate)
+├── hplot-outputs.csv               Aggregated H-plot curve (all slides)
+├── hmetrics-outputs.csv            Aggregated H-plot metrics (all slides)
 ├── ncomp-outputs-csv/
 │   └── <slide>.csv                 Per-cell neighborhood composition
 ├── export-csv/
@@ -222,7 +233,7 @@ Produced by `infer`, `run`, and `reg`.
 
 ### `hplot-outputs-csv/hplots/<slide>.csv`
 
-Per-layer H-Plot curve produced by `hplot` or `run --hplot`.
+Per-layer H-plot curve produced by `hplot` or `run --hplot`.
 
 | Column | Description |
 |---|---|
@@ -249,7 +260,7 @@ Per-cell file: the original `model-outputs-csv/<slide>.csv` extended with spatia
 
 ### `hplot-outputs.csv`
 
-Cohort-level H-Plot curve aggregated across all slides. Produced by `hplot`, `run --hplot`, or `hplot-finalize`.
+Cohort-level H-plot curve aggregated across all slides. Produced by `hplot`, `run --hplot`, or `hplot-finalize`.
 
 Columns: `id`, `layer`, `target_prop`, `target_count`, `base_prop`, `base_count`, `all_count`, `distance`
 
@@ -287,8 +298,8 @@ Merged per-cell CSV produced by `build_export_csvs()` (called programmatically v
 |---|---|
 | All columns from `model-outputs-csv/<slide>.csv` | Inherited inference + region columns |
 | `center_x`, `center_y` | Cell centre (added if absent) |
-| `is_base_type`, `is_target_type` | From H-Plot cells output (when available) |
-| `signed_distance_to_border` | From H-Plot cells output (when available) |
+| `is_base_type`, `is_target_type` | From H-plot cells output (when available) |
+| `signed_distance_to_border` | From H-plot cells output (when available) |
 | `cell_type`, `neighborhood_size` | From ncomp output (when available) |
 | `neighborhood_<class>_count`, `neighborhood_<class>_prop` | From ncomp output (when available) |
 
@@ -338,7 +349,7 @@ Merged per-cell CSV produced by `build_export_csvs()` (called programmatically v
 
 ## Example Workflows
 
-### Run inference + H-Plot + ncomp + export in a single command
+### Run inference + H-plot + ncomp + export in a single command
 
 ```bash
 wsinsight run \
@@ -357,7 +368,7 @@ wsinsight run \
   --export-omecsv
 ```
 
-### Run H-Plot on existing inference outputs
+### Run H-plot on existing inference outputs
 
 ```bash
 wsinsight hplot \
@@ -369,11 +380,71 @@ wsinsight hplot \
   --hplot-range-max 5
 ```
 
-### Aggregate H-Plot results after parallel runs
+### Aggregate H-plot results after parallel runs
 
 ```bash
 wsinsight hplot-finalize --results-dir results/
 ```
+
+### Running on a multi-GPU cluster with tmux
+
+For large cohorts on a multi-GPU node, split your slide list into per-GPU shards and run
+them in parallel inside a tmux session. Each pane pins one GPU via
+`CUDA_VISIBLE_DEVICES` and processes its own shard of slides.
+
+**1. Split slides into shards** (one file per GPU):
+
+```bash
+# Example: 8 GPUs → 8 shard files
+split -n l/8 --numeric-suffixes=0 --additional-suffix=.txt \
+  slides_all.txt datasets/slides_part_
+```
+
+**2. Launch a tmux session with one pane per GPU:**
+
+```bash
+#!/bin/bash
+tmux new-session -d -s wsinsight
+
+# Create a 4×2 grid (4 rows, 2 columns = 8 panes)
+tmux split-window -v -t wsinsight:0.0
+tmux split-window -v -t wsinsight:0.1
+tmux split-window -v -t wsinsight:0.2
+tmux select-layout -t wsinsight:0 even-vertical
+tmux split-window -h -t wsinsight:0.0
+tmux split-window -h -t wsinsight:0.4
+tmux split-window -h -t wsinsight:0.6
+
+# Layout:
+# [pane 0 | pane 1]   GPU 0 / GPU 4
+# [pane 2 | pane 3]   GPU 1 / GPU 5
+# [pane 4 | pane 5]   GPU 2 / GPU 6
+# [pane 6 | pane 7]   GPU 3 / GPU 7
+
+tmux send-keys -t wsinsight:0.0 "CUDA_VISIBLE_DEVICES=0 wsinsight run -b 20 -i datasets/slides_part_00.txt -z /path/to/zoo-model -o results/" Enter
+tmux send-keys -t wsinsight:0.1 "CUDA_VISIBLE_DEVICES=4 wsinsight run -b 20 -i datasets/slides_part_04.txt -z /path/to/zoo-model -o results/" Enter
+tmux send-keys -t wsinsight:0.2 "CUDA_VISIBLE_DEVICES=1 wsinsight run -b 20 -i datasets/slides_part_01.txt -z /path/to/zoo-model -o results/" Enter
+tmux send-keys -t wsinsight:0.3 "CUDA_VISIBLE_DEVICES=5 wsinsight run -b 20 -i datasets/slides_part_05.txt -z /path/to/zoo-model -o results/" Enter
+tmux send-keys -t wsinsight:0.4 "CUDA_VISIBLE_DEVICES=2 wsinsight run -b 20 -i datasets/slides_part_02.txt -z /path/to/zoo-model -o results/" Enter
+tmux send-keys -t wsinsight:0.5 "CUDA_VISIBLE_DEVICES=6 wsinsight run -b 20 -i datasets/slides_part_06.txt -z /path/to/zoo-model -o results/" Enter
+tmux send-keys -t wsinsight:0.6 "CUDA_VISIBLE_DEVICES=3 wsinsight run -b 20 -i datasets/slides_part_03.txt -z /path/to/zoo-model -o results/" Enter
+tmux send-keys -t wsinsight:0.7 "CUDA_VISIBLE_DEVICES=7 wsinsight run -b 20 -i datasets/slides_part_07.txt -z /path/to/zoo-model -o results/" Enter
+
+tmux attach -t wsinsight
+```
+
+All panes share the same `--results-dir`, so outputs merge automatically. After all panes
+finish, finalize any H-plot or ncomp analytics:
+
+```bash
+wsinsight hplot-finalize --results-dir results/
+```
+
+See `tmux-8gpu-example.sh` in the repository root for a ready-to-use script.
+
+> [!TIP]
+> Adapt the number of panes and GPU assignments to your hardware. For 4 GPUs, use a 2×2
+> grid; for 2 GPUs, a simple horizontal split suffices.
 
 ### Run neighborhood composition on existing inference outputs
 

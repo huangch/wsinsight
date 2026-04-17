@@ -60,15 +60,15 @@ Command                    Purpose
                            ``--region-inference-dir`` and ``--overwrite``.
 ``wsinsight reg``          Post-hoc object-to-region registration on already-completed runs.
                            Enriches object CSVs with ``region_prob_*`` columns.
-``wsinsight hplot``        Standalone H-Plot analysis on existing object-based inference
+``wsinsight hplot``        Standalone H-plot analysis on existing object-based inference
                            outputs.
-``wsinsight hplot-finalize``  Aggregate per-slide H-Plot intermediates into a cohort-level
+``wsinsight hplot-finalize``  Aggregate per-slide H-plot intermediates into a cohort-level
                            summary.
 ``wsinsight ncomp``        Standalone neighborhood composition analysis on existing
                            inference outputs.  For each target cell, builds a Delaunay
                            graph, collects k-hop neighbors, and records per-cell type
                            counts and proportions.
-``wsinsight export``       Merge all per-cell analytics (inference, H-Plot, ncomp) into
+``wsinsight export``       Merge all per-cell analytics (inference, H-plot, ncomp) into
                            ``export-csv/`` and write GeoJSON and/or OME-CSV files.
                            Can be run after inference without repeating the pipeline.
 =========================  ================================================================
@@ -209,6 +209,36 @@ scratch volume, and write final GeoJSON/OME-CSV artifacts back to another S3 buc
 without any code changes.
 
 
+Multi-GPU parallel runs with tmux
+----------------------------------
+
+For large cohorts on multi-GPU nodes, split the slide list into per-GPU shards and
+launch one ``wsinsight run`` per GPU inside a tmux session.
+
+1. **Split slides into shards** (one file per GPU)::
+
+       split -n l/8 --numeric-suffixes=0 --additional-suffix=.txt \
+         slides_all.txt datasets/slides_part_
+
+2. **Launch a tmux session** with one pane per GPU.  The repository includes a ready-made
+   script for 8-GPU nodes::
+
+       bash tmux-8gpu-example.sh
+
+   Each pane pins a single GPU via ``CUDA_VISIBLE_DEVICES`` and processes its own shard.
+   All panes write to the same ``--results-dir``, so outputs merge automatically.
+
+3. **Finalize analytics** once all panes have finished::
+
+       wsinsight hplot-finalize --results-dir results/
+
+.. tip::
+
+   Adapt the number of panes and GPU assignments to your hardware.  For 4 GPUs, use a
+   2×2 grid; for 2 GPUs, a simple horizontal split suffices.  See
+   ``tmux-8gpu-example.sh`` in the repository root for the full 8-GPU layout.
+
+
 Region registration
 -------------------
 
@@ -248,10 +278,10 @@ Example::
         --geojson
 
 
-H-Plot analysis
+H-plot analysis
 ---------------
 
-``wsinsight hplot`` computes H-Plot spatial metrics from existing cell-detection
+``wsinsight hplot`` computes H-plot spatial metrics from existing cell-detection
 inference outputs inside ``--results-dir``.  It builds a proximity graph over detected
 cells, identifies tumour-core regions, and calculates layer-wise abundance profiles for
 the requested cell types.
@@ -280,9 +310,9 @@ Tuning options:
 * ``--hplot-range-max`` — maximum layer index outward from the tumour boundary to
   include in the range window.
 * ``--hplot-range-min`` — minimum layer index inward into the tumour to include.
-* ``--hplot-samples-with-valid-range-only`` — restrict H-Plot computation to slides
+* ``--hplot-samples-with-valid-range-only`` — restrict H-plot computation to slides
   that have cells at every layer within the range window.
-* ``--overwrite`` — overwrite existing per-slide H-Plot outputs instead of
+* ``--overwrite`` — overwrite existing per-slide H-plot outputs instead of
   skipping slides that already have results.
 * ``--num-workers`` (default 8) — number of slides to process concurrently.
 
@@ -299,18 +329,18 @@ Example::
         --num-workers 16
 
 
-H-Plot finalization
+H-plot finalization
 -------------------
 
-``wsinsight hplot-finalize`` aggregates per-slide H-Plot intermediates that were written
+``wsinsight hplot-finalize`` aggregates per-slide H-plot intermediates that were written
 by one or more ``hplot`` jobs into a single cohort-level summary.  Run this command once
 after all parallel ``hplot`` workers have finished:
 
 * ``-o / --results-dir`` (required) — the shared ``--results-dir`` used by the ``hplot``
-  jobs.  The command reads per-slide H-Plot files and writes two files into this
+  jobs.  The command reads per-slide H-plot files and writes two files into this
   directory:
 
-  * ``hplot-outputs.csv`` — cohort-level H-Plot profiles
+  * ``hplot-outputs.csv`` — cohort-level H-plot profiles
   * ``hmetrics-outputs.csv`` — cohort-level H-metric summary statistics
 
 * ``--overwrite`` — overwrite the aggregated CSVs if they already exist.
@@ -364,7 +394,7 @@ Export outputs
 The ``export-csv/`` directory contains merged per-cell CSVs that left-join
 all available analysis outputs into a single file per slide.  It combines columns from
 ``model-outputs-csv/`` (base inference + region registration), ``hplot-outputs-csv/cells/``
-(H-Plot per-cell features), and ``ncomp-outputs-csv/`` (neighborhood composition) on
+(H-plot per-cell features), and ``ncomp-outputs-csv/`` (neighborhood composition) on
 shared geometry keys (``minx``/``miny`` and ``center_x``/``center_y``).
 
 This can be produced programmatically via ``wsinsight.export_helpers.build_export_csvs()``.
@@ -397,8 +427,8 @@ Output structure
    ├── model-outputs-geojson/  # GeoJSON from wsinsight reg --geojson
    ├── model-outputs-omecsv/   # OME-CSV from wsinsight reg --omecsv
    ├── patches/                # HDF5 with patch coordinates
-   ├── hplot-outputs-csv/      # per-slide H-Plot intermediates
-   ├── hplot-outputs.csv       # cohort-level H-Plot summary (after hplot-finalize)
+   ├── hplot-outputs-csv/      # per-slide H-plot intermediates
+   ├── hplot-outputs.csv       # cohort-level H-plot summary (after hplot-finalize)
    ├── hmetrics-outputs.csv    # cohort-level H-metrics summary (after hplot-finalize)
    ├── ncomp-outputs-csv/      # per-cell neighborhood composition
    ├── export-csv/             # merged per-cell CSV (inference + hplot + ncomp)
@@ -464,7 +494,7 @@ QuPath projects or ingested into downstream analytics pipelines without addition
 steps.
 
 For more control, use the standalone ``wsinsight export`` command.  It merges all
-available per-cell analytics — base inference CSVs, H-Plot cell features, and ncomp
+available per-cell analytics — base inference CSVs, H-plot cell features, and ncomp
 neighborhood composition — into ``export-csv/``, then writes the merged data to
 ``export-geojson/`` and/or ``export-omecsv/`` depending on the flags provided.  This
 command can be run at any time after inference, and optionally after ``hplot`` or

@@ -74,17 +74,9 @@ def _cache_dir() -> Path | str:
     return Path(user_cache_dir(appname="wsinsight", appauthor=False))
 
 
-def _coerce_image_list(wsi_dir: URIPath) -> URIPath:
-    """If wsi_dir is a plain local file, treat it as an image-list:// virtual directory."""
-    if wsi_dir.is_local and wsi_dir._path.is_file():
-        abs_path = os.path.abspath(os.fspath(wsi_dir._path))
-        return URIPath(f"image-list://{abs_path}", cache_dir=wsi_dir._cache_dir, _skip_validation=True, **wsi_dir.storage_options)
-    return wsi_dir
-
-
 def _enumerate_slide_paths(wsi_dir: URIPath) -> list[URIPath]:
     """List slide files once so patch + infer reuse the same ordering."""
-    wsi_dir = _coerce_image_list(wsi_dir)
+    wsi_dir = wsi_dir.coerce_image_list()
     if not wsi_dir.exists():
         raise FileNotFoundError(f"Whole slide image directory not found: {wsi_dir}")
 
@@ -782,7 +774,7 @@ def run(
             )
 
     # --- Coerce a plain txt file into an image-list:// virtual directory ----
-    wsi_dir = _coerce_image_list(wsi_dir)
+    wsi_dir = wsi_dir.coerce_image_list()
 
     params = locals().copy()
     params.pop("ctx", None)

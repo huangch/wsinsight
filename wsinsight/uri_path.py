@@ -97,6 +97,14 @@ class URIPath:
         if not _skip_validation:
             self._validate_credentials()
 
+    # ------------------------ Coercion helpers -----------------
+    def coerce_image_list(self) -> "URIPath":
+        """If this is a plain local file, treat it as an image-list:// virtual directory."""
+        if self.is_local and self._path.is_file():
+            abs_path = os.path.abspath(os.fspath(self._path))
+            return URIPath(f"image-list://{abs_path}", cache_dir=self._cache_dir, _skip_validation=True, **self.storage_options)
+        return self
+
     # ------------------------ Path-ish ------------------------
     def __str__(self) -> str: return self.uri
     def __repr__(self) -> str: return f"URIPath({self.uri!r})"
