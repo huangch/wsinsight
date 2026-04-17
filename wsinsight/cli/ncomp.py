@@ -1,6 +1,6 @@
 """Standalone CLI for neighborhood composition (ncomp) analysis over WSInsight outputs.
 
-For each target cell (or every cell when no target types are given), ``wsinsight ncomp``
+For each cell, ``wsinsight ncomp``
 builds a Delaunay graph, computes k-hop neighbors, and records the cell-type
 composition of each cell's local neighborhood.  The same graph construction
 is used by ``wsinsight hplot``; ``ncomp`` differs in that analysis is per-cell
@@ -14,7 +14,7 @@ import math
 import os
 import re
 from pathlib import Path
-from typing import Iterable, List
+from typing import List
 
 import click
 from platformdirs import user_cache_dir
@@ -55,11 +55,6 @@ def _csv_to_list(
         else [x for x in re.split(r"[,\s]+", str(value).strip()) if x]
     )
     return [_coerce_number(str(x)) for x in tokens]
-
-
-def _normalize_types(values: Iterable[object]) -> list[str]:
-    """Normalize type labels to lowercase snake-case tokens."""
-    return [str(v).strip().replace(" ", "_").lower() for v in values]
 
 
 def _assert_directory(path: URIPath, option_name: str) -> None:
@@ -124,15 +119,6 @@ _STORAGE_KWARGS = _storage_kwargs()
     help="Maximum distance (µm) between neighboring cells in the Delaunay graph.",
 )
 @click.option(
-    "--ncomp-target-types",
-    callback=_csv_to_list,
-    default=None,
-    help=(
-        "Cell type(s) to compute neighborhood composition for, e.g. "
-        "``tumor`` or ``tumor,neoplastic``.  Omit to process every cell."
-    ),
-)
-@click.option(
     "--ncomp-k",
     default=2,
     type=click.IntRange(min=1),
@@ -158,14 +144,13 @@ def ncomp(
     wsi_dir: URIPath,
     results_dir: URIPath,
     ncomp_max_neighbor_distance: float = 25.0,
-    ncomp_target_types: List | None = None,
     ncomp_k: int = 2,
     overwrite: bool = False,
     num_workers: int = 8,
 ) -> None:
     """Compute neighborhood composition for each cell in WSInsight inference outputs.
 
-    For every target cell (cell type determined by the highest ``prob_*`` score),
+    For every cell (cell type determined by the highest ``prob_*`` score),
     the k-hop Delaunay graph neighbors are collected and the proportion of each
     cell type in that neighborhood is recorded.
 
@@ -189,15 +174,12 @@ def ncomp(
             "Run 'wsinsight infer' or 'wsinsight run' first."
         )
 
-    target_type_list = _normalize_types(ncomp_target_types) if ncomp_target_types else []
-
     click.secho("\nRunning neighborhood composition (ncomp) analysis.\n", fg="green")
 
     failed = ncomp_generation(
         wsi_dir=wsi_dir,
         slide_paths=slide_paths,
         results_dir=results_dir,
-        target_type_list=target_type_list,
         max_neighbor_distance_um=ncomp_max_neighbor_distance,
         ncomp_k=ncomp_k,
         num_workers=num_workers,

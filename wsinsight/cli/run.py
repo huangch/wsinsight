@@ -169,7 +169,6 @@ _NCOMP_PARAM_NAMES: tuple[str, ...] = (
     "wsi_dir",
     "results_dir",
     "ncomp_max_neighbor_distance",
-    "ncomp_target_types",
     "ncomp_k",
     "overwrite",
     "num_workers",
@@ -623,12 +622,6 @@ def _select_kwargs(values: dict[str, Any], keys: tuple[str, ...]) -> dict[str, A
     help="Maximum distance (µm) between neighboring cells in the Delaunay graph for ncomp.",
 )
 @click.option(
-    "--ncomp-target-types",
-    callback=_csv_to_list,
-    default=None,
-    help="Cell type(s) to compute neighborhood composition for. Omit to process every cell.",
-)
-@click.option(
     "--ncomp-k",
     default=2,
     type=click.IntRange(min=1),
@@ -735,7 +728,6 @@ def run(
     overwrite: bool = False,
     ncomp: bool = False,
     ncomp_max_neighbor_distance: float = 25.0,
-    ncomp_target_types: List | None = None,
     ncomp_k: int = 2,
     export_geojson: bool = False,
     export_omecsv: bool = False,

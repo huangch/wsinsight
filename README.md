@@ -322,7 +322,6 @@ Option                                    | Default    | Description
 
 Option                           | Default    | Description
 -------------------------------- | ---------- | --------------------------------------------------------
-`--ncomp-target-types`           | all cells  | Comma-separated cell types to compute neighborhoods for
 `--ncomp-max-neighbor-distance`  | `25.0`     | Maximum Delaunay edge length in µm
 `--ncomp-k`                      | `2`        | k-hop neighborhood radius
 `--overwrite`                    | off        | Recompute existing per-slide outputs
@@ -361,7 +360,6 @@ wsinsight run \
   --hplot-range-min -5 \
   --hplot-range-max 5 \
   --ncomp \
-  --ncomp-target-types lymphocyte \
   --export-geojson \
   --export-omecsv
 ```
@@ -450,7 +448,6 @@ See `tmux-8gpu-example.sh` in the repository root for a ready-to-use script.
 wsinsight ncomp \
   --wsi-dir slides/ \
   --results-dir results/ \
-  --ncomp-target-types lymphocyte \
   --ncomp-k 2
 ```
 

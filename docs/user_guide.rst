@@ -371,8 +371,6 @@ Required options:
 
 Tuning options:
 
-* ``--ncomp-target-types`` — comma-separated cell type(s) to compute neighborhoods for.
-  Omit to process every cell.
 * ``--ncomp-max-neighbor-distance`` (default 25.0 µm) — maximum Delaunay edge length.
 * ``--ncomp-k`` (default 2) — k-hop neighborhood radius.
 * ``--overwrite`` — overwrite existing per-slide ncomp outputs.
@@ -383,7 +381,6 @@ Example::
     wsinsight ncomp \
         --wsi-dir slides/ \
         --results-dir results/ \
-        --ncomp-target-types lymphocyte \
         --ncomp-k 2 \
         --num-workers 16
 

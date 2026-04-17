@@ -261,9 +261,6 @@ Neighborhood composition (``--ncomp-*`` in ``run`` and ``wsinsight ncomp``)
    * - Option
      - Default
      - Description
-   * - ``--ncomp-target-types``
-     - all cells
-     - Comma-separated cell types to compute neighborhoods for
    * - ``--ncomp-max-neighbor-distance``
      - ``25.0``
      - Maximum Delaunay edge length in µm
@@ -352,8 +349,7 @@ Run inference + H-plot + ncomp in a single command::
       --hplot-target-types lymphocyte \
       --hplot-range-min -5 \
       --hplot-range-max 5 \
-      --ncomp \
-      --ncomp-target-types lymphocyte
+      --ncomp
 
 Run H-plot on existing inference outputs::
 
@@ -374,7 +370,6 @@ Run neighborhood composition on existing inference outputs::
     wsinsight ncomp \
       --wsi-dir slides/ \
       --results-dir results/ \
-      --ncomp-target-types lymphocyte \
       --ncomp-k 2
 
 Enrich object CSVs with region probabilities post-hoc::

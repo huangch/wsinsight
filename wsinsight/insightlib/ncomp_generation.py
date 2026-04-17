@@ -1,8 +1,7 @@
 """Neighborhood composition (ncomp) generation for WSInsight.
 
-For each cell of a specified target type (or all cells if no target is given),
-compute the cell-type composition of its k-hop graph neighborhood built via
-Delaunay triangulation — the same graph construction used by H-Plot.
+For each cell, compute the cell-type composition of its k-hop graph neighborhood
+built via Delaunay triangulation — the same graph construction used by H-Plot.
 
 Outputs
 -------
@@ -18,7 +17,7 @@ from __future__ import annotations
 import logging
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
-from typing import List, Mapping, Sequence
+from typing import List, Mapping
 
 import numpy as np
 import pandas as pd
@@ -51,7 +50,6 @@ def _worker(
     model_output_csv: URIPath,
     results_dir: URIPath,
     max_neighbor_distance_um: float,
-    target_type_list: Sequence[str],
     ncomp_k: int,
     slide_mpp_lookup: Mapping[str, float] | None = None,
     overwrite: bool = False,
@@ -124,12 +122,7 @@ def _worker(
 
     # --- Determine target cells ----------------------------------------------
     all_types = [c.removeprefix("prob_") for c in prob_columns]
-    if target_type_list:
-        target_mask = nodes_df["cell_type"].isin(target_type_list)
-    else:
-        target_mask = pd.Series(True, index=nodes_df.index)
-
-    target_indices = nodes_df.index[target_mask].tolist()
+    target_indices = nodes_df.index.tolist()
 
     # --- Compute per-cell neighborhood composition --------------------------
     type_counts: dict[str, list] = {t: [] for t in all_types}
@@ -189,7 +182,6 @@ def ncomp_generation(
     wsi_dir: str | Path | URIPath | None,
     slide_paths: List[URIPath] | None,
     results_dir: URIPath,
-    target_type_list: Sequence[str] | None = None,
     max_neighbor_distance_um: float = 25.0,
     ncomp_k: int = 2,
     num_workers: int = 8,
@@ -206,8 +198,6 @@ def ncomp_generation(
         Explicit list of slide URIPaths.  Required when *wsi_dir* is ``None``.
     results_dir:
         Root results directory; must contain a ``model-outputs-csv/`` subdirectory.
-    target_type_list:
-        Cell types to compute ncomp for.  ``None`` or empty → all cells.
     max_neighbor_distance_um:
         Maximum edge length in µm for the Delaunay graph.
     ncomp_k:
@@ -270,8 +260,6 @@ def ncomp_generation(
     ncomp_dir = results_dir / "ncomp-outputs-csv"
     ncomp_dir.mkdir(parents=True, exist_ok=True)
 
-    target_types = list(target_type_list or [])
-
     failed_generation: list[str] = []
     jobs = []
     for wsi_path in slide_paths:
@@ -292,7 +280,6 @@ def ncomp_generation(
                 model_output_csv,
                 results_dir,
                 max_neighbor_distance_um,
-                target_types,
                 ncomp_k,
                 slide_mpp_lookup,
                 overwrite,
