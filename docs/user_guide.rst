@@ -48,30 +48,30 @@ WSInsight provides a CLI. Use :code:`--help` to explore available options:
 
 Eight commands are available:
 
-=========================  ================================================================
-Command                    Purpose
-=========================  ================================================================
-``wsinsight run``          Convenience wrapper that extracts patches then runs inference/exports.
-                           Pass ``--export-geojson`` and/or ``--export-omecsv`` to merge
-                           all per-cell analytics and write GeoJSON / OME-CSV at the end.
-``wsinsight patch``        Generate tissue masks + patch caches inside ``--results-dir``.
-``wsinsight infer``        Reuse cached patches to run models and emit GeoJSON/OME exports.
-                           Supports inline region registration via
-                           ``--region-inference-dir`` and ``--overwrite``.
-``wsinsight reg``          Post-hoc object-to-region registration on already-completed runs.
-                           Enriches object CSVs with ``region_prob_*`` columns.
-``wsinsight hplot``        Standalone H-plot analysis on existing object-based inference
-                           outputs.
+============================  ================================================================
+Command                       Purpose
+============================  ================================================================
+``wsinsight run``             Convenience wrapper that extracts patches then runs inference/exports.
+                              Pass ``--export-geojson`` and/or ``--export-omecsv`` to merge
+                              all per-cell analytics and write GeoJSON / OME-CSV at the end.
+``wsinsight patch``           Generate tissue masks + patch caches inside ``--results-dir``.
+``wsinsight infer``           Reuse cached patches to run models and emit GeoJSON/OME exports.
+                              Supports inline region registration via
+                              ``--region-inference-dir`` and ``--overwrite``.
+``wsinsight reg``             Post-hoc object-to-region registration on already-completed runs.
+                              Enriches object CSVs with ``region_prob_*`` columns.
+``wsinsight hplot``           Standalone H-plot analysis on existing object-based inference
+                              outputs.
 ``wsinsight hplot-finalize``  Aggregate per-slide H-plot intermediates into a cohort-level
-                           summary.
-``wsinsight ncomp``        Standalone neighborhood composition analysis on existing
-                           inference outputs.  For each target cell, builds a Delaunay
-                           graph, collects k-hop neighbors, and records per-cell type
-                           counts and proportions.
-``wsinsight export``       Merge all per-cell analytics (inference, H-plot, ncomp) into
-                           ``export-csv/`` and write GeoJSON and/or OME-CSV files.
-                           Can be run after inference without repeating the pipeline.
-=========================  ================================================================
+                              summary.
+``wsinsight ncomp``           Standalone neighborhood composition analysis on existing
+                              inference outputs.  For each target cell, builds a Delaunay
+                              graph, collects k-hop neighbors, and records per-cell type
+                              counts and proportions.
+``wsinsight export``          Merge all per-cell analytics (inference, H-plot, ncomp) into
+                              ``export-csv/`` and write GeoJSON and/or OME-CSV files.
+                              Can be run after inference without repeating the pipeline.
+============================  ================================================================
 
 Pick ``run`` for one-shot processing. Switch to the explicit ``patch`` → ``infer`` flow
 for large cohorts, resumable jobs, or when you want to reuse the same patches across
