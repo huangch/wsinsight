@@ -146,7 +146,7 @@
 
 \begin{document}%
 	
-	\title[Article Title]{WSInsight as a cloud-native pipeline for single-cell pathology inference on whole-slide images}
+	\title[WSInsight]{WSInsight as a cloud-native pipeline for multi-scale whole-slide image analysis from patch-level classification to single-cell resolution}
 	
 	\newbox{\orcid}\sbox{\orcid}{\includegraphics[scale=0.06]{orcid.pdf}}
 	
@@ -160,10 +160,10 @@
 			\postcode{92121}, \state{CA}, \country{USA}}}
 	
 	\abstract{
-		Digital pathology has increasingly embraced deep learning for large-scale tissue analysis, but most workflows remain limited by local execution and data accessibility.To address this challenge, we developed WSInsight, an open-source, cloud-native pipeline designed to enable scalable single-cell pathology inference directly on whole-slide images. The integration of distributed processing, cloud storage access, and automated quality control streamlines the application and reuse of advanced deep learning methods, expanding opportunities for diagnostic, prognostic, and spatially resolved research in digital pathology.
+		Digital pathology has increasingly embraced deep learning for large-scale tissue analysis, but most workflows remain limited by local execution and data accessibility. To address this challenge, we developed WSInsight, an open-source, cloud-native pipeline designed to enable scalable multi-scale pathology inference directly on whole-slide images. The integration of distributed processing, cloud storage access, and automated quality control streamlines the application and reuse of advanced deep learning methods, expanding opportunities for diagnostic, prognostic, and spatially resolved research in digital pathology.
 	}
 	
-	\keywords{Whole-slide image, cloud-native, single-cell pathology, WSInfer, CellViT, HoVer-Net, StarDist and ResNet50.}
+	\keywords{Whole-slide image, cloud-native, digital pathology, deep learning, nuclei segmentation, spatial analysis, multi-scale inference}
 	
 	\maketitle
 	
@@ -186,7 +186,7 @@
 	
 	To make these analyses broadly usable, WSInsight produces unified region- and cell-level outputs in standardized formats—GeoJSON for QuPath \cite{Bankhead:2017} and comma-separated value (CSV) for OMERO+ \cite{Allan:2012}. These interoperable outputs can be visualized and processed within existing digital pathology platforms, lowering technical barriers for end users and enabling reproducible large-scale workflows across institutions and computational environments.
 	
-	A representative application of WSInsight is multi-scale integrative spatial analysis (Fig.~\ref{fig:results}). Patch-level models from the WSInfer Model Zoo—such as breast-tumor-resnet34.tcga-brca \cite{Le:2020} and lymphnodes-tiatoolbox-resnet50.patchcamelyon \cite{Veeling:2018,Pocock:2022,Litjens:2018}—identify tumor-enriched and lymphocyte-aggregated regions across the slide. These regional predictions are complemented by cell-level outputs from WSInsight-compatible models, such as CellViT/CellViT++ \cite{Horst:2024}, resolves and classifies individual nuclei. When overlaid, the patch- and cell-resolved outputs provide a coherent view of the tumor microenvironment, enabling quantitative assessment of immune–tumor interactions, cellular composition, and spatial organization within pathologist-defined regions.
+	A representative application of WSInsight is multi-scale integrative spatial analysis (Fig.~\ref{fig:results}). Patch-level models from the WSInfer Model Zoo—such as breast-tumor-resnet34.tcga-brca \cite{Le:2020} and lymphnodes-tiatoolbox-resnet50.patchcamelyon \cite{Veeling:2018,Pocock:2022,Litjens:2018}—identify tumor-enriched and lymphocyte-aggregated regions across the slide. These regional predictions are complemented by cell-level outputs from WSInsight-compatible models, such as CellViT/CellViT++ \cite{Horst:2024}, which resolve and classify individual nuclei. When overlaid, the patch- and cell-resolved outputs provide a coherent view of the tumor microenvironment, enabling quantitative assessment of immune–tumor interactions, cellular composition, and spatial organization within pathologist-defined regions.
 	
 	%---------------------------------------
 	% Figures
@@ -242,15 +242,14 @@
 	\section{Methods}
 	\label{sec:methods}
 	
-	The overall WSInsight workflow is illustrated in Fig.~\ref{fig:diagram}, which outlines its three principal components: whole-slide image acquisition, model inference, and integrative visualization. In Step 1 (WSI acquisition), digital pathology slides can be accessed from either cloud-based repositories such as S3 or TCGA, or from local storage, allowing hybrid deployment across institutional infrastructures. In Step 2 (Inference), WSInsight interfaces with both the WSInfer/WSInsight Model Zoo and user-defined models to perform multi-model, integrative inference over the regions of interest (ROI) generated based on image quality control component, e.g., HistoQC \cite{Janowczyk:2019}. Predictions from diverse deep learning architectures—such as segmentation, classification, or spatial inference models—are unified into cellular- and region-level probability maps. Finally, Step 3 (Visualization and integrative analysis) enables the outputs to be rendered directly within QuPath and OMERO+, where the cellular and regional predictions can be jointly explored. These interoperable layers support quantitative analysis of immune, epithelial, and neoplastic components, allowing users to derive interpretable spatial features that capture the cellular microenvironment and tissue heterogeneity. Collectively, this workflow highlights WSInsight’s design philosophy: an integrated, cloud–local ecosystem that bridges model execution, visualization, and biological interpretation within a single, reproducible framework.
+	The overall WSInsight workflow is illustrated in Fig.~\ref{fig:diagram}, which outlines its three principal components: whole-slide image acquisition, model inference, and integrative visualization. In Step 1 (WSI acquisition), digital pathology slides can be accessed from either cloud-based repositories such as S3 or TCGA, or from local storage, allowing hybrid deployment across institutional infrastructures. In Step 2 (Inference), WSInsight interfaces with both the WSInfer/WSInsight Model Zoo and user-defined models to perform multi-model, integrative inference over the regions of interest (ROI) generated based on the image quality control component, e.g., HistoQC \cite{Janowczyk:2019}. Predictions from diverse deep learning architectures—such as segmentation, classification, or spatial inference models—are unified into cellular- and region-level probability maps. Finally, Step 3 (Visualization and integrative analysis) enables the outputs to be rendered directly within QuPath and OMERO+, where the cellular and regional predictions can be jointly explored. These interoperable layers support quantitative analysis of immune, epithelial, and neoplastic components, allowing users to derive interpretable spatial features that capture the cellular microenvironment and tissue heterogeneity. Collectively, this workflow highlights WSInsight’s design philosophy: an integrated, cloud–local ecosystem that bridges model execution, visualization, and biological interpretation within a single, reproducible framework.
 	
 	\subsection{Inference Runtime}
 	
 	The WSInsight inference runtime performs deep learning–based analysis on WSIs at both the patch and single-cell levels, and is available as a command-line interface and a Python package. The runtime accepts three main inputs: a directory or cloud path containing WSIs, a trained model from the WSInfer/WSInsight Model Zoo or a user-provided model, and an output directory for results. Each WSI is processed through a standardized workflow: tissue regions are detected, subdivided into uniformly sized patches, and analyzed using patch-level classification models or single-cell segmentation and typing models, depending on the selected inference mode.
 	
 	WSInsight supports a wide range of architectures—including patch-based classifiers, nuclei segmentation networks, and single-cell–level cell-type predictors—allowing multi-scale analysis within a unified framework. 
-	% The runtime exports outputs in GeoJSON format for direct visualization in QuPath, and in comma-separated value (CSV) format structured to be OMERO+-compatible, facilitating integration into large-scale image management and annotation systems. 
-	These interoperable outputs ensure that predictions—whether regional tissue classifications or cell-level annotations—can be visualized, aggregated, and quantitatively analyzed across datasets and computational environments.
+	The runtime exports outputs in GeoJSON format for direct visualization in QuPath, and in comma-separated value (CSV) format structured to be OMERO+-compatible, facilitating integration into large-scale image management and annotation systems. These interoperable outputs ensure that predictions—whether regional tissue classifications or cell-level annotations—can be visualized, aggregated, and quantitatively analyzed across datasets and computational environments.
 	
 %	\subsection{Runtime performance}
 %	
@@ -270,7 +269,7 @@
 
 	The PanNuke dataset~\cite{Gamper:2019} comprises 19{,}000 H\&E image tiles from multiple organs, each with expert per-nucleus annotations spanning five morphologic classes (neoplastic, inflammatory, connective, dead, epithelial). These annotations enable supervised training for robust nuclei segmentation and phenotype classification across diverse histologic contexts. Within WSInsight, PanNuke-trained CellViT and HoVer-Net models provide a standardized morphological vocabulary that can be reused across projects and tissue types, and their representative performance characteristics are summarized in Table~\ref{tab:wsinsight_models}.
 
-	To complement these morphology-based models, we additionally assembled a manually curated collection of 10x Genomics Xenium datasets spanning multiple tissue types, as listed in Table~\ref{tbl:10xdataset}. Using QuST~\cite{Huang:2025} to derive cell-level annotations from paired Xenium and H\&E data, we constructed harmonized label vocabularies for each anatomical site, capturing cell types based on their morphologic phenotypes observed under H\&E staining. The annotated cell types include adipocyte, basophil, chondrocyte, endothelial, eosinophil, epithelial, fibroblast\_like, glial, hematologic\_blast, lymphocyte, macrophage\_like, malignant\_epithelial, malignant\_melanocytic, mast\_cell, melanocyte, mesangial, neuron, neutrophil, osteoblast, osteocyte, perivascular, plasma\_cell, and smooth\_muscle. When cellular microenvironmental context is taken into account, additional phenotypes such as basaloid\_progenitor, neuroendocrine, and pericyte may also be identified. These site-specific label sets are summarized Table~\ref{tbl:10xdatasetlabel}.  
+	To complement these morphology-based models, we additionally assembled a manually curated collection of 10x Genomics Xenium datasets spanning multiple tissue types, as listed in Table~\ref{tbl:10xdataset}. Using QuST~\cite{Huang:2025} to derive cell-level annotations from paired Xenium and H\&E data, we constructed harmonized label vocabularies for each anatomical site, capturing cell types based on their morphologic phenotypes observed under H\&E staining. The annotated cell types include adipocyte, basophil, chondrocyte, endothelial, eosinophil, epithelial, fibroblast\_like, glial, hematologic\_blast, lymphocyte, macrophage\_like, malignant\_epithelial, malignant\_melanocytic, mast\_cell, melanocyte, mesangial, neuron, neutrophil, osteoblast, osteocyte, perivascular, plasma\_cell, and smooth\_muscle. When cellular microenvironmental context is taken into account, additional phenotypes such as basaloid\_progenitor, neuroendocrine, and pericyte may also be identified. These site-specific label sets are summarized in Table~\ref{tbl:10xdatasetlabel}.  
 	
 	%	For pan-tissue cancer studies, and following the cell-type definitions used in PanNuke, these fine-grained labels can be consolidated into five broader morphologic categories: neoplastic, epithelial, inflammatory, connective, and other. Note that dead (necrotic) cells require additional manual annotation, as most single-cell spatial transcriptomics datasets do not include explicit labels for necrosis.
 	
@@ -368,7 +367,7 @@
 		\footnotesize%
 		\setlength{\tabcolsep}{6pt}%
 		\renewcommand{\arraystretch}{1.2}%
-		\npjcaption{Available single-cell annotations based on 10x Genomic public datasets.}%
+		\npjcaption{Available single-cell annotations based on 10x Genomics public datasets.}%
 		\label{tbl:10xdatasetlabel}%
 		\begin{tabularx}{\linewidth}{p{9em} >{\raggedright\arraybackslash}X p{2.5cm}}%
 			\toprule%
@@ -384,7 +383,7 @@
 			\cmidrule(lr){1-3}
 			colorectal  & basaloid\_progenitor, basophil, endothelial, eosinophil, epithelial, fibroblast\_like, hematologic\_blast, lymphocyte, macrophage\_like, malignant\_epithelial, mast\_cell, neuron, neutrophil, pericyte, plasma\_cell & \datasetref{colon-cancer-preview}, \datasetref{colon-normal-preview}, \datasetref{colon-colorectal-io} \\
 			\cmidrule(lr){1-3}
-			heart & basophil, cardiomyocyte, endothelial, fibroblast\_like, lymphocyte, macrophage\_like & \datasetref{colon-cancer-preview}, \datasetref{colon-normal-preview}, \datasetref{heart-mt} \\
+			heart & basophil, cardiomyocyte, endothelial, fibroblast\_like, lymphocyte, macrophage\_like & \datasetref{heart-mt} \\
 			\cmidrule(lr){1-3}
 			kidney & endothelial, epithelial, fibroblast\_like, lymphocyte, macrophage\_like, malignant\_epithelial, mesangial, neutrophil, pericyte, perivascular, plasma\_cell & \datasetref{kidney-cancer-preview}, \datasetref{kidney-normal-preview}, \datasetref{kidney-rcc-in-situ} \\
 			\cmidrule(lr){1-3}
@@ -404,7 +403,7 @@
 			\cmidrule(lr){1-3}
 			\morecmidrules
 			\cmidrule(lr){1-3}
-			pan-tissue & neoplastic, epithelial, inflamatory, connective, background
+			pan-tissue & neoplastic, epithelial, inflammatory, connective, background
 			& all of above \\
 			\bottomrule%
 		\end{tabularx}%
@@ -428,7 +427,7 @@
 	
 	\section{Competing Interests}
 	
-	The authors are employees of Pfizer Inc. This work was conducted as part of their employment. The authors declare no other completing interests.
+	The authors are employees of Pfizer Inc. This work was conducted as part of their employment. The authors declare no other competing interests.
 	
 	\section{Funding}
 	
