@@ -17,13 +17,13 @@ WSInsight is a fork of WSInfer that delivers end-to-end pathology inference for 
 
 ## Visual Overview
 
-Original H&E                                          |Heatmap of Tumor Probability
-:----------------------------------------------------:|:----------------------------------------------------:
-![H&E example](docs/_static/brca-tissue.png)   | ![Tumor probability heatmap](docs/_static/brca-heatmap-neoplastic.png)
-:----------------------------------------------------:|:----------------------------------------------------:
-Heatmap of Dead Cell Probability                      |Heatmap of Connective Cell Probability
-:----------------------------------------------------:|:----------------------------------------------------:
-![Necrotic region](docs/_static/brca-heatmap-dead.png)|![Connectivity heatmap](docs/_static/brca-heatmap-connective.png)
+Original H&E                                               | Heatmap of Tumor Probability
+:---------------------------------------------------------:|:-----------------------------------------------------------:
+![H&E example](docs/_static/brca-tissue.png)               | ![Tumor probability heatmap](docs/_static/brca-heatmap-neoplastic.png)
+
+Heatmap of Dead Cell Probability                           | Heatmap of Connective Cell Probability
+:---------------------------------------------------------:|:-----------------------------------------------------------:
+![Necrotic region](docs/_static/brca-heatmap-dead.png)     | ![Connectivity heatmap](docs/_static/brca-heatmap-connective.png)
 
 ## Documentation
 
@@ -153,13 +153,13 @@ wsinsight --help
 - (Optional) Bring in TensorFlow/Keras if you plan to convert models or run StarDist.
 - Verify CUDA visibility with `python -c 'import torch; print(torch.cuda.is_available())'` and confirm your driver matches the [CUDA compatibility matrix](https://docs.nvidia.com/deploy/cuda-compatibility/).
 
-2. **Install WSInsight**
+1. **Install WSInsight**
 
 - Stable PyPI: `python -m pip install wsinsight`
 - Latest main: `python -m pip install git+https://github.com/huangch/wsinsight.git`
 - Conda-Forge: `conda install -c conda-forge wsinsight` (use `mamba install` for faster solving)
 
-3. **Install from source (development)**
+1. **Install from source (development)**
 
 ```bash
 git clone https://github.com/huangch/wsinsight.git
@@ -172,22 +172,22 @@ The editable install enables rapid iteration on CLI commands, model definitions,
 
 ## CLI Overview
 
-Command | Purpose
---- | ---
-`wsinsight run` | Segment tissue, extract patches, execute model inference, and optionally run H-plot/ncomp analytics and export (one-shot orchestration of `patch` → `infer` → `hplot` → `ncomp` → `export`). Pass `--hplot` / `--ncomp` to enable spatial analytics and `--export-geojson` / `--export-omecsv` to write GeoJSON / OME-CSV files at the end of the run.
-`wsinsight patch` | Perform tissue segmentation, cache/crop patches to HDF5, and prepare metadata for later inference runs; safe to rerun to resume interrupted jobs.
-`wsinsight infer` | Load cached patches, run the selected model, and produce per-cell CSV outputs. Enrich object CSVs with region-level probabilities via `--region-inference-dir` and `--overwrite`. Use the standalone `hplot`/`ncomp`/`export` commands (or `run`) for downstream analytics. Does **not** run H-plot, ncomp, or export — use `run` for one-shot orchestration.
-`wsinsight reg` | Post-hoc object-to-region registration: enrich existing object-level CSV outputs with `region_prob_*` columns derived from a separate region-level inference run (`-r`). Equivalent to running `infer` with `--region-inference-dir`, but works on already-completed runs without re-running inference. Use `--overwrite` to replace existing `region_*` columns.
-`wsinsight hplot` | Standalone H-plot analysis on existing inference outputs. Requires cell-type-aware model outputs and both `--hplot-base-types` and `--hplot-target-types`. Computes layer-wise cell-type proportions from tumour boundary outward.
+Command                    | Purpose
+-------------------------- | -------
+`wsinsight run`            | Segment tissue, extract patches, execute model inference, and optionally run H-plot/ncomp analytics and export (one-shot orchestration of `patch` → `infer` → `hplot` → `ncomp` → `export`). Pass `--hplot` / `--ncomp` to enable spatial analytics and `--export-geojson` / `--export-omecsv` to write GeoJSON / OME-CSV files at the end of the run.
+`wsinsight patch`          | Perform tissue segmentation, cache/crop patches to HDF5, and prepare metadata for later inference runs; safe to rerun to resume interrupted jobs.
+`wsinsight infer`          | Load cached patches, run the selected model, and produce per-cell CSV outputs. Enrich object CSVs with region-level probabilities via `--region-inference-dir` and `--overwrite`. Use the standalone `hplot`/`ncomp`/`export` commands (or `run`) for downstream analytics. Does **not** run H-plot, ncomp, or export — use `run` for one-shot orchestration.
+`wsinsight reg`            | Post-hoc object-to-region registration: enrich existing object-level CSV outputs with `region_prob_*` columns derived from a separate region-level inference run (`-r`). Equivalent to running `infer` with `--region-inference-dir`, but works on already-completed runs without re-running inference. Use `--overwrite` to replace existing `region_*` columns.
+`wsinsight hplot`          | Standalone H-plot analysis on existing inference outputs. Requires cell-type-aware model outputs and both `--hplot-base-types` and `--hplot-target-types`. Computes layer-wise cell-type proportions from tumour boundary outward.
 `wsinsight hplot-finalize` | Aggregate per-slide H-plot intermediates into a single `hplot-outputs.csv` and `hmetrics-outputs.csv`. Use after running parallel `hplot` jobs that share the same `--results-dir`.
-`wsinsight ncomp` | Neighborhood composition analysis on existing cell-detection outputs. For each target cell, builds a Delaunay graph, collects k-hop neighbors, and records the cell-type composition of the local neighborhood. Outputs per-cell CSVs under `ncomp-outputs-csv/`.
-`wsinsight export` | Merge all available per-cell analytics (inference, H-plot, ncomp) into `export-csv/` and write GeoJSON and/or OME-CSV files. Can be run any time after inference — and optionally after `hplot`/`ncomp` — without repeating the full pipeline.
+`wsinsight ncomp`          | Neighborhood composition analysis on existing cell-detection outputs. For each target cell, builds a Delaunay graph, collects k-hop neighbors, and records the cell-type composition of the local neighborhood. Outputs per-cell CSVs under `ncomp-outputs-csv/`.
+`wsinsight export`         | Merge all available per-cell analytics (inference, H-plot, ncomp) into `export-csv/` and write GeoJSON and/or OME-CSV files. Can be run any time after inference — and optionally after `hplot`/`ncomp` — without repeating the full pipeline.
 
 Pick `run` when you want a one-liner for single slides or small batches; switch to the explicit `patch` → `infer` → `hplot` / `ncomp` → `export` flow to resume large jobs, share patch caches across model variants, or parallelize stages on separate machines. `run` is the only command that orchestrates all stages — `infer` focuses solely on model inference. Run the standalone `wsinsight hplot` or `wsinsight ncomp` commands to (re-)run analytics on existing inference outputs without repeating inference. Use `wsinsight hplot-finalize` to assemble the cohort-level summary after running parallel `hplot` jobs. All commands share global options such as `--log-level`. Use `wsinsight <command> --help` for the full option list, including QuPath integration flags and segmentation controls.
 
 ## Results Layout
 
-```
+```text
 <results-dir>/
 ├── masks/                          Tissue segmentation masks (produced by patch / run)
 ├── patches/                        HDF5 patch files (produced by patch / run)
@@ -222,41 +222,41 @@ Pick `run` when you want a one-liner for single slides or small batches; switch 
 
 Produced by `infer`, `run`, and `reg`.
 
-| Column | Notes |
-|---|---|
-| `minx`, `miny` | Top-left corner of the patch/detection bounding box (pixels) |
-| `width`, `height` | Bounding box size (pixels) |
-| `prob_<class>` | Model probability for each class (e.g. `prob_tumor`, `prob_lymphocyte`) |
-| `qupath_detection_parent` | Parent annotation name — only with `--qupath-detection-dir` |
-| `region_minx`, `region_miny`, `region_width`, `region_height` | Matched region bounding box — only with `--region-inference-dir` |
-| `region_prob_<class>` | Region-level class probabilities — only with `--region-inference-dir` |
+Column                                                        | Notes
+------------------------------------------------------------- | --------------------------------------------------------------------
+`minx`, `miny`                                                | Top-left corner of the patch/detection bounding box (pixels)
+`width`, `height`                                             | Bounding box size (pixels)
+`prob_<class>`                                                | Model probability for each class (e.g. `prob_tumor`, `prob_lymphocyte`)
+`qupath_detection_parent`                                     | Parent annotation name — only with `--qupath-detection-dir`
+`region_minx`, `region_miny`, `region_width`, `region_height` | Matched region bounding box — only with `--region-inference-dir`
+`region_prob_<class>`                                         | Region-level class probabilities — only with `--region-inference-dir`
 
 ### `hplot-outputs-csv/hplots/<slide>.csv`
 
 Per-layer H-plot curve produced by `hplot` or `run --hplot`.
 
-| Column | Description |
-|---|---|
-| `layer` | Integer layer index; 0 = base-region boundary, negative = inside, positive = outside |
-| `target_type_prop` | Proportion of target cells at this layer |
-| `target_type_count` | Count of target cells |
-| `base_type_prop` | Proportion of base cells |
-| `base_type_count` | Count of base cells |
-| `all_type_count` | Total cell count |
-| `distance` | Cumulative µm distance from the border |
+Column              | Description
+------------------- | -----------------------------------------------------------------------------------------
+`layer`             | Integer layer index; 0 = base-region boundary, negative = inside, positive = outside
+`target_type_prop`  | Proportion of target cells at this layer
+`target_type_count` | Count of target cells
+`base_type_prop`    | Proportion of base cells
+`base_type_count`   | Count of base cells
+`all_type_count`    | Total cell count
+`distance`          | Cumulative µm distance from the border
 
 ### `hplot-outputs-csv/cells/<slide>.csv`
 
 Per-cell file: the original `model-outputs-csv/<slide>.csv` extended with spatial columns.
 
-| Column | Description |
-|---|---|
-| `minx`, `miny`, `width`, `height` | Inherited from inference output |
-| `prob_<class>` | Inherited from inference output |
-| `center_x`, `center_y` | Cell centre in pixels |
-| `is_base_type` | `True` if the cell's predicted class is a base type |
-| `is_target_type` | `True` if the cell's predicted class is a target type |
-| `signed_distance_to_border` | Hop distance to the base-region boundary; negative = inside, 0 = border, positive = outside, NaN = unreachable |
+Column                             | Description
+---------------------------------- | ---------------------------------------------------------------------------------------------------------------
+`minx`, `miny`, `width`, `height`  | Inherited from inference output
+`prob_<class>`                     | Inherited from inference output
+`center_x`, `center_y`             | Cell centre in pixels
+`is_base_type`                     | `True` if the cell's predicted class is a base type
+`is_target_type`                   | `True` if the cell's predicted class is a target type
+`signed_distance_to_border`        | Hop distance to the base-region boundary; negative = inside, 0 = border, positive = outside, NaN = unreachable
 
 ### `hplot-outputs.csv`
 
@@ -268,84 +268,82 @@ Columns: `id`, `layer`, `target_prop`, `target_count`, `base_prop`, `base_count`
 
 Per-slide spatial interaction metrics. One row per slide.
 
-| Column |
-|---|
-| `id`, `valid` |
-| `convergence_distance (intra)`, `abundance_score (intra)`, `penetration_score (intra)` |
-| `layerwise_enrichment_index (intra)`, `global_enrichment_index (intra)`, `weighted_global_enrichment_index (intra)` |
-| `convergence_distance (peri)`, `abundance_score (peri)`, `proximity_score (peri)` |
-| `layerwise_enrichment_index (peri)`, `global_enrichment_index (peri)`, `weighted_global_enrichment_index (peri)` |
-| `exclusion_index`, `desert_index`, `inflammation_index` |
-| `layerwise_enrichment_index`, `global_enrichment_index`, `weighted_global_enrichment_index` |
+- `id`, `valid`
+- `convergence_distance (intra)`, `abundance_score (intra)`, `penetration_score (intra)`
+- `layerwise_enrichment_index (intra)`, `global_enrichment_index (intra)`, `weighted_global_enrichment_index (intra)`
+- `convergence_distance (peri)`, `abundance_score (peri)`, `proximity_score (peri)`
+- `layerwise_enrichment_index (peri)`, `global_enrichment_index (peri)`, `weighted_global_enrichment_index (peri)`
+- `exclusion_index`, `desert_index`, `inflammation_index`
+- `layerwise_enrichment_index`, `global_enrichment_index`, `weighted_global_enrichment_index`
 
 ### `ncomp-outputs-csv/<slide>.csv`
 
 Per-cell neighborhood composition produced by `ncomp` or `run --ncomp`.
 
-| Column | Description |
-|---|---|
-| `center_x`, `center_y` | Cell centre in pixels |
-| `cell_type` | Predicted cell type (argmax of `prob_*` columns) |
-| `neighborhood_size` | Number of k-hop graph neighbors (excluding self) |
-| `neighborhood_<class>_count` | Count of neighbors of each class; one column per model class |
-| `neighborhood_<class>_prop` | Proportion of neighbors of each class; one column per model class |
+Column                         | Description
+------------------------------ | ---------------------------------------------------------------
+`center_x`, `center_y`         | Cell centre in pixels
+`cell_type`                    | Predicted cell type (argmax of `prob_*` columns)
+`neighborhood_size`            | Number of k-hop graph neighbors (excluding self)
+`neighborhood_<class>_count`   | Count of neighbors of each class; one column per model class
+`neighborhood_<class>_prop`    | Proportion of neighbors of each class; one column per model class
 
 ### `export-csv/<slide>.csv`
 
 Merged per-cell CSV produced by `build_export_csvs()` (called programmatically via `wsinsight.export_helpers`). Left-joins `model-outputs-csv`, `hplot-outputs-csv/cells`, and `ncomp-outputs-csv` on shared geometry keys.
 
-| Column | Description |
-|---|---|
-| All columns from `model-outputs-csv/<slide>.csv` | Inherited inference + region columns |
-| `center_x`, `center_y` | Cell centre (added if absent) |
-| `is_base_type`, `is_target_type` | From H-plot cells output (when available) |
-| `signed_distance_to_border` | From H-plot cells output (when available) |
-| `cell_type`, `neighborhood_size` | From ncomp output (when available) |
-| `neighborhood_<class>_count`, `neighborhood_<class>_prop` | From ncomp output (when available) |
+Column                                                     | Description
+---------------------------------------------------------- | -------------------------------------------
+All columns from `model-outputs-csv/<slide>.csv`           | Inherited inference + region columns
+`center_x`, `center_y`                                     | Cell centre (added if absent)
+`is_base_type`, `is_target_type`                           | From H-plot cells output (when available)
+`signed_distance_to_border`                                | From H-plot cells output (when available)
+`cell_type`, `neighborhood_size`                           | From ncomp output (when available)
+`neighborhood_<class>_count`, `neighborhood_<class>_prop`  | From ncomp output (when available)
 
 ## Key Parameters
 
 ### H-Plot (`--hplot-*` options in `run` and `wsinsight hplot`)
 
-| Option | Default | Description |
-|---|---|---|
-| `--hplot-base-types` | required | Comma-separated base cell types that define the tumour cluster (e.g. `tumor`) |
-| `--hplot-target-types` | required | Comma-separated target cell types to track across layers (e.g. `lymphocyte`) |
-| `--hplot-max-neighbor-distance` | `25.0` | Maximum Delaunay edge length in µm |
-| `--hplot-k` | `2` | k-hop neighborhood radius for region detection |
-| `--hplot-n` | `8` | Minimum neighborhood size for base-region membership |
-| `--hplot-r` | `0.5` | Minimum base-type fraction for base-region membership |
-| `--hplot-range-min` | `None` | Innermost layer index (≤ 0) to include in metrics |
-| `--hplot-range-max` | `None` | Outermost layer index (≥ 1) to include in metrics |
-| `--hplot-samples-with-valid-range-only` | off | Exclude slides that do not fully cover `[range-min, range-max]` |
-| `--overwrite` | off | Recompute existing per-slide outputs |
+Option                                    | Default    | Description
+----------------------------------------- | ---------- | -----------------------------------------------------------------------
+`--hplot-base-types`                      | required   | Comma-separated base cell types that define the tumour cluster (e.g. `tumor`)
+`--hplot-target-types`                    | required   | Comma-separated target cell types to track across layers (e.g. `lymphocyte`)
+`--hplot-max-neighbor-distance`           | `25.0`     | Maximum Delaunay edge length in µm
+`--hplot-k`                               | `2`        | k-hop neighborhood radius for region detection
+`--hplot-n`                               | `8`        | Minimum neighborhood size for base-region membership
+`--hplot-r`                               | `0.5`      | Minimum base-type fraction for base-region membership
+`--hplot-range-min`                       | `None`     | Innermost layer index (≤ 0) to include in metrics
+`--hplot-range-max`                       | `None`     | Outermost layer index (≥ 1) to include in metrics
+`--hplot-samples-with-valid-range-only`   | off        | Exclude slides that do not fully cover `[range-min, range-max]`
+`--overwrite`                             | off        | Recompute existing per-slide outputs
 
 ### Neighborhood Composition (`--ncomp-*` options in `run` and `wsinsight ncomp`)
 
-| Option | Default | Description |
-|---|---|---|
-| `--ncomp-target-types` | all cells | Comma-separated cell types to compute neighborhoods for |
-| `--ncomp-max-neighbor-distance` | `25.0` | Maximum Delaunay edge length in µm |
-| `--ncomp-k` | `2` | k-hop neighborhood radius |
-| `--overwrite` | off | Recompute existing per-slide outputs |
+Option                           | Default    | Description
+-------------------------------- | ---------- | --------------------------------------------------------
+`--ncomp-target-types`           | all cells  | Comma-separated cell types to compute neighborhoods for
+`--ncomp-max-neighbor-distance`  | `25.0`     | Maximum Delaunay edge length in µm
+`--ncomp-k`                      | `2`        | k-hop neighborhood radius
+`--overwrite`                    | off        | Recompute existing per-slide outputs
 
 ### Model Selection
 
-| Option | Applies to | Description |
-|---|---|---|
-| `-m / --model` | `run`, `patch`, `infer` | Name of a registered model from the WSInsight / WSInfer Model Zoo. Mutually exclusive with `--config`, `--model-path`, and `--zoo-model-dir`. |
-| `-c / --config` | `run`, `patch`, `infer` | Path to a custom JSON model configuration file (see `wsinsight/schemas/model-config.schema.json`). Must be paired with `--model-path`. Mutually exclusive with `--model` and `--zoo-model-dir`. |
-| `-p / --model-path` | `run`, `patch`, `infer` | Path to the custom TorchScript weights. Required when `--config` is used. Mutually exclusive with `--model` and `--zoo-model-dir`. |
-| `-z / --zoo-model-dir` | `run`, `patch`, `infer` | Path to a folder containing `config.json` and `torchscript_model.pt`. Shorthand for `--config` + `--model-path`. Mutually exclusive with `--model`, `--config`, and `--model-path`. |
+Option                  | Applies to              | Description
+----------------------- | ----------------------- | -----------------------------------------------------------------------------------------------------------------------------------------------------------
+`-m / --model`          | `run`, `patch`, `infer` | Name of a registered model from the WSInsight / WSInfer Model Zoo. Mutually exclusive with `--config`, `--model-path`, and `--zoo-model-dir`.
+`-c / --config`         | `run`, `patch`, `infer` | Path to a custom JSON model configuration file (see `wsinsight/schemas/model-config.schema.json`). Must be paired with `--model-path`. Mutually exclusive with `--model` and `--zoo-model-dir`.
+`-p / --model-path`     | `run`, `patch`, `infer` | Path to the custom TorchScript weights. Required when `--config` is used. Mutually exclusive with `--model` and `--zoo-model-dir`.
+`-z / --zoo-model-dir`  | `run`, `patch`, `infer` | Path to a folder containing `config.json` and `torchscript_model.pt`. Shorthand for `--config` + `--model-path`. Mutually exclusive with `--model`, `--config`, and `--model-path`.
 
 ### Inference Performance
 
-| Option | Default | Applies to | Description |
-|---|---|---|---|
-| `-b / --batch-size` | `32` | `run`, `infer` | Batch size for model inference. Increase for multi-GPU setups. |
-| `-n / --num-workers` | auto | `run`, `infer` | Dataloader workers feeding patches to PyTorch. Default heuristic: `min(2 × GPU count, CPU count)`. |
-| `--export-workers` | auto | `infer` | Worker processes for GeoJSON/OME-CSV export. Default reserves headroom for inference. |
-| `--stitch-workers` | auto | `infer` | Thread pool size for TileFuse object-based detection stitching. Default: `min(8, CPU // 2)`. |
+Option                | Default | Applies to       | Description
+--------------------- | ------- | ---------------- | -------------------------------------------------------------------------------------------------
+`-b / --batch-size`   | `32`    | `run`, `infer`   | Batch size for model inference. Increase for multi-GPU setups.
+`-n / --num-workers`  | auto    | `run`, `infer`   | Dataloader workers feeding patches to PyTorch. Default heuristic: `min(2 × GPU count, CPU count)`.
+`--export-workers`    | auto    | `infer`          | Worker processes for GeoJSON/OME-CSV export. Default reserves headroom for inference.
+`--stitch-workers`    | auto    | `infer`          | Thread pool size for TileFuse object-based detection stitching. Default: `min(8, CPU // 2)`.
 
 ## Example Workflows
 
