@@ -1,3 +1,4 @@
-\contentsline {table}{\numberline {1}{\ignorespaces Comparison of representative single-cell models \cite {Horst:2024}.}}{}{table.caption.16}%
-\contentsline {table}{\numberline {2}{\ignorespaces Public datasets provided by 10x Genomics (under the CC-BY 2.0 license).}}{}{table.caption.18}%
-\contentsline {table}{\numberline {3}{\ignorespaces Available single-cell annotations based on 10x Genomic public datasets.}}{}{table.caption.20}%
+\contentsline {table}{\numberline {1}{\ignorespaces Feature comparison of open-source whole-slide image analysis frameworks. \text {$\mathsurround \z@ \mathchar "458$}\ = supported; $\sim $ = partial; -- = not supported.}}{}{table.caption.24}
+\contentsline {table}{\numberline {2}{\ignorespaces Comparison of representative single-cell models \cite {Horst:2024}.}}{}{table.caption.25}
+\contentsline {table}{\numberline {3}{\ignorespaces Public datasets provided by 10x Genomics (under the CC-BY 2.0 license).}}{}{table.caption.27}
+\contentsline {table}{\numberline {4}{\ignorespaces Available single-cell annotations based on 10x Genomics public datasets.}}{}{table.caption.29}

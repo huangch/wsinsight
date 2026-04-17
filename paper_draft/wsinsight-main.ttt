@@ -1,6 +1,26 @@
 \begin{table*}[tb!]%
 \centering%
 \scriptsize%
+\npjcaption{Feature comparison of open-source whole-slide image analysis frameworks. \checkmark\ = supported; $\sim$ = partial; -- = not supported.}%
+\label{tab:feature_comparison}%
+\begin{tabular}{l c c c c c c c}%
+\toprule%
+\textbf{Framework} & \makecell{\textbf{Cloud-native}\\\textbf{(S3/GDC)}} & \makecell{\textbf{Patch-level}\\\textbf{inference}} & \makecell{\textbf{Single-cell}\\\textbf{inference}} & \makecell{\textbf{Spatial}\\\textbf{analytics}} & \makecell{\textbf{Model}\\\textbf{Zoo}} & \makecell{\textbf{QuPath/}\\\textbf{OMERO+}} & \makecell{\textbf{End-to-end}\\\textbf{CLI}} \\
+\midrule%
+WSInfer \cite{Kaczmarzyk:2024}  & --          & \checkmark & --          & --          & \checkmark & $\sim$     & \checkmark \\
+TIA Toolbox \cite{Pocock:2022}  & --          & \checkmark & \checkmark  & $\sim$      & --         & --         & $\sim$     \\
+SlideFlow \cite{Dolezal:2024}   & --          & \checkmark & --          & --          & --         & --         & $\sim$     \\
+MONAI \cite{Cardoso:2022}       & --          & \checkmark & $\sim$      & --          & $\sim$     & --         & --         \\
+PHARAOH \cite{Faust:2024}       & --          & \checkmark & --          & --          & --         & --         & $\sim$     \\
+\textbf{WSInsight}              & \checkmark  & \checkmark & \checkmark  & \checkmark  & \checkmark & \checkmark & \checkmark \\
+\bottomrule%
+\end{tabular}%
+\end{table*}
+\efloatseparator
+ 
+\begin{table*}[tb!]%
+\centering%
+\scriptsize%
 \npjcaption{Comparison of representative single-cell models \cite{Horst:2024}.}
 \begin{tabular}{p{2.9cm} p{7cm} p{0.75cm} p{0.75cm}}%
 \toprule%
@@ -80,7 +100,7 @@ ResNet50 backbone paired with star-convex polygon representation predicting radi
 \footnotesize%
 \setlength{\tabcolsep}{6pt}%
 \renewcommand{\arraystretch}{1.2}%
-\npjcaption{Available single-cell annotations based on 10x Genomic public datasets.}%
+\npjcaption{Available single-cell annotations based on 10x Genomics public datasets.}%
 \label{tbl:10xdatasetlabel}%
 \begin{tabularx}{\linewidth}{p{9em} >{\raggedright\arraybackslash}X p{2.5cm}}%
 \toprule%
@@ -96,7 +116,7 @@ cervix  & basaloid\_progenitor, endothelial, epithelial, fibroblast\_like, lymph
 \cmidrule(lr){1-3}
 colorectal  & basaloid\_progenitor, basophil, endothelial, eosinophil, epithelial, fibroblast\_like, hematologic\_blast, lymphocyte, macrophage\_like, malignant\_epithelial, mast\_cell, neuron, neutrophil, pericyte, plasma\_cell & \datasetref{colon-cancer-preview}, \datasetref{colon-normal-preview}, \datasetref{colon-colorectal-io} \\
 \cmidrule(lr){1-3}
-heart & basophil, cardiomyocyte, endothelial, fibroblast\_like, lymphocyte, macrophage\_like & \datasetref{colon-cancer-preview}, \datasetref{colon-normal-preview}, \datasetref{heart-mt} \\
+heart & basophil, cardiomyocyte, endothelial, fibroblast\_like, lymphocyte, macrophage\_like & \datasetref{heart-mt} \\
 \cmidrule(lr){1-3}
 kidney & endothelial, epithelial, fibroblast\_like, lymphocyte, macrophage\_like, malignant\_epithelial, mesangial, neutrophil, pericyte, perivascular, plasma\_cell & \datasetref{kidney-cancer-preview}, \datasetref{kidney-normal-preview}, \datasetref{kidney-rcc-in-situ} \\
 \cmidrule(lr){1-3}
@@ -116,7 +136,7 @@ tonsil & basophil, endothelial, fibroblast\_like, hematologic\_blast, lymphocyte
 \cmidrule(lr){1-3}
 \morecmidrules
 \cmidrule(lr){1-3}
-pan-tissue & neoplastic, epithelial, inflamatory, connective, background
+pan-tissue & neoplastic, epithelial, inflammatory, connective, background
 & all of above \\
 \bottomrule%
 \end{tabularx}%

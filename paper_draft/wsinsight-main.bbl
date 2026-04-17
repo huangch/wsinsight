@@ -1,6 +1,6 @@
 %% BioMed_Central_Bib_Style_v1.01
 
-\begin{thebibliography}{25}
+\begin{thebibliography}{22}
 % BibTex style file: bmc-mathphys.bst (version 2.1), 2014-07-24
 \ifx \bisbn   \undefined \def \bisbn  #1{ISBN #1}\fi
 \ifx \binits  \undefined \def \binits#1{#1}\fi
@@ -100,22 +100,6 @@
 \endbibitem
 
 %%% 5
-\bibitem[\protect\citeauthoryear{Luik et~al.}{2024}]{Luik:2024}
-\begin{barticle}
-\bauthor{\bsnm{Luik}, \binits{T.T.}},
-\bauthor{\bsnm{Rosas-Bertolini}, \binits{R.}},
-\bauthor{\bsnm{Reits}, \binits{E.A.J.}},
-\bauthor{\bsnm{Hoebe}, \binits{R.A.}},
-\bauthor{\bsnm{Krawczyk}, \binits{P.M.}}:
-\batitle{Biomero: A scalable and extensible image analysis framework}.
-\bjtitle{Patterns}
-\bvolume{5},
-\bfpage{101024}
-(\byear{2024})
-\end{barticle}
-\endbibitem
-
-%%% 6
 \bibitem[\protect\citeauthoryear{Pocock et~al.}{2022}]{Pocock:2022}
 \begin{barticle}
 \bauthor{\bsnm{Pocock}, \binits{J.}}, \betal:
@@ -125,6 +109,19 @@
 \bvolume{2},
 \bfpage{120}
 (\byear{2022})
+\end{barticle}
+\endbibitem
+
+%%% 6
+\bibitem[\protect\citeauthoryear{Dolezal et~al.}{2024}]{Dolezal:2024}
+\begin{barticle}
+\bauthor{\bsnm{Dolezal}, \binits{J.M.}}, \betal:
+\batitle{Slideflow: deep learning for digital histopathology with real-time
+  whole-slide visualization}.
+\bjtitle{BMC Bioinformatics}
+\bvolume{25},
+\bfpage{134}
+(\byear{2024})
 \end{barticle}
 \endbibitem
 
@@ -140,19 +137,6 @@ arXiv,
 \endbibitem
 
 %%% 8
-\bibitem[\protect\citeauthoryear{Dolezal et~al.}{2024}]{Dolezal:2024}
-\begin{barticle}
-\bauthor{\bsnm{Dolezal}, \binits{J.M.}}, \betal:
-\batitle{Slideflow: deep learning for digital histopathology with real-time
-  whole-slide visualization}.
-\bjtitle{BMC Bioinformatics}
-\bvolume{25},
-\bfpage{134}
-(\byear{2024})
-\end{barticle}
-\endbibitem
-
-%%% 9
 \bibitem[\protect\citeauthoryear{Faust et~al.}{2024}]{Faust:2024}
 \begin{botherref}
 \oauthor{\bsnm{Faust}, \binits{K.}}, \betal:
@@ -164,7 +148,48 @@ bioRxiv,
 \end{botherref}
 \endbibitem
 
+%%% 9
+\bibitem[\protect\citeauthoryear{H\"{o}rst et~al.}{2024}]{Horst:2024}
+\begin{barticle}
+\bauthor{\bsnm{H\"{o}rst}, \binits{F.}}, \betal:
+\batitle{Cellvit: Vision transformers for precise cell segmentation and
+  classification}.
+\bjtitle{Medical Image Analysis}
+\bvolume{94},
+\bfpage{103143}
+(\byear{2024})
+\end{barticle}
+\endbibitem
+
 %%% 10
+\bibitem[\protect\citeauthoryear{Graham et~al.}{2019}]{Graham:2019}
+\begin{barticle}
+\bauthor{\bsnm{Graham}, \binits{S.}}, \betal:
+\batitle{Hover-net: Simultaneous segmentation and classification of nuclei in
+  multi-tissue histology images}.
+\bjtitle{Medical Image Analysis}
+\bvolume{58},
+\bfpage{101563}
+(\byear{2019})
+\end{barticle}
+\endbibitem
+
+%%% 11
+\bibitem[\protect\citeauthoryear{Schmidt et~al.}{2018}]{Schmidt:2018}
+\begin{bchapter}
+\bauthor{\bsnm{Schmidt}, \binits{U.}},
+\bauthor{\bsnm{Weigert}, \binits{M.}},
+\bauthor{\bsnm{Broaddus}, \binits{C.}},
+\bauthor{\bsnm{Myers}, \binits{G.}}:
+\bctitle{Cell detection with star-convex polygons}.
+In: \bbtitle{Medical Image Computing and Computer Assisted Intervention
+  (MICCAI)},
+pp. \bfpage{265}--\blpage{273}
+(\byear{2018})
+\end{bchapter}
+\endbibitem
+
+%%% 12
 \bibitem[\protect\citeauthoryear{}{}]{TheCancerGenomeAtlasProgramTCGA}
 \begin{botherref}
 The Cancer Genome Atlas Program (TCGA).
@@ -172,39 +197,12 @@ The Cancer Genome Atlas Program (TCGA).
 \end{botherref}
 \endbibitem
 
-%%% 11
+%%% 13
 \bibitem[\protect\citeauthoryear{}{}]{CloudObjectStorage--AmazonS3--AmazonWebServices}
 \begin{botherref}
 Cloud Object Storage -- Amazon S3 -- Amazon Web Services.
 \url{https://aws.amazon.com/s3/}
 \end{botherref}
-\endbibitem
-
-%%% 12
-\bibitem[\protect\citeauthoryear{Page et~al.}{2023}]{Page:2023}
-\begin{barticle}
-\bauthor{\bsnm{Page}, \binits{D.B.}}, \betal:
-\batitle{Spatial analyses of immune cell infiltration in cancer: current
-  methods and future directions: A report of the international immuno-oncology
-  biomarker working group on breast cancer}.
-\bjtitle{The Journal of pathology}
-\bvolume{260},
-\bfpage{514}
-(\byear{2023})
-\end{barticle}
-\endbibitem
-
-%%% 13
-\bibitem[\protect\citeauthoryear{Saltz et~al.}{2018}]{Saltz:2018}
-\begin{barticle}
-\bauthor{\bsnm{Saltz}, \binits{J.}}, \betal:
-\batitle{Spatial organization and molecular correlation of tumor-infiltrating
-  lymphocytes using deep learning on pathology images}.
-\bjtitle{Cell Reports}
-\bvolume{23},
-\bfpage{181}--\blpage{1937}
-(\byear{2018})
-\end{barticle}
 \endbibitem
 
 %%% 14
@@ -276,19 +274,6 @@ Cloud Object Storage -- Amazon S3 -- Amazon Web Services.
 \endbibitem
 
 %%% 19
-\bibitem[\protect\citeauthoryear{H\"{o}rst et~al.}{2024}]{Horst:2024}
-\begin{barticle}
-\bauthor{\bsnm{H\"{o}rst}, \binits{F.}}, \betal:
-\batitle{Cellvit: Vision transformers for precise cell segmentation and
-  classification}.
-\bjtitle{Medical Image Analysis}
-\bvolume{94},
-\bfpage{103143}
-(\byear{2024})
-\end{barticle}
-\endbibitem
-
-%%% 20
 \bibitem[\protect\citeauthoryear{Janowczyk et~al.}{2019}]{Janowczyk:2019}
 \begin{barticle}
 \bauthor{\bsnm{Janowczyk}, \binits{A.}},
@@ -305,7 +290,7 @@ Cloud Object Storage -- Amazon S3 -- Amazon Web Services.
 \end{barticle}
 \endbibitem
 
-%%% 21
+%%% 20
 \bibitem[\protect\citeauthoryear{Gamper et~al.}{2019}]{Gamper:2019}
 \begin{barticle}
 \bauthor{\bsnm{Gamper}, \binits{J.}},
@@ -323,7 +308,7 @@ Cloud Object Storage -- Amazon S3 -- Amazon Web Services.
 \end{barticle}
 \endbibitem
 
-%%% 22
+%%% 21
 \bibitem[\protect\citeauthoryear{Huang et~al.}{2025}]{Huang:2025}
 \begin{barticle}
 \bauthor{\bsnm{Huang}, \binits{C.H.}},
@@ -338,35 +323,7 @@ Cloud Object Storage -- Amazon S3 -- Amazon Web Services.
 \end{barticle}
 \endbibitem
 
-%%% 23
-\bibitem[\protect\citeauthoryear{Graham et~al.}{2019}]{Graham:2019}
-\begin{barticle}
-\bauthor{\bsnm{Graham}, \binits{S.}}, \betal:
-\batitle{Hover-net: Simultaneous segmentation and classification of nuclei in
-  multi-tissue histology images}.
-\bjtitle{Medical Image Analysis}
-\bvolume{58},
-\bfpage{101563}
-(\byear{2019})
-\end{barticle}
-\endbibitem
-
-%%% 24
-\bibitem[\protect\citeauthoryear{Schmidt et~al.}{2018}]{Schmidt:2018}
-\begin{bchapter}
-\bauthor{\bsnm{Schmidt}, \binits{U.}},
-\bauthor{\bsnm{Weigert}, \binits{M.}},
-\bauthor{\bsnm{Broaddus}, \binits{C.}},
-\bauthor{\bsnm{Myers}, \binits{G.}}:
-\bctitle{Cell detection with star-convex polygons}.
-In: \bbtitle{Medical Image Computing and Computer Assisted Intervention
-  (MICCAI)},
-pp. \bfpage{265}--\blpage{273}
-(\byear{2018})
-\end{bchapter}
-\endbibitem
-
-%%% 25
+%%% 22
 \bibitem[\protect\citeauthoryear{He et~al.}{2016}]{He:2016}
 \begin{bchapter}
 \bauthor{\bsnm{He}, \binits{K.}},

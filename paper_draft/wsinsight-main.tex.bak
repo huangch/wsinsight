@@ -160,7 +160,7 @@
 			\postcode{92121}, \state{CA}, \country{USA}}}
 	
 	\abstract{
-		Digital pathology has increasingly embraced deep learning for large-scale tissue analysis, yet most workflows remain confined to local execution and patch-level inference. Here we present WSInsight, an open-source, cloud-native pipeline that unifies patch-level classification and single-cell inference on whole-slide images within a single reproducible framework. Building on the WSInfer ecosystem, WSInsight adds end-to-end nuclei segmentation via CellViT, HoVer-Net, and StarDist--ResNet50; introduces graph-based spatial analytics including neighborhood composition analysis and object-to-region spatial registration; and provides native access to cloud-hosted slides through Amazon S3 and NCI Genomic Data Commons manifests. Standardized outputs in GeoJSON and OME-CSV integrate directly with QuPath and OMERO+. Applied to 1{,}061 TCGA breast-cancer slides, WSInsight processes each whole-slide image in approximately 23 seconds on an enterprise GPU workstation, demonstrating scalability for multi-institutional cohort studies.
+		Digital pathology has increasingly embraced deep learning for large-scale tissue analysis, yet most workflows remain confined to local execution and patch-level inference. Here we present WSInsight, an open-source, cloud-native pipeline that unifies patch-level classification and single-cell inference on whole-slide images within a single reproducible framework. Building on the WSInfer ecosystem, WSInsight adds end-to-end nuclei segmentation via CellViT, HoVer-Net, and StarDist--ResNet50; introduces graph-based spatial analytics including layerwise immune-infiltration profiling (H-Plot) and neighborhood composition analysis; and provides native access to cloud-hosted slides through Amazon S3 and NCI Genomic Data Commons manifests. Standardized outputs in GeoJSON and OME-CSV integrate directly with QuPath and OMERO+. Applied to 1{,}061 TCGA breast-cancer slides, WSInsight processes each whole-slide image in approximately 23 seconds on an enterprise GPU workstation, demonstrating scalability for multi-institutional cohort studies.
 	}
 	
 	\keywords{Whole-slide image, cloud-native, digital pathology, deep learning, nuclei segmentation, spatial analysis, multi-scale inference}
@@ -174,9 +174,20 @@
 %	\section{Summary}
 %	\label{sec:summary}
 	
-	The digitization of glass slides into high-resolution whole-slide images (WSIs) has created new opportunities for deep learning--based tissue analysis, yet most existing frameworks remain confined to local, patch-level workflows that are difficult to reproduce or deploy across institutions \cite{Gupta:2019, Echle:2020, Laak:2021}. Open-source tools such as WSInfer \cite{Kaczmarzyk:2024}, TIA Toolbox \cite{Pocock:2022}, SlideFlow \cite{Dolezal:2024}, MONAI \cite{Cardoso:2022}, and PHARAOH \cite{Faust:2024} have lowered technical barriers by standardizing model configuration and inference, but none provides a unified cloud-native pipeline that spans patch-level classification, single-cell nuclei analysis, and graph-based spatial profiling. A comparative overview of these tools is provided in Table~\ref{tab:feature_comparison}.
+	Histopathology has long been the foundation of disease diagnosis, traditionally relying on the examination of tissue sections under high-power microscopy. The ongoing shift toward digital pathology—where glass slides are digitized as high-resolution whole-slide images (WSIs)—has transformed how tissue data are generated and analyzed \cite{Gupta:2019}. Each WSI can exceed tens of gigabytes in size, presenting substantial challenges for data management, storage, and visualization. Simultaneously, the digital transition enables the application of advanced computational and deep learning techniques for diagnostic, prognostic, and spatially resolved analysis in pathology \cite{Echle:2020}.
 	
-	Here we introduce WSInsight, an end-to-end, cloud-native pipeline that extends the WSInfer paradigm to multi-scale whole-slide analysis (Fig.~\ref{fig:diagram}). WSInsight is fully backward-compatible with the WSInfer Model Zoo and additionally supports end-to-end nuclei segmentation and cell-type classification via CellViT \cite{Horst:2024}, HoVer-Net \cite{Graham:2019}, and StarDist--ResNet50 \cite{Schmidt:2018}. Beyond inference, WSInsight introduces graph-based spatial analytics---including neighborhood composition analysis and object-to-region spatial registration---enabling quantitative characterization of the tumor microenvironment at single-cell resolution. The pipeline natively accesses cloud-hosted WSIs through Amazon S3 and NCI Genomic Data Commons (GDC) manifests \cite{TheCancerGenomeAtlasProgramTCGA, CloudObjectStorage--AmazonS3--AmazonWebServices}, produces standardized outputs in GeoJSON for QuPath \cite{Bankhead:2017} and OME-CSV for OMERO+ \cite{Allan:2012}, and can automatically generate QuPath projects for interactive visualization (Fig.~\ref{fig:results}).
+	Deep learning has fundamentally reshaped digital pathology, offering unprecedented capability to characterize tissue architecture, cellular diversity, and molecular phenotypes from WSIs \cite{Laak:2021}. Numerous studies demonstrate its potential in detecting histologic patterns associated with immune activity, genetic alterations, and clinical outcomes \cite{Gupta:2019}. However, much of this progress remains confined to isolated computational environments, where models are difficult to reproduce or deploy across institutions. Limited access to large-scale image datasets, inconsistencies in preprocessing workflows, and the lack of unified deployment frameworks continue to hinder reproducibility and large-scale validation \cite{Kaczmarzyk:2024}. Even when open-source models exist, their dependence on local storage and on-premise infrastructure restricts adoption by experimental and clinical researchers \cite{Luik:2024}. To fully realize the promise of deep learning in pathology, scalable and interoperable systems are required—systems capable of operating consistently across heterogeneous data sources, computational environments, and institutional settings.
+	
+	WSInfer \cite{Kaczmarzyk:2024} addressed an important component of this need by providing a reproducible, modular framework for patch-level whole-slide inference. By standardizing model configuration, establishing a reusable Model Zoo, and enabling inference across diverse compute backends, WSInfer lowered technical barriers and supported broader adoption of deep learning models within the pathology community. Alongside related frameworks—such as TIA Toolbox \cite{Pocock:2022}, MONAI \cite{Cardoso:2022}, SlideFlow \cite{Dolezal:2024}, and PHARAOH \cite{Faust:2024}—WSInfer contributed to a growing ecosystem of open-source solutions for deploying trained models on WSIs. Yet these tools remain primarily focused on local or patch-based workflows and do not extend to cloud-native, single-cell–resolved analyses.
+	
+	Here we introduce WSInsight, a cloud-native, end-to-end pipeline that unifies patch-level and single-cell inference for modern distributed computing environments. Building on WSInfer’s robust patch-level paradigm, WSInsight expands the analytical scope to include nuclei segmentation, cell-type classification, and spatial profiling within a unified multi-resolution framework (Fig.~\ref{fig:diagram}). The WSInfer/WSInsight Model Zoo incorporates interoperable architectures that support end-to-end analysis across diverse tissue types and staining protocols, drawing from state-of-the-art models used in the field \cite{Pocock:2022}. Direct access to cloud-hosted WSIs—including public repositories such as The Cancer Genome Atlas (TCGA) \cite{TheCancerGenomeAtlasProgramTCGA} and private S3-based platforms \cite{CloudObjectStorage--AmazonS3--AmazonWebServices}—eliminates local storage requirements and enables scalable, multi-institutional workflows.
+	
+	WSInsight enables fine-grained characterization of hematoxylin-and-eosin–stained tissues at single-cell resolution. The system quantifies cellular composition, spatial organization, and microenvironmental structure—capturing features such as immune infiltration, stromal distribution, and neoplastic boundaries \cite{Page:2023}. High-resolution cellular maps can be integrated with spatial transcriptomic or proteomic data to relate morphological phenotypes to molecular states across tissue contexts \cite{Saltz:2018}, supporting multimodal studies of tumor ecosystems and other complex microenvironments directly from routine H\&E slides.
+	
+	To make these analyses broadly usable, WSInsight produces unified region- and cell-level outputs in standardized formats—GeoJSON for QuPath \cite{Bankhead:2017} and comma-separated value (CSV) for OMERO+ \cite{Allan:2012}. These interoperable outputs can be visualized and processed within existing digital pathology platforms, lowering technical barriers for end users and enabling reproducible large-scale workflows across institutions and computational environments.
+	
+	A representative application of WSInsight is multi-scale integrative spatial analysis (Fig.~\ref{fig:results}). Patch-level models from the WSInfer Model Zoo—such as breast-tumor-resnet34.tcga-brca \cite{Le:2020} and lymphnodes-tiatoolbox-resnet50.patchcamelyon \cite{Veeling:2018,Pocock:2022,Litjens:2018}—identify tumor-enriched and lymphocyte-aggregated regions across the slide. These regional predictions are complemented by cell-level outputs from WSInsight-compatible models, such as CellViT/CellViT++ \cite{Horst:2024}, which resolve and classify individual nuclei. When overlaid, the patch- and cell-resolved outputs provide a coherent view of the tumor microenvironment, enabling quantitative assessment of immune–tumor interactions, cellular composition, and spatial organization within pathologist-defined regions.
+	
 	%---------------------------------------
 	% Figures
 	%---------------------------------------
@@ -225,48 +236,6 @@
 	\end{figure*}%
 	
 	%---------------------------------------
-	% Results
-	%---------------------------------------
-	
-	\section{Results}
-	\label{sec:results}
-	
-	\subsection{Multi-scale inference}
-	
-	To illustrate WSInsight's multi-scale capability, we applied both patch-level and single-cell models to H\&E whole-slide images from TCGA-BRCA (Fig.~\ref{fig:results}). Patch-level models from the WSInfer/WSInsight Model Zoo---breast-tumor-resnet34.tcga-brca \cite{Le:2020} and lymphnodes-tiatoolbox-resnet50.patchcamelyon \cite{Veeling:2018,Pocock:2022,Litjens:2018}---produce heatmaps of tumor-region probability and lymphocyte aggregation. Simultaneously, CellViT-SAM-H-x40 \cite{Horst:2024} resolves individual nuclei and classifies them into inflammatory, neoplastic, epithelial, and connective subtypes. When overlaid, the patch- and cell-resolved outputs provide a coherent, multi-resolution view of the tumor microenvironment, enabling quantitative assessment of immune--tumor interactions and spatial organization within pathologist-defined regions.
-	
-	\subsection{Runtime performance}
-	
-	We evaluated WSInsight in two representative environments: one enterprise-grade workstation equipped with a Quadro RTX 8000 GPU running Red Hat Linux, and one consumer-grade system with an RTX 2080 Ti GPU under Windows Subsystem for Linux (Windows 11 with Debian 12). In both settings, we used the breast-tumor-resnet34.tcga-brca model from the WSInfer/WSInsight Model Zoo, applied to whole-slide images from the TCGA repository. The model operates on $350 \times 350$ pixel patches at 0.25~\textmu m per pixel.
-	
-	In the enterprise environment, analysis of 1{,}061 WSIs completed in 6~h~46~min---equivalent to approximately 23~seconds per WSI (median tissue area = 173~mm\textsuperscript{2}). In the consumer environment, we applied the same configuration to 30 WSIs, a subset of the larger cohort. The total runtime was 14~min~17~s, or about 29~seconds per WSI (median tissue area = 179~mm\textsuperscript{2}).
-	
-	These benchmarks demonstrate that WSInsight maintains high performance across heterogeneous compute environments, while its cloud-native I/O layer allows the same workflows to be executed directly on slides stored in S3 buckets or accessed through GDC manifests without requiring local staging. WSInsight's adaptive worker optimizer automatically tunes the number of data-loading workers based on available CPU cores, GPU memory, and system RAM, further ensuring efficient utilization of available hardware without manual configuration.
-
-	\subsection{Feature comparison}
-
-	Table~\ref{tab:feature_comparison} compares WSInsight with five related open-source frameworks across seven capability axes. WSInfer \cite{Kaczmarzyk:2024} pioneered reproducible patch-level inference with a curated Model Zoo but does not support single-cell analysis or cloud-native data access. TIA Toolbox \cite{Pocock:2022} provides rich patch and cell analysis utilities, including graph-based tissue profiling, yet lacks built-in cloud I/O and a standardized model zoo. SlideFlow \cite{Dolezal:2024} emphasizes whole-slide deep learning research with MIL and GAN support but does not include single-cell or spatial profiling. MONAI \cite{Cardoso:2022} offers a broad medical-imaging framework with pathology extensions, though its digital pathology coverage is a subset of its scope. PHARAOH \cite{Faust:2024} focuses on interpretable patch-level classification with attention-based reasoning. WSInsight is the only framework that combines cloud-native storage access (S3 and GDC), backward-compatible Model Zoo support, end-to-end single-cell inference, and graph-based spatial analytics within a single pipeline.
-
-	\begin{table*}[tb!]%
-		\centering%
-		\scriptsize%
-		\npjcaption{Feature comparison of open-source whole-slide image analysis frameworks. \checkmark\ = supported; $\sim$ = partial; -- = not supported.}%
-		\label{tab:feature_comparison}%
-		\begin{tabular}{l c c c c c c c}%
-			\toprule%
-			\textbf{Framework} & \makecell{\textbf{Cloud-native}\\\textbf{(S3/GDC)}} & \makecell{\textbf{Patch-level}\\\textbf{inference}} & \makecell{\textbf{Single-cell}\\\textbf{inference}} & \makecell{\textbf{Spatial}\\\textbf{analytics}} & \makecell{\textbf{Model}\\\textbf{Zoo}} & \makecell{\textbf{QuPath/}\\\textbf{OMERO+}} & \makecell{\textbf{End-to-end}\\\textbf{CLI}} \\
-			\midrule%
-			WSInfer \cite{Kaczmarzyk:2024}  & --          & \checkmark & --          & --          & \checkmark & $\sim$     & \checkmark \\
-			TIA Toolbox \cite{Pocock:2022}  & --          & \checkmark & \checkmark  & $\sim$      & --         & --         & $\sim$     \\
-			SlideFlow \cite{Dolezal:2024}   & --          & \checkmark & --          & --          & --         & --         & $\sim$     \\
-			MONAI \cite{Cardoso:2022}       & --          & \checkmark & $\sim$      & --          & $\sim$     & --         & --         \\
-			PHARAOH \cite{Faust:2024}       & --          & \checkmark & --          & --          & --         & --         & $\sim$     \\
-			\textbf{WSInsight}              & \checkmark  & \checkmark & \checkmark  & \checkmark  & \checkmark & \checkmark & \checkmark \\
-			\bottomrule%
-		\end{tabular}%
-	\end{table*}%
-	
-	%---------------------------------------
 	% Methods
 	%---------------------------------------
 	
@@ -282,16 +251,13 @@
 	WSInsight supports a wide range of architectures—including patch-based classifiers, nuclei segmentation networks, and single-cell–level cell-type predictors—allowing multi-scale analysis within a unified framework. 
 	The runtime exports outputs in GeoJSON format for direct visualization in QuPath, and in comma-separated value (CSV) format structured to be OMERO+-compatible, facilitating integration into large-scale image management and annotation systems. These interoperable outputs ensure that predictions—whether regional tissue classifications or cell-level annotations—can be visualized, aggregated, and quantitatively analyzed across datasets and computational environments.
 	
-	\subsection{Spatial Analysis}
-	\label{sec:spatial}
-	
-	WSInsight provides two graph-based spatial analysis modules that operate on single-cell detections to characterize the tumor microenvironment.
-	
-	\paragraph{Neighborhood composition (ncomp).}
-	For each detected cell, WSInsight constructs a cell-adjacency graph via Delaunay triangulation of all cell centroids, with edges pruned beyond a configurable distance threshold (default 25~\textmu m). From this graph, $k$-hop neighborhoods (default $k{=}2$) are computed using sparse matrix exponentiation: $\mathbf{M}^k = (\mathbf{A} + \mathbf{I})^k$, where $\mathbf{A}$ is the symmetric adjacency matrix and $\mathbf{I}$ is the identity matrix. Within each cell's $k$-hop neighborhood, the module tallies the number and proportion of every annotated cell type, producing per-cell feature vectors of neighborhood counts and proportions. These features support downstream clustering, phenotype enrichment analysis, and identification of recurrent cellular niches across the tissue.
-	
-	\paragraph{Object-to-region spatial registration.}
-	The registration module performs a spatial join between cell-level detections and patch-level region predictions. Each cell's centroid is tested against region bounding boxes, and region-level attributes (e.g., tumor probability, tissue class) are propagated to the matching cell record. This enables joint region--cell queries such as ``inflammatory cells within high-probability tumor patches'' without manual alignment.
+%	\subsection{Runtime performance}
+%	
+%	We evaluated WSInsight in two representative environments: one enterprise-grade workstation equipped with a Quadro RTX 8000 GPU running Red Hat Linux, and one consumer-grade system with an RTX 2080 Ti GPU under Windows Subsystem for Linux (Windows 11 with Debian 12). In both settings, we used the “breast-tumor-resnet34.tcga-brca” model from the WSInfer/WSInsight Model Zoo, applied to whole-slide images from TCGA repository. The model operates on 350 × 350 pixel patches at 0.25 µm per pixel.
+%	
+%	In the enterprise environment, analysis of 1061 WSIs completed in 6 h 46 min—equivalent to approximately 23 seconds per WSI (median tissue area = 173 mm²). In the consumer environment, we applied the same configuration to 30 WSIs, a subset of the larger cohort. The total runtime was 14 min 17 s, or about 29 seconds per WSI (median tissue area = 179 mm²).
+%	
+%	These benchmarks demonstrate that WSInsight maintains high performance across heterogeneous compute environments and model types, while its cloud-native I/O layer allows the same workflows to be executed directly on slides stored in S3 buckets or accessed through TCGA manifests without requiring local staging.
 	
 	\subsection{Model Zoo}
 	
@@ -454,10 +420,6 @@
 	\section{Code Availability}
 	
 	The WSInsight framework is open source under the Apache 2.0 license. The source code, container images, and Model Zoo configurations are available at \url{https://github.com/huangch/wsinsight}. %Documentation provides setup guides for cloud, HPC, and local execution, with reproducible examples demonstrating Xenium-trained model usage and integration with HistoQC \cite{Janowczyk:2019}.
-	
-	\section{Data Availability}
-	
-	The whole-slide images used for runtime benchmarking were obtained from The Cancer Genome Atlas (TCGA) via the NCI Genomic Data Commons (GDC) portal (\url{https://portal.gdc.cancer.gov}), which is publicly accessible under NIH data-use policies \cite{TheCancerGenomeAtlasProgramTCGA}. The 10x Genomics Xenium single-cell datasets used for StarDist--ResNet50 training are publicly available under the Creative Commons Attribution 2.0 (CC-BY~2.0) license from the 10x Genomics website (\url{https://www.10xgenomics.com/datasets}); the specific datasets are enumerated in Table~\ref{tbl:10xdataset}. All pretrained model weights in the WSInfer/WSInsight Model Zoo are hosted on the Hugging Face Hub at \url{https://huggingface.co/kaczmarj}.
 	
 	\section{Author Contributions}
 	
