@@ -240,7 +240,7 @@ def hplot_finalize(output_dir: URIPath, overwrite: bool = False) -> None:
     if not overwrite and hplot_hplots_csv.exists() and hplot_hmetrics_csv.exists():
         print(
             "hplot-outputs.csv and hmetrics-outputs.csv already exist. "
-            "Use --hplot-overwrite to regenerate."
+            "Use --overwrite to regenerate."
         )
         return
 
