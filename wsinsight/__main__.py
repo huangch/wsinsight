@@ -2,17 +2,13 @@
 
 from __future__ import annotations
 
+import multiprocessing as mp
 import os
 
-# Force ASCII progress bars — must be set before tqdm is imported.
-os.environ.setdefault("TQDM_ASCII", " #")
+import click
+import torch
 
-import multiprocessing as mp  # noqa: E402
-
-import click  # noqa: E402
-import torch  # noqa: E402
-
-from .cli.cli import cli  # noqa: E402
+from .cli.cli import cli
 
 
 def main() -> None:
