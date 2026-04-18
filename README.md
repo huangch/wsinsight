@@ -174,16 +174,17 @@ The editable install enables rapid iteration on CLI commands, model definitions,
 
 Command                    | Purpose
 -------------------------- | -------
-`wsinsight run`            | Segment tissue, extract patches, execute model inference, and optionally run H-plot/ncomp analytics and export (one-shot orchestration of `patch` → `infer` → `hplot` → `ncomp` → `export`). Pass `--hplot` / `--ncomp` to enable spatial analytics and `--export-geojson` / `--export-omecsv` to write GeoJSON / OME-CSV files at the end of the run.
+`wsinsight run`            | Segment tissue, extract patches, execute model inference, and optionally run H-plot/ncomp/CME analytics and export (one-shot orchestration of `patch` → `infer` → `hplot` → `ncomp` → `cme` → `export`). Pass `--hplot` / `--ncomp` / `--cme` to enable spatial analytics and `--export-geojson` / `--export-omecsv` to write GeoJSON / OME-CSV files at the end of the run.
 `wsinsight patch`          | Perform tissue segmentation, cache/crop patches to HDF5, and prepare metadata for later inference runs; safe to rerun to resume interrupted jobs.
 `wsinsight infer`          | Load cached patches, run the selected model, and produce per-cell CSV outputs. Enrich object CSVs with region-level probabilities via `--region-inference-dir` and `--overwrite`. Use the standalone `hplot`/`ncomp`/`export` commands (or `run`) for downstream analytics. Does **not** run H-plot, ncomp, or export — use `run` for one-shot orchestration.
 `wsinsight reg`            | Post-hoc object-to-region registration: enrich existing object-level CSV outputs with `region_prob_*` columns derived from a separate region-level inference run (`-r`). Equivalent to running `infer` with `--region-inference-dir`, but works on already-completed runs without re-running inference. Use `--overwrite` to replace existing `region_*` columns.
 `wsinsight hplot`          | Standalone H-plot analysis on existing inference outputs. Requires cell-type-aware model outputs and both `--hplot-base-types` and `--hplot-target-types`. Computes layer-wise cell-type proportions from tumour boundary outward.
 `wsinsight hplot-finalize` | Aggregate per-slide H-plot intermediates into a single `hplot-outputs.csv` and `hmetrics-outputs.csv`. Use after running parallel `hplot` jobs that share the same `--results-dir`.
 `wsinsight ncomp`          | Neighborhood composition analysis on existing cell-detection outputs. For each target cell, builds a Delaunay graph, collects k-hop neighbors, and records the cell-type composition of the local neighborhood. Outputs per-cell CSVs under `ncomp-outputs-csv/`.
-`wsinsight export`         | Merge all available per-cell analytics (inference, H-plot, ncomp) into `export-csv/` and write GeoJSON and/or OME-CSV files. Can be run any time after inference — and optionally after `hplot`/`ncomp` — without repeating the full pipeline.
+`wsinsight cme`            | Cellular microenvironment (CME) analysis across a cohort of slides. Builds per-slide Delaunay cell graphs, trains a global Deep Graph Infomax (DGI) encoder, clusters the resulting embeddings, and writes per-cell CME labels plus annotation-level region merges under `cme-outputs-csv/`.
+`wsinsight export`         | Merge all available per-cell analytics (inference, H-plot, ncomp, CME) into `export-csv/` and write GeoJSON and/or OME-CSV files. Can be run any time after inference — and optionally after `hplot`/`ncomp`/`cme` — without repeating the full pipeline.
 
-Pick `run` when you want a one-liner for single slides or small batches; switch to the explicit `patch` → `infer` → `hplot` / `ncomp` → `export` flow to resume large jobs, share patch caches across model variants, or parallelize stages on separate machines. `run` is the only command that orchestrates all stages — `infer` focuses solely on model inference. Run the standalone `wsinsight hplot` or `wsinsight ncomp` commands to (re-)run analytics on existing inference outputs without repeating inference. Use `wsinsight hplot-finalize` to assemble the cohort-level summary after running parallel `hplot` jobs. All commands share global options such as `--log-level`. Use `wsinsight <command> --help` for the full option list, including QuPath integration flags and segmentation controls.
+Pick `run` when you want a one-liner for single slides or small batches; switch to the explicit `patch` → `infer` → `hplot` / `ncomp` / `cme` → `export` flow to resume large jobs, share patch caches across model variants, or parallelize stages on separate machines. `run` is the only command that orchestrates all stages — `infer` focuses solely on model inference. Run the standalone `wsinsight hplot`, `wsinsight ncomp`, or `wsinsight cme` commands to (re-)run analytics on existing inference outputs without repeating inference. Use `wsinsight hplot-finalize` to assemble the cohort-level summary after running parallel `hplot` jobs. Note: CME is a cross-slide analysis (global DGI training + global clustering) and cannot be parallelized across GPU shards — run it after merging all per-shard inference outputs. All commands share global options such as `--log-level`. Use `wsinsight <command> --help` for the full option list, including QuPath integration flags and segmentation controls.
 
 ## Results Layout
 
@@ -205,10 +206,16 @@ Pick `run` when you want a one-liner for single slides or small batches; switch 
 ├── hmetrics-outputs.csv            Aggregated H-plot metrics (all slides)
 ├── ncomp-outputs-csv/
 │   └── <slide>.csv                 Per-cell neighborhood composition
+├── cme-outputs-csv/
+│   ├── cells/<slide>.csv           Per-cell CME labels + features
+│   └── cmes/<slide>.csv            Annotation-level merged CME regions
+├── cme-outputs-geojson/
+│   ├── cells/<slide>.geojson        GeoJSON cell detections with CME labels
+│   └── cmes/<slide>.geojson         GeoJSON CME region annotations
 ├── graphs/
 │   └── <slide>.h5                  Cached Delaunay triangulation (shared by hplot/ncomp)
 ├── export-csv/
-│   └── <slide>.csv                 Merged per-cell CSV (inference + hplot + ncomp)
+│   └── <slide>.csv                 Merged per-cell CSV (inference + hplot + ncomp + cme)
 ├── export-csv/
 │   └── <slide>.csv                 Merged per-cell CSV used by the export command
 ├── export-geojson/
@@ -309,6 +316,21 @@ Column                         | Description
 `neighborhood_<class>_count`   | Count of neighbors of each class; one column per model class
 `neighborhood_<class>_prop`    | Proportion of neighbors of each class; one column per model class
 
+### `cme-outputs-csv/cells/<slide>.csv`
+
+Per-cell CME labels and features produced by `cme` or `run --cme`.
+
+Column                                  | Description
+--------------------------------------- | ---------------------------------------------------------------
+All columns from `model-outputs-csv`    | Inherited inference + region columns
+`cme_cluster`                           | Integer cluster label assigned by KMeans (or Leiden-derived k)
+`feature_normalized_*`                  | Normalized DGI embedding features (one column per dimension)
+`feature_raw_*`                         | Raw DGI embedding features (one column per dimension)
+
+### `cme-outputs-csv/cmes/<slide>.csv`
+
+Annotation-level merged CME regions produced by `cme` or `run --cme`. Adjacent cells sharing the same `cme_cluster` are dissolved into contiguous polygonal regions.
+
 ### `graphs/<slide>.h5`
 
 Cached Delaunay triangulation shared by `hplot` and `ncomp`. Created on the first run and reused on subsequent runs to skip the expensive `scipy.spatial.Delaunay` computation. The cache stores **unpruned** edges; each command applies its own distance threshold at load time.
@@ -330,7 +352,7 @@ Dataset / Attribute            | Shape / Type | Description
 
 ### `export-csv/<slide>.csv`
 
-Merged per-cell CSV produced by `build_export_csvs()` (called programmatically via `wsinsight.export_helpers`). Left-joins `model-outputs-csv`, `hplot-outputs-csv/cells`, and `ncomp-outputs-csv` on shared geometry keys.
+Merged per-cell CSV produced by `build_export_csvs()` (called programmatically via `wsinsight.export_helpers`). Left-joins `model-outputs-csv`, `hplot-outputs-csv/cells`, `ncomp-outputs-csv`, and `cme-outputs-csv/cells` on shared geometry keys.
 
 Column                                                     | Description
 ---------------------------------------------------------- | -------------------------------------------
@@ -340,6 +362,8 @@ All columns from `model-outputs-csv/<slide>.csv`           | Inherited inference
 `signed_distance_to_border`                                | From H-plot cells output (when available)
 `cell_type`, `neighborhood_size`                           | From ncomp output (when available)
 `neighborhood_<class>_count`, `neighborhood_<class>_prop`  | From ncomp output (when available)
+`cme_*`                                                    | From CME cell output (when available)
+`feature_normalized_*`, `feature_raw_*`                    | From CME cell output (when available)
 
 ## Key Parameters
 
@@ -365,6 +389,14 @@ Option                           | Default    | Description
 `--ncomp-max-neighbor-distance`  | `25.0`     | Maximum Delaunay edge length in µm
 `--ncomp-k`                      | `2`        | k-hop neighborhood radius
 `--overwrite`                    | off        | Recompute existing per-slide outputs
+
+### Cellular Microenvironment (`--cme-*` options in `run` and `wsinsight cme`)
+
+Option              | Default    | Description
+------------------- | ---------- | --------------------------------------------------------
+`--cme-hoptimus`    | off        | Enable H-Optimus tissue morphology features (requires GPU + timm)
+`--cme-clusters`    | auto       | Number of KMeans clusters; when omitted, determined via Leiden community detection
+`--overwrite`       | off        | Delete cached checkpoints and recompute from scratch
 
 ### Model Selection
 
@@ -400,8 +432,27 @@ wsinsight run \
   --hplot-range-min -5 \
   --hplot-range-max 5 \
   --ncomp \
+  --cme \
   --export-geojson \
   --export-omecsv
+```
+
+### Run CME analysis on existing inference outputs
+
+```bash
+wsinsight cme \
+  --wsi-dir slides/ \
+  --results-dir results/
+```
+
+With H-Optimus morphology features and a fixed cluster count:
+
+```bash
+wsinsight cme \
+  --wsi-dir slides/ \
+  --results-dir results/ \
+  --cme-hoptimus \
+  --cme-clusters 10
 ```
 
 ### Run H-plot on existing inference outputs

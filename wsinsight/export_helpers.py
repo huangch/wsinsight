@@ -109,6 +109,18 @@ def build_export_csvs(
                     how="left",
                 )
 
+        # --- cme (join on minx, miny) ----------------------------------------
+        cme_csv = results_dir / "cme-outputs-csv" / "cells" / f"{slide_id}.csv"
+        if cme_csv.exists():
+            cdf = _read_csv(cme_csv)
+            new_cols = [c for c in cdf.columns if c not in df.columns]
+            if new_cols and "minx" in cdf.columns and "miny" in cdf.columns:
+                df = df.merge(
+                    cdf[["minx", "miny"] + new_cols],
+                    on=["minx", "miny"],
+                    how="left",
+                )
+
         _write_csv(df, out_csv)
         written.append(out_csv)
 

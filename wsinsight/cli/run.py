@@ -20,6 +20,7 @@ from platformdirs import user_cache_dir
 
 import wsinfer_zoo.client
 from .infer import infer as infer_command
+from .cme import cme as cme_command
 from .hplot import hplot as hplot_command
 from .ncomp import ncomp as ncomp_command
 from .patch import patch as patch_command
@@ -142,11 +143,6 @@ _INFER_PARAM_NAMES: tuple[str, ...] = (
     "patch_size_um",
     "patch_size_px",
     "overwrite",
-    # "cme_cellular",
-    # "cme_annotation",
-    # "cme_soft_mode",
-    # "cme_clustering_k",
-    # "cme_clustering_resolutions",
 )
 
 _HPLOT_PARAM_NAMES: tuple[str, ...] = (
@@ -170,6 +166,15 @@ _NCOMP_PARAM_NAMES: tuple[str, ...] = (
     "results_dir",
     "ncomp_max_neighbor_distance",
     "ncomp_k",
+    "overwrite",
+    "num_workers",
+)
+
+_CME_PARAM_NAMES: tuple[str, ...] = (
+    "wsi_dir",
+    "results_dir",
+    "cme_hoptimus",
+    "cme_clusters",
     "overwrite",
     "num_workers",
 )
@@ -629,6 +634,32 @@ def _select_kwargs(values: dict[str, Any], keys: tuple[str, ...]) -> dict[str, A
     help="Number of hops defining the ncomp neighborhood radius.",
 )
 @click.option(
+    "--cme",
+    is_flag=True,
+    default=False,
+    show_default=True,
+    help="Run cellular microenvironment (CME) analysis after inference.",
+)
+@click.option(
+    "--cme-hoptimus",
+    is_flag=True,
+    default=False,
+    show_default=True,
+    help=(
+        "Enable H-Optimus tissue morphology features for CME.  "
+        "Requires a GPU and the timm package.  Ignored unless --cme is set."
+    ),
+)
+@click.option(
+    "--cme-clusters",
+    default=None,
+    type=click.IntRange(min=2),
+    help=(
+        "Number of CME clusters (KMeans).  When omitted, determined "
+        "automatically via Leiden community detection.  Ignored unless --cme is set."
+    ),
+)
+@click.option(
     "--export-geojson",
     is_flag=True,
     default=False,
@@ -649,40 +680,6 @@ def _select_kwargs(values: dict[str, Any], keys: tuple[str, ...]) -> dict[str, A
         "'wsinsight export --omecsv'."
     ),
 )
-# @click.option(
-#     "--cme-cellular",
-#     is_flag=True,
-#     default=False,
-#     show_default=True,
-#     help="Run cellular-level cme analysis.",
-# )
-# @click.option(
-#     "--cme-annotation",
-#     is_flag=True,
-#     default=False,
-#     show_default=True,
-#     help="Run cellular-level cme analysis.",
-# )
-# @click.option(
-#     "--cme-soft-mode",
-#     is_flag=True,
-#     default=False,
-#     show_default=True,
-#     help="CME clustering is computed based on the probability of classification."
-#          "Otherwise, the categorization of classification.",
-# )
-# @click.option(
-#     "--cme-clustering-k",
-#     default=None,
-#     type=click.IntRange(min=0),
-#     help="the n-neighbors parameter using in clustering for cmes.",
-# )
-# @click.option(
-#     "--cme-clustering-resolutions",
-#     callback=_csv_to_list,
-#     default="0.5,1.0,2.0",
-#     help="Resolution parameter using in clustering for cmes.",
-# )
 def run(
     ctx: click.Context,
     *,
@@ -729,13 +726,11 @@ def run(
     ncomp: bool = False,
     ncomp_max_neighbor_distance: float = 25.0,
     ncomp_k: int = 2,
+    cme: bool = False,
+    cme_hoptimus: bool = False,
+    cme_clusters: int | None = None,
     export_geojson: bool = False,
     export_omecsv: bool = False,
-    # cme_cellular: bool = False,
-    # cme_annotation: bool = False,
-    # cme_soft_mode: bool = False,
-    # cme_clustering_k: int | None = None,
-    # cme_clustering_resolutions: List | None = None,
 ) -> None:
     """Run both patch extraction and inference workflows for a slide directory.
 
@@ -787,7 +782,11 @@ def run(
     if ncomp:
         ctx.invoke(ncomp_command, **_select_kwargs(params, _NCOMP_PARAM_NAMES))
 
-    # Stage 5 (optional): merged export to GeoJSON / OME-CSV.
+    # Stage 5 (optional): cellular microenvironment (CME) analysis.
+    if cme:
+        ctx.invoke(cme_command, **_select_kwargs(params, _CME_PARAM_NAMES))
+
+    # Stage 6 (optional): merged export to GeoJSON / OME-CSV.
     if export_geojson or export_omecsv:
         click.echo("\nMerging per-cell analytics into export CSVs...\n")
         build_export_csvs(results_dir, overwrite=True)

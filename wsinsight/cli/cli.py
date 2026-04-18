@@ -16,7 +16,7 @@ from .export import export
 from .hplot import hplot, hplot_finalize_cmd
 from .reg import reg
 from .ncomp import ncomp
-# from .cme import cme
+from .cme import cme
 
 _logging_levels = ["debug", "info", "warning", "error", "critical"]
 
@@ -59,4 +59,4 @@ cli.add_command(hplot)
 cli.add_command(hplot_finalize_cmd)
 cli.add_command(reg)
 cli.add_command(ncomp)
-# cli.add_command(cme)
+cli.add_command(cme)

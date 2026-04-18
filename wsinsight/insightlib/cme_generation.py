@@ -1040,6 +1040,7 @@ def cme_generation(
     # # device
     # device: Optional[str] = None,
     cme_soft_mode: bool = False,
+    overwrite: bool = False,
     # seed: int = 0,
 ) -> Dict[str, List[np.ndarray]]:
     """
@@ -1107,6 +1108,12 @@ def cme_generation(
     cme_cmes_output_dir.mkdir(exist_ok=True)
     cme_slide_graph_file = results_dir / "slide-graphs.joblib"
     cme_dgi_embeddings_file = results_dir / "dgi-embeddings.joblib"
+
+    # If overwrite requested, remove cached checkpoints so all phases re-run.
+    if overwrite:
+        for _ckpt in (cme_slide_graph_file, cme_dgi_embeddings_file):
+            if _ckpt.exists():
+                _ckpt.unlink()
     
     # 1) Build slides (reusing your funcs)
     slides = []
@@ -1267,7 +1274,7 @@ def cme_generation(
             cell_csv = cme_cells_output_dir / cme_csv_name
             cme_csv = cme_cmes_output_dir / cme_csv_name
             
-            if cell_csv.exists():
+            if not overwrite and cell_csv.exists():
                 continue
             
             mpp = get_avg_mpp(wsi_path)
@@ -1306,7 +1313,7 @@ def cme_generation(
             cell_csv = cme_cells_output_dir / cme_csv_name
             cme_csv = cme_cmes_output_dir / cme_csv_name
             
-            if cme_csv.exists():
+            if not overwrite and cme_csv.exists():
                 continue
             
             cme_detection_df = pd.read_csv(cell_csv)

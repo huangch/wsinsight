@@ -1,7 +1,7 @@
 Command reference
 =================
 
-Eight CLI entry points are available:
+Nine CLI entry points are available:
 
 ============================  ================================================================
 Command                       Purpose
@@ -9,9 +9,10 @@ Command                       Purpose
 ``wsinsight run``             One-shot workflow: tissue segmentation, patch extraction, model
                               inference, and optional spatial analytics and exports.
                               Orchestrates ``patch`` → ``infer`` → ``hplot`` → ``ncomp``
-                              → ``export``.  Pass ``--hplot`` / ``--ncomp`` to enable
-                              spatial analytics and ``--export-geojson`` / ``--export-omecsv``
-                              to write GeoJSON / OME-CSV files at the end of the run.
+                              → ``cme`` → ``export``.  Pass ``--hplot`` / ``--ncomp`` /
+                              ``--cme`` to enable spatial analytics and
+                              ``--export-geojson`` / ``--export-omecsv`` to write
+                              GeoJSON / OME-CSV files at the end of the run.
 ``wsinsight patch``           Segment tissue and cache patches to HDF5; safe to rerun to
                               resume interrupted jobs.
 ``wsinsight infer``           Reuse cached patches to run models and produce per-cell CSV
@@ -33,17 +34,24 @@ Command                       Purpose
                               For each target cell, builds a Delaunay graph, collects k-hop
                               neighbors, and records per-cell type counts and proportions.
                               Can also run inline via ``wsinsight run --ncomp``.
-``wsinsight export``          Merge all per-cell analytics (inference, H-plot, ncomp) into
-                              ``export-csv/`` and write GeoJSON and/or OME-CSV files.  Can
-                              be run after inference — and optionally after ``hplot`` /
-                              ``ncomp`` — without repeating the full pipeline.
+``wsinsight cme``             Cellular microenvironment (CME) analysis across a cohort of
+                              slides.  Builds per-slide Delaunay cell graphs, trains a
+                              global DGI encoder, clusters the embeddings, and writes
+                              per-cell CME labels plus annotation-level region merges.
+                              Can also run inline via ``wsinsight run --cme``.
+``wsinsight export``          Merge all per-cell analytics (inference, H-plot, ncomp, CME)
+                              into ``export-csv/`` and write GeoJSON and/or OME-CSV files.
+                              Can be run after inference — and optionally after ``hplot`` /
+                              ``ncomp`` / ``cme`` — without repeating the full pipeline.
 ============================  ================================================================
 
 Use ``run`` for simple single-machine jobs, and switch to the explicit ``patch`` → ``infer``
 flow when you need to resume work, share caches across models, or process slides on
 multiple nodes.  ``run`` is the only command that orchestrates all stages — ``infer``
-focuses solely on model inference.  Use the standalone ``hplot`` and ``ncomp`` commands
-to re-run analytics on existing inference outputs without repeating inference.  Run
+focuses solely on model inference.  Use the standalone ``hplot``, ``ncomp``, and ``cme``
+commands to re-run analytics on existing inference outputs without repeating inference.
+Note: CME is a cross-slide analysis (global DGI training + global clustering) and cannot be
+parallelized across GPU shards — run it after merging all per-shard inference outputs.  Run
 ``hplot-finalize`` to assemble the cohort-level summary after parallel ``hplot`` jobs.  Use
 ``reg`` to enrich earlier runs with region-level probabilities without re-running inference.
 All commands share the same URI-aware options for local folders, ``s3://`` buckets,
@@ -214,6 +222,35 @@ Per-cell neighborhood composition produced by ``ncomp`` or
      - Count of neighbors of each class; one column per model class
    * - ``neighborhood_<class>_prop``
      - Proportion of neighbors of each class; one column per model class
+
+
+``cme-outputs-csv/cells/<slide>.csv``
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Per-cell CME labels and features produced by ``cme`` or ``run --cme``.
+
+.. list-table::
+   :header-rows: 1
+   :widths: 35 65
+
+   * - Column
+     - Description
+   * - All columns from ``model-outputs-csv``
+     - Inherited inference + region columns
+   * - ``cme_cluster``
+     - Integer cluster label assigned by KMeans (or Leiden-derived k)
+   * - ``feature_normalized_*``
+     - Normalized DGI embedding features (one column per dimension)
+   * - ``feature_raw_*``
+     - Raw DGI embedding features (one column per dimension)
+
+
+``cme-outputs-csv/cmes/<slide>.csv``
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Annotation-level merged CME regions produced by ``cme`` or ``run --cme``.
+Adjacent cells sharing the same ``cme_cluster`` are dissolved into contiguous
+polygonal regions.
 
 
 ``graphs/<slide>.h5``

@@ -68,8 +68,11 @@ Command                       Purpose
                               inference outputs.  For each target cell, builds a Delaunay
                               graph, collects k-hop neighbors, and records per-cell type
                               counts and proportions.
-``wsinsight export``          Merge all per-cell analytics (inference, H-plot, ncomp) into
-                              ``export-csv/`` and write GeoJSON and/or OME-CSV files.
+``wsinsight cme``             Cellular microenvironment (CME) analysis across a cohort of
+                              slides.  Trains a global DGI encoder, clusters embeddings,
+                              and writes per-cell CME labels and annotation regions.
+``wsinsight export``          Merge all per-cell analytics (inference, H-plot, ncomp, CME)
+                              into ``export-csv/`` and write GeoJSON and/or OME-CSV files.
                               Can be run after inference without repeating the pipeline.
 ============================  ================================================================
 
@@ -78,7 +81,9 @@ for large cohorts, resumable jobs, or when you want to reuse the same patches ac
 multiple model configurations. Run ``hplot`` on completed cell-detection outputs to
 compute spatial tumour-microenvironment metrics, then ``hplot-finalize`` to assemble the
 cohort-level summary. Use ``ncomp`` to compute per-cell neighborhood composition on
-existing inference outputs. Use ``reg`` to enrich an earlier run with region-level
+existing inference outputs. Use ``cme`` to discover recurring cellular microenvironments
+across a cohort (note: CME is cross-slide and cannot be parallelized across GPU shards).
+Use ``reg`` to enrich an earlier run with region-level
 probabilities without re-running inference. All commands share the same URI-aware options
 and support local folders, ``s3://`` buckets, ``gdc-manifest://`` manifests, and
 ``image-list://`` file lists.
@@ -395,14 +400,54 @@ Example::
         --num-workers 16
 
 
+Cellular microenvironment (CME)
+-------------------------------
+
+``wsinsight cme`` discovers recurring cellular microenvironments across a cohort
+of whole-slide images.  It builds per-slide Delaunay cell graphs, trains a global
+Deep Graph Infomax (DGI) encoder across all slides, clusters the resulting
+embeddings, and writes per-cell CME labels plus annotation-level region merges.
+
+Because CME performs global DGI training and global clustering across all slides,
+it cannot be parallelized across GPU shards.  In multi-GPU workflows, run ``cme``
+after merging all per-shard inference outputs into a single ``--results-dir``.
+
+The same analysis can be run inline via ``wsinsight run --cme``.
+
+Required options:
+
+* ``-i / --wsi-dir`` — slide directory (used for slide enumeration and µm-per-pixel
+  spacing; images are read only when ``--cme-hoptimus`` is set).
+* ``-o / --results-dir`` — directory containing a ``model-outputs-csv/`` subfolder from
+  a prior inference run.
+
+Tuning options:
+
+* ``--cme-hoptimus`` — enable H-Optimus tissue morphology features in addition to
+  k-hop cell-type composition.  Requires a GPU and the ``timm`` package.
+* ``--cme-clusters`` — number of KMeans clusters.  When omitted, the optimal number
+  is determined automatically via a Leiden community-detection sweep.
+* ``--overwrite`` — delete cached checkpoints and recompute all CME outputs.
+* ``--num-workers`` (default 8) — number of workers for GeoJSON export.
+
+Example::
+
+    wsinsight cme \
+        --wsi-dir slides/ \
+        --results-dir results/ \
+        --cme-hoptimus \
+        --cme-clusters 10
+
+
 Export outputs
 --------------
 
 The ``export-csv/`` directory contains merged per-cell CSVs that left-join
 all available analysis outputs into a single file per slide.  It combines columns from
 ``model-outputs-csv/`` (base inference + region registration), ``hplot-outputs-csv/cells/``
-(H-plot per-cell features), and ``ncomp-outputs-csv/`` (neighborhood composition) on
-shared geometry keys (``minx``/``miny`` and ``center_x``/``center_y``).
+(H-plot per-cell features), ``ncomp-outputs-csv/`` (neighborhood composition), and
+``cme-outputs-csv/cells/`` (CME labels and features) on shared geometry keys
+(``minx``/``miny`` and ``center_x``/``center_y``).
 
 This can be produced programmatically via ``wsinsight.export_helpers.build_export_csvs()``.
 
@@ -438,6 +483,12 @@ Output structure
    ├── hplot-outputs.csv       # cohort-level H-plot summary (after hplot-finalize)
    ├── hmetrics-outputs.csv    # cohort-level H-metrics summary (after hplot-finalize)
    ├── ncomp-outputs-csv/      # per-cell neighborhood composition
+   ├── cme-outputs-csv/        # CME analysis
+   │   ├── cells/              # per-cell CME labels + features
+   │   └── cmes/               # annotation-level CME regions
+   ├── cme-outputs-geojson/    # CME GeoJSON exports
+   │   ├── cells/              # cell detections with CME labels
+   │   └── cmes/               # CME region annotations
    ├── graphs/                 # cached Delaunay triangulations (HDF5, shared by hplot/ncomp)
    ├── export-csv/             # merged per-cell CSV (inference + hplot + ncomp)
    ├── export-csv/             # merged per-cell CSV (wsinsight export)
