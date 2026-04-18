@@ -35,6 +35,7 @@ from .. import errors
 from .insight_helpers import compute_cell_center_points
 from .insight_helpers import delaunay_triangulation
 from .insight_helpers import create_adjacency_list_fast  # adjacency builder
+from .graph_cache import get_or_build_delaunay
 from ..uri_path import URIPath
 from ..wsi import _validate_wsi_directory, get_avg_mpp
 from ..insightlib.vorononi_cme_region_helper import merge_same_label_by_shared_edges_iterative, remap_edges_to_valid_indices
@@ -711,6 +712,8 @@ def prepare_slide_graph(
     knn_k: int = 3,
     knn_sigma_um: float = 60.0,
     device: Optional[str] = None,
+    graph_cache_dir: Optional[Path] = None,
+    slide_id: Optional[str] = None,
     mode: str = "hard",
     # seed: int = 0
 ) -> Dict[str, np.ndarray]:
@@ -730,9 +733,15 @@ def prepare_slide_graph(
     centers_px = df[["center_x", "center_y"]].to_numpy(dtype=np.float32)
     N = len(df)
 
-    # Delaunay + cap in px (your function needs px)
+    # Delaunay + cap in px — reuse shared graph cache when available
     max_edge_len_px = float(max_edge_len_um) / float(mpp_um_per_px)
-    edges_df = delaunay_triangulation(centers_px, max_edge_len_px)  # columns: source,target,length
+    if graph_cache_dir is not None and slide_id is not None:
+        centers_int = np.asarray(centers_px, dtype=np.int32)
+        edges_df = get_or_build_delaunay(
+            graph_cache_dir, slide_id, centers_int, mpp_um_per_px, max_edge_len_px
+        )
+    else:
+        edges_df = delaunay_triangulation(centers_px, max_edge_len_px)
 
     # edge_index (undirected), drop isolated
     edge_index = to_edge_index(edges_df, src_col="source", dst_col="target", undirected=True, drop_self_loops=True)
@@ -993,10 +1002,11 @@ def estimate_cmes_from_Z_list(
 def _prepare_slide_graph_worker(i, wsi_path, csv_path, ds,
         max_edge_len_um, class_order, k_hops, alpha,
         sample_frac, sample_count, pca_dim, knn_k, knn_sigma_um,
-        device, cme_soft_mode, use_hoptimus):
+        device, cme_soft_mode, use_hoptimus, graph_cache_dir):
     """Background worker to build one slide graph and return it with index."""
     df = pd.read_csv(csv_path)
     mpp = get_avg_mpp(wsi_path)
+    slide_id = Path(wsi_path).stem
     s = prepare_slide_graph(
         df,
         mpp_um_per_px=mpp,
@@ -1007,6 +1017,8 @@ def _prepare_slide_graph_worker(i, wsi_path, csv_path, ds,
         sample_frac=sample_frac, sample_count=sample_count,
         pca_dim=pca_dim, knn_k=knn_k, knn_sigma_um=knn_sigma_um,
         device=device,
+        graph_cache_dir=graph_cache_dir,
+        slide_id=slide_id,
         mode="soft" if cme_soft_mode else "hard",
     )
     return i, s
@@ -1174,6 +1186,9 @@ def cme_generation(
         slides = [None] * len(slide_paths)
         classes = None
         
+        graph_cache_dir = Path(str(results_dir)) / "graphs"
+        graph_cache_dir.mkdir(parents=True, exist_ok=True)
+        
         ctx = mp.get_context("spawn")  # safer with NumPy/pandas
         tasks = []
         for i, (wsi_path, csv_path) in enumerate(zip(slide_paths, model_output_paths)):
@@ -1183,7 +1198,7 @@ def cme_generation(
             tasks.append((i, wsi_path, csv_path, ds,
                           max_edge_len_um, class_order, k_hops, alpha,
                           sample_frac, sample_count, pca_dim, knn_k, knn_sigma_um,
-                          device, cme_soft_mode, use_hoptimus))
+                          device, cme_soft_mode, use_hoptimus, graph_cache_dir))
             
         num_workers = pick_workers_safe(max_workers=os.cpu_count()-8, min_workers=8)
         
