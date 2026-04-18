@@ -1,6 +1,6 @@
 #!/bin/bash
 
-tmux -u new-session -d -s wsinsight
+tmux new-session -d -s wsinsight
 
 # Build left column: 4 rows
 tmux split-window -v -t wsinsight:0.0
@@ -30,5 +30,5 @@ tmux send-keys -t wsinsight:0.5 "CUDA_VISIBLE_DEVICES=6 wsinsight run -b 20 -i d
 tmux send-keys -t wsinsight:0.6 "CUDA_VISIBLE_DEVICES=3 wsinsight run -b 20 -i datasets/slides_part_03.txt -z /app/zoo/huangch/10x-brca-CellViT-SAM-H-x40/main -o results/primary-brca" Enter
 tmux send-keys -t wsinsight:0.7 "CUDA_VISIBLE_DEVICES=7 wsinsight run -b 20 -i datasets/slides_part_07.txt -z /app/zoo/huangch/10x-brca-CellViT-SAM-H-x40/main -o results/primary-brca" Enter
 
-tmux -u attach -t wsinsight
+tmux attach -t wsinsight
 (ws

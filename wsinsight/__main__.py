@@ -2,13 +2,17 @@
 
 from __future__ import annotations
 
-import multiprocessing as mp
 import os
 
-import click
-import torch
+# Force ASCII progress bars — must be set before tqdm is imported.
+os.environ.setdefault("TQDM_ASCII", " #")
 
-from .cli.cli import cli
+import multiprocessing as mp  # noqa: E402
+
+import click  # noqa: E402
+import torch  # noqa: E402
+
+from .cli.cli import cli  # noqa: E402
 
 
 def main() -> None:
@@ -17,7 +21,6 @@ def main() -> None:
     os.environ.setdefault("OPENBLAS_NUM_THREADS", "1")
     os.environ.setdefault("MKL_NUM_THREADS", "1")
     os.environ.setdefault("NUMEXPR_NUM_THREADS", "1")
-    os.environ.setdefault("TQDM_ASCII", "true")
     mp.set_start_method("spawn", force=True)
     torch.multiprocessing.set_sharing_strategy("file_system")
 
