@@ -32,6 +32,7 @@ from .insight_helpers import (
     delaunay_triangulation,
     k_hop_neighbors,
 )
+from .graph_cache import get_or_build_delaunay
 
 _logger = logging.getLogger(__name__)
 
@@ -53,6 +54,7 @@ def _worker(
     ncomp_k: int,
     slide_mpp_lookup: Mapping[str, float] | None = None,
     overwrite: bool = False,
+    graph_cache_dir: Path | URIPath | None = None,
     pbar_position: int = 1,
 ) -> tuple[str, dict | None]:
     """Process a single slide to compute per-cell neighborhood composition."""
@@ -108,9 +110,11 @@ def _worker(
     nodes_df = compute_cell_center_points(nodes_df)
     _step("cell centers")
 
-    edges_df = delaunay_triangulation(
-        nodes_df[["center_x", "center_y"]].values, max_neighbor_distance_px
-    )
+    centers = nodes_df[["center_x", "center_y"]].values
+    if graph_cache_dir is not None:
+        edges_df = get_or_build_delaunay(graph_cache_dir, slide_id, centers, mpp, max_neighbor_distance_px)
+    else:
+        edges_df = delaunay_triangulation(centers, max_neighbor_distance_px)
     _step("triangulation")
 
     if "source" not in edges_df.columns or "target" not in edges_df.columns:
@@ -260,6 +264,9 @@ def ncomp_generation(
     ncomp_dir = results_dir / "ncomp-outputs-csv"
     ncomp_dir.mkdir(parents=True, exist_ok=True)
 
+    graph_cache_dir = results_dir / "graphs"
+    graph_cache_dir.mkdir(parents=True, exist_ok=True)
+
     failed_generation: list[str] = []
     jobs = []
     for wsi_path in slide_paths:
@@ -283,6 +290,7 @@ def ncomp_generation(
                 ncomp_k,
                 slide_mpp_lookup,
                 overwrite,
+                graph_cache_dir,
                 (i % num_workers) + 1,
             ): wsi_path.stem
             for i, (wsi_path, model_output_csv) in enumerate(jobs)

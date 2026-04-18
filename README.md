@@ -205,6 +205,8 @@ Pick `run` when you want a one-liner for single slides or small batches; switch 
 ├── hmetrics-outputs.csv            Aggregated H-plot metrics (all slides)
 ├── ncomp-outputs-csv/
 │   └── <slide>.csv                 Per-cell neighborhood composition
+├── graphs/
+│   └── <slide>.h5                  Cached Delaunay triangulation (shared by hplot/ncomp)
 ├── export-csv/
 │   └── <slide>.csv                 Merged per-cell CSV (inference + hplot + ncomp)
 ├── export-csv/
@@ -217,6 +219,25 @@ Pick `run` when you want a one-liner for single slides or small batches; switch 
 ```
 
 ## Output File Formats
+
+### `patches/<slide>.h5`
+
+Cached patch coordinates (and optionally images) produced by `patch` or `run`. One HDF5 file per slide.
+
+Dataset / Attribute                         | Shape / Type            | Description
+------------------------------------------- | ----------------------- | -----------------------------------------------------------
+`/coords`                                   | (N, 2) int32            | Top-left patch coordinates (x, y) at level 0
+`/coords` → `patch_size` (attr)             | int32                   | Side length of each patch in pixels
+`/coords` → `patch_level` (attr)            | int32                   | WSI magnification level (always 0)
+`/coords` → `patch_spacing_um_px` (attr)    | float64                 | Microns-per-pixel used for coordinate calculation
+`/coords` → `tile_dim` (attr, optional)     | int32[2]                | Tiling dimensions `[width, height]` for end-to-end models
+`/images` (optional)                        | (N, H, W, 3) uint8      | RGB patch images (when `--save-images` is used)
+`/polygons/coords` (optional)               | (K, 2) float32          | Tissue polygon vertices (ragged array)
+`/polygons/offsets` (optional)              | (M+1,) int64            | Ragged array offsets: polygon *i* = `coords[offsets[i]:offsets[i+1]]`
+`/slide` → `slide_path` (attr, optional)    | utf-8 string            | Original WSI file path
+`/slide` → `slide_mpp` (attr, optional)     | float64                 | Microns-per-pixel of the WSI
+`/slide` → `slide_width` (attr, optional)   | float64                 | WSI width in pixels
+`/slide` → `slide_height` (attr, optional)  | float64                 | WSI height in pixels
 
 ### `model-outputs-csv/<slide>.csv`
 
@@ -287,6 +308,25 @@ Column                         | Description
 `neighborhood_size`            | Number of k-hop graph neighbors (excluding self)
 `neighborhood_<class>_count`   | Count of neighbors of each class; one column per model class
 `neighborhood_<class>_prop`    | Proportion of neighbors of each class; one column per model class
+
+### `graphs/<slide>.h5`
+
+Cached Delaunay triangulation shared by `hplot` and `ncomp`. Created on the first run and reused on subsequent runs to skip the expensive `scipy.spatial.Delaunay` computation. The cache stores **unpruned** edges; each command applies its own distance threshold at load time.
+
+The file is automatically invalidated and rebuilt when the underlying `model-outputs-csv/<slide>.csv` changes (detected via cell count and a SHA-256 hash of cell centres).
+
+HDF5 layout:
+
+Dataset / Attribute            | Shape / Type | Description
+------------------------------ | ------------ | ---------------------------------------------------------------
+`num_cells` (attr)             | int64        | Row count — fast staleness check
+`mpp` (attr)                   | float64      | Microns-per-pixel used for cell centre computation
+`centers_hash` (attr)          | bytes        | SHA-256 of `cell_centers` bytes — bulletproof staleness check
+`cell_centers`                 | (N, 2) int32 | Cell centres (`center_x`, `center_y`), row-aligned with the CSV
+`simplices`                    | (M, 3) int32 | Raw Delaunay triangles (3 vertex indices each)
+`edges_source`                 | (E,) int32   | Unique undirected edges — source vertex
+`edges_target`                 | (E,) int32   | Unique undirected edges — target vertex
+`edges_length`                 | (E,) float64 | Euclidean edge length in pixels
 
 ### `export-csv/<slide>.csv`
 

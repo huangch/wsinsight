@@ -29,6 +29,49 @@ def compute_cell_center_points(model_output_df):
     return model_output_df
 
 
+def _delaunay_full(point2d_ary):
+    """Run Delaunay triangulation and return unpruned results.
+
+    Args:
+        point2d_ary: N x 2 numpy array for center_x, center_y of nuclei.
+
+    Returns:
+        (simplices, edges_source, edges_target, edges_length) where
+        *simplices* is (M, 3) int32, and the edge arrays are (E,) with all
+        unique undirected edges — no distance threshold applied.
+    """
+    tri = Delaunay(point2d_ary)
+
+    # Extract all 3 edge pairs from every simplex in one vectorised step
+    simplices = tri.simplices.astype(np.int32)  # shape (M, 3)
+    pairs = np.concatenate([
+        simplices[:, [0, 1]],
+        simplices[:, [0, 2]],
+        simplices[:, [1, 2]],
+    ], axis=0)  # shape (3M, 2)
+
+    # Canonicalise (min, max) so each undirected edge is represented once, then deduplicate
+    pairs = np.sort(pairs, axis=1)
+    pairs = np.unique(pairs, axis=0)
+
+    src = pairs[:, 0].astype(np.int32)
+    dst = pairs[:, 1].astype(np.int32)
+    diff = point2d_ary[src] - point2d_ary[dst]
+    lengths = np.linalg.norm(diff, axis=1)
+
+    return simplices, src, dst, lengths
+
+
+def prune_edges(edges_source, edges_target, edges_length, max_edge_length):
+    """Filter edges by a distance threshold and return a DataFrame."""
+    mask = edges_length < max_edge_length
+    return pd.DataFrame({
+        "source": edges_source[mask],
+        "target": edges_target[mask],
+        "length": edges_length[mask],
+    })
+
+
 def delaunay_triangulation(point2d_ary, max_edge_length):
     """
     Performs Delaunay triangulation on cell center points and filters edges by length.
@@ -41,30 +84,8 @@ def delaunay_triangulation(point2d_ary, max_edge_length):
         A DataFrame of edges with 'source', 'target', and 'length' columns,
         filtered to edges shorter than max_edge_length.
     """
-    tri = Delaunay(point2d_ary)
-
-    # Extract all 3 edge pairs from every simplex in one vectorised step
-    s = tri.simplices  # shape (M, 3)
-    pairs = np.concatenate([
-        s[:, [0, 1]],
-        s[:, [0, 2]],
-        s[:, [1, 2]],
-    ], axis=0)  # shape (3M, 2)
-
-    # Canonicalise (min, max) so each undirected edge is represented once, then deduplicate
-    pairs = np.sort(pairs, axis=1)
-    pairs = np.unique(pairs, axis=0)
-
-    src, dst = pairs[:, 0], pairs[:, 1]
-    diff = point2d_ary[src] - point2d_ary[dst]
-    lengths = np.linalg.norm(diff, axis=1)
-
-    mask = lengths < max_edge_length
-    return pd.DataFrame({
-        "source": src[mask],
-        "target": dst[mask],
-        "length": lengths[mask],
-    })
+    _simplices, src, dst, lengths = _delaunay_full(point2d_ary)
+    return prune_edges(src, dst, lengths, max_edge_length)
 
 
 # def create_adjacency_list(edges_df):

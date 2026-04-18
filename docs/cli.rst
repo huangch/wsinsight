@@ -55,6 +55,42 @@ points to a plain local text file it is automatically coerced to ``image-list://
 Output file formats
 -------------------
 
+``patches/<slide>.h5``
+~~~~~~~~~~~~~~~~~~~~~~
+
+Cached patch coordinates (and optionally images) produced by ``patch`` or ``run``.
+One HDF5 file per slide.
+
+.. list-table::
+   :header-rows: 1
+   :widths: 40 60
+
+   * - Dataset / Attribute
+     - Description
+   * - ``/coords`` (N, 2) int32
+     - Top-left patch coordinates (x, y) at level 0
+   * - ``/coords`` → ``patch_size`` (attr, int32)
+     - Side length of each patch in pixels
+   * - ``/coords`` → ``patch_level`` (attr, int32)
+     - WSI magnification level (always 0)
+   * - ``/coords`` → ``patch_spacing_um_px`` (attr, float64)
+     - Microns-per-pixel used for coordinate calculation
+   * - ``/coords`` → ``tile_dim`` (attr, optional, int32[2])
+     - Tiling dimensions ``[width, height]`` for end-to-end models
+   * - ``/images`` (optional, N×H×W×3 uint8)
+     - RGB patch images (when ``--save-images`` is used)
+   * - ``/polygons/coords`` (optional, K×2 float32)
+     - Tissue polygon vertices (ragged array)
+   * - ``/polygons/offsets`` (optional, M+1 int64)
+     - Ragged array offsets: polygon *i* = ``coords[offsets[i]:offsets[i+1]]``
+   * - ``/slide`` → ``slide_path`` (attr, optional)
+     - Original WSI file path
+   * - ``/slide`` → ``slide_mpp`` (attr, optional, float64)
+     - Microns-per-pixel of the WSI
+   * - ``/slide`` → ``slide_width``, ``slide_height`` (attr, optional, float64)
+     - WSI dimensions in pixels
+
+
 ``model-outputs-csv/<slide>.csv``
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
@@ -178,6 +214,42 @@ Per-cell neighborhood composition produced by ``ncomp`` or
      - Count of neighbors of each class; one column per model class
    * - ``neighborhood_<class>_prop``
      - Proportion of neighbors of each class; one column per model class
+
+
+``graphs/<slide>.h5``
+~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Cached Delaunay triangulation shared by ``hplot`` and ``ncomp``.  Created on
+the first run and reused on subsequent runs to skip the expensive
+``scipy.spatial.Delaunay`` computation.  The cache stores **unpruned** edges;
+each command applies its own distance threshold at load time.
+
+The file is automatically invalidated and rebuilt when the underlying
+``model-outputs-csv/<slide>.csv`` changes (detected via cell count and a
+SHA-256 hash of cell centres).
+
+.. list-table::
+   :header-rows: 1
+   :widths: 35 65
+
+   * - Dataset / Attribute
+     - Description
+   * - ``num_cells`` (attr)
+     - Row count — fast staleness check
+   * - ``mpp`` (attr)
+     - Microns-per-pixel used for cell centre computation
+   * - ``centers_hash`` (attr)
+     - SHA-256 of ``cell_centers`` bytes — bulletproof staleness check
+   * - ``cell_centers`` (N, 2) int32
+     - Cell centres (``center_x``, ``center_y``), row-aligned with the CSV
+   * - ``simplices`` (M, 3) int32
+     - Raw Delaunay triangles (3 vertex indices each)
+   * - ``edges_source`` (E,) int32
+     - Unique undirected edges — source vertex
+   * - ``edges_target`` (E,) int32
+     - Unique undirected edges — target vertex
+   * - ``edges_length`` (E,) float64
+     - Euclidean edge length in pixels
 
 
 ``export-csv/<slide>.csv``

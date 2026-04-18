@@ -284,7 +284,9 @@ H-plot analysis
 ``wsinsight hplot`` computes H-plot spatial metrics from existing cell-detection
 inference outputs inside ``--results-dir``.  It builds a proximity graph over detected
 cells, identifies tumour-core regions, and calculates layer-wise abundance profiles for
-the requested cell types.
+the requested cell types.  The Delaunay triangulation is cached in
+``graphs/<slide>.h5`` and shared with ``ncomp`` (see
+:ref:`Neighborhood composition <Neighborhood composition>` for details).
 
 Required options:
 
@@ -360,6 +362,14 @@ cell-detection inference outputs.  For each target cell (or every cell when no
 target types are given), it builds a Delaunay proximity graph, computes k-hop
 neighbors, and records the cell-type composition of each cell's local neighborhood.
 
+Both ``hplot`` and ``ncomp`` cache the Delaunay triangulation in
+``graphs/<slide>.h5`` under the results directory.  The first command to run
+(whichever executes first) writes the cache; subsequent commands reuse it, skipping
+the expensive ``scipy.spatial.Delaunay`` computation.  The cache stores unpruned
+edges so that different ``--max-neighbor-distance`` values are served from the same
+file.  If the underlying inference outputs change, the cache is automatically
+invalidated via a SHA-256 hash of the cell centres.
+
 The same analysis can be run inline via ``wsinsight run --ncomp``.
 
 Required options:
@@ -428,6 +438,7 @@ Output structure
    ├── hplot-outputs.csv       # cohort-level H-plot summary (after hplot-finalize)
    ├── hmetrics-outputs.csv    # cohort-level H-metrics summary (after hplot-finalize)
    ├── ncomp-outputs-csv/      # per-cell neighborhood composition
+   ├── graphs/                 # cached Delaunay triangulations (HDF5, shared by hplot/ncomp)
    ├── export-csv/             # merged per-cell CSV (inference + hplot + ncomp)
    ├── export-csv/             # merged per-cell CSV (wsinsight export)
    ├── export-geojson/         # GeoJSON export (wsinsight export --geojson)

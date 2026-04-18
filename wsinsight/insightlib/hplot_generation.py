@@ -27,6 +27,7 @@ from .insight_helpers import (compute_cell_center_points,
                               compute_hplot,
                               compute_hmetrics,
                               )
+from .graph_cache import get_or_build_delaunay
 
 _WORKER_STEPS = [
     "load CSV",
@@ -57,6 +58,7 @@ def _worker(
     samples_with_valid_range_only: bool,
     slide_mpp_lookup: Mapping[str, float] | None = None,
     overwrite: bool = False,
+    graph_cache_dir: Path | URIPath | None = None,
     pbar_position: int = 1,
 ):
     """Process a single slide to build cell layers, save intermediates, and compute metrics."""
@@ -135,7 +137,11 @@ def _worker(
     nodes_df = compute_cell_center_points(nodes_df)
     _step("cell centers")
 
-    edges_df = delaunay_triangulation(nodes_df[["center_x", "center_y"]].values, max_neighbor_distance_px)
+    centers = nodes_df[["center_x", "center_y"]].values
+    if graph_cache_dir is not None:
+        edges_df = get_or_build_delaunay(graph_cache_dir, slide_id, centers, mpp, max_neighbor_distance_px)
+    else:
+        edges_df = delaunay_triangulation(centers, max_neighbor_distance_px)
     _step("triangulation")
 
     if "source" not in edges_df.columns or "target" not in edges_df.columns:
@@ -485,6 +491,9 @@ def hplot_generation(
         }
     )
 
+    graph_cache_dir = results_dir / "graphs"
+    graph_cache_dir.mkdir(parents=True, exist_ok=True)
+
     jobs = []
     for wsi_path, model_output_csv in zip(slide_paths, model_output_paths):
         if not model_output_csv.exists():
@@ -506,6 +515,7 @@ def hplot_generation(
                 hplot_samples_with_valid_range_only,
                 slide_mpp_lookup,
                 overwrite,
+                graph_cache_dir,
             )
         )
 
