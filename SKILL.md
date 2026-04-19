@@ -441,23 +441,220 @@ hplot = pd.read_csv("results/hplot-outputs.csv")
 
 ---
 
-## 8. URI & Remote Data Support
+## 8. Acquiring a TCGA Slide Manifest via GDC API
+
+The NCI Genomic Data Commons (GDC) hosts all TCGA, TARGET, and other NCI
+program data.  Its REST API can return **manifest files** directly — no
+`gdc-client` binary is needed.  The manifest is a TSV listing slide UUIDs and
+filenames; WSInsight then downloads the actual slides on demand during
+inference via the GDC data endpoint (`https://api.gdc.cancer.gov/data/{uuid}`)
+with automatic retries and MD5 verification.
+
+### 8.1 Generating a Manifest
+
+POST to `https://api.gdc.cancer.gov/files` with `return_type=manifest`:
+
+```bash
+curl --request POST \
+  --header "Content-Type: application/json" \
+  --data '{
+    "filters": {
+        "op": "and",
+        "content": [
+            {
+                "op": "=",
+                "content": {
+                    "field": "cases.project.project_id",
+                    "value": "TCGA-BRCA"
+                }
+            },
+            {
+                "op": "=",
+                "content": {
+                    "field": "data_type",
+                    "value": "Slide Image"
+                }
+            },
+            {
+                "op": "=",
+                "content": {
+                    "field": "experimental_strategy",
+                    "value": "Diagnostic Slide"
+                }
+            }
+        ]
+    },
+    "return_type": "manifest",
+    "size": "99999"
+  }' \
+  'https://api.gdc.cancer.gov/files' \
+  > tcga-brca-dx-manifest.tsv
+```
+
+**Key parameters:**
+
+| Parameter       | Value              | Purpose                                          |
+| --------------- | ------------------ | ------------------------------------------------ |
+| `return_type`   | `manifest`         | Returns TSV manifest instead of JSON metadata    |
+| `size`          | `99999`            | Max results (default is 10 — always override)    |
+| `filters`       | JSON object        | GDC filter syntax (see below)                    |
+
+### 8.2 Filter Fields for Slide Images
+
+| Field                            | Values                                              | Notes                                   |
+| -------------------------------- | --------------------------------------------------- | --------------------------------------- |
+| `cases.project.project_id`       | `TCGA-BRCA`, `TCGA-LUAD`, etc.                     | Required — selects the cohort           |
+| `data_type`                      | `Slide Image`                                       | Required — filters to WSI files         |
+| `experimental_strategy`          | `Diagnostic Slide` or `Tissue Slide`                | Diagnostic = formalin-fixed; Tissue = frozen section |
+| `data_format`                    | `SVS`                                               | Optional — all TCGA slides are SVS      |
+| `cases.submitter_id`             | `TCGA-A7-A0CE`, ...                                | Optional — filter to specific cases     |
+
+Filters use the GDC query DSL with operators: `=`, `!=`, `in`, `and`, `or`.
+Nested filters are combined with `"op": "and"` at the top level.
+
+### 8.3 Common TCGA Project IDs
+
+| Cancer Type                  | Project ID    |
+| ---------------------------- | ------------- |
+| Breast invasive carcinoma    | `TCGA-BRCA`   |
+| Lung adenocarcinoma          | `TCGA-LUAD`   |
+| Lung squamous cell carcinoma | `TCGA-LUSC`   |
+| Prostate adenocarcinoma      | `TCGA-PRAD`   |
+| Pancreatic adenocarcinoma    | `TCGA-PAAD`   |
+| Colon adenocarcinoma         | `TCGA-COAD`   |
+| Rectum adenocarcinoma        | `TCGA-READ`   |
+| Glioblastoma multiforme      | `TCGA-GBM`    |
+| Ovarian serous cystadenocarcinoma | `TCGA-OV` |
+| Uterine corpus endometrial   | `TCGA-UCEC`   |
+| Kidney renal clear cell      | `TCGA-KIRC`   |
+| Head and neck squamous cell  | `TCGA-HNSC`   |
+| Liver hepatocellular         | `TCGA-LIHC`   |
+| Stomach adenocarcinoma       | `TCGA-STAD`   |
+| Bladder urothelial           | `TCGA-BLCA`   |
+| Skin cutaneous melanoma      | `TCGA-SKCM`   |
+
+### 8.4 Manifest Format
+
+The GDC API returns a TSV with these columns:
+
+```text
+id	filename	md5	size	state
+UUID-1	TCGA-A7-A0CE-01Z-00-DX1.svs	abc123...	234567890	released
+UUID-2	TCGA-A7-A13E-01Z-00-DX1.svs	def456...	345678901	released
+```
+
+WSInsight's `URIPath` reads this natively — it looks for `id`/`file_id` and
+`filename`/`file_name` columns, plus optional `md5` for checksum verification.
+
+### 8.5 Access Control
+
+- **TCGA diagnostic and tissue slides are open-access** — no token needed.
+- For controlled-access data (e.g. some TARGET projects), obtain an
+  authentication token from the [GDC Data Portal](https://portal.gdc.cancer.gov/).
+  There is no CLI flag for the token; pass it programmatically via the `token`
+  (or `token_path`) keyword argument on `URIPath`.  For typical TCGA workflows
+  this is not required.
+
+### 8.6 Combining Filters
+
+To select only specific cases within a project, use `"op": "in"`:
+
+```bash
+curl --request POST \
+  --header "Content-Type: application/json" \
+  --data '{
+    "filters": {
+        "op": "and",
+        "content": [
+            {
+                "op": "in",
+                "content": {
+                    "field": "cases.submitter_id",
+                    "value": ["TCGA-A7-A0CE", "TCGA-A7-A13E", "TCGA-BH-A0B3"]
+                }
+            },
+            {
+                "op": "=",
+                "content": {
+                    "field": "data_type",
+                    "value": "Slide Image"
+                }
+            },
+            {
+                "op": "=",
+                "content": {
+                    "field": "experimental_strategy",
+                    "value": "Diagnostic Slide"
+                }
+            }
+        ]
+    },
+    "return_type": "manifest",
+    "size": "99999"
+  }' \
+  'https://api.gdc.cancer.gov/files' \
+  > tcga-brca-subset-manifest.tsv
+```
+
+### 8.7 End-to-End Example
+
+```bash
+# 1. Download manifest for all TCGA-BRCA diagnostic slides
+curl --request POST \
+  --header "Content-Type: application/json" \
+  --data '{
+    "filters": {
+        "op": "and",
+        "content": [
+            {"op": "=", "content": {"field": "cases.project.project_id", "value": "TCGA-BRCA"}},
+            {"op": "=", "content": {"field": "data_type", "value": "Slide Image"}},
+            {"op": "=", "content": {"field": "experimental_strategy", "value": "Diagnostic Slide"}}
+        ]
+    },
+    "return_type": "manifest",
+    "size": "99999"
+  }' \
+  'https://api.gdc.cancer.gov/files' \
+  > tcga-brca-dx-manifest.tsv
+
+# 2. Verify slide count (header + data lines)
+wc -l tcga-brca-dx-manifest.tsv
+
+# 3. Run WSInsight on the manifest
+wsinsight run \
+  --wsi-dir "gdc-manifest://$(pwd)/tcga-brca-dx-manifest.tsv" \
+  --results-dir results-brca/ \
+  --model breast-tumor-resnet34.tcga-brca \
+  --batch-size 32
+```
+
+WSInsight downloads each slide on demand via `https://api.gdc.cancer.gov/data/{uuid}`,
+caches it locally under the directory set by `WSINSIGHT_REMOTE_CACHE_DIR`
+(defaults to `~/.cache/wsinsight` via `platformdirs.user_cache_dir`), and
+processes it.
+
+---
+
+## 9. URI & Remote Data Support
 
 `--wsi-dir` and `--results-dir` accept:
 
-| Scheme               | Example                                    |
-| -------------------- | ------------------------------------------ |
-| Local path           | `slides/` or `/data/slides`                |
-| S3                   | `s3://bucket/prefix`                       |
-| GDC manifest         | `gdc://path/to/manifest.tsv`              |
-| Image list           | `image-list:///path/to/filelist.txt`       |
+| Scheme               | Example                                                    |
+| -------------------- | ---------------------------------------------------------- |
+| Local path           | `slides/` or `/data/slides`                                |
+| S3                   | `s3://bucket/prefix`                                       |
+| GDC manifest         | `gdc-manifest:///absolute/path/to/manifest.tsv`            |
+| Image list           | `image-list:///path/to/filelist.txt`                       |
 
 A plain local `.txt` file passed as `--wsi-dir` is auto-coerced to
 `image-list://`.  S3 access requires `S3_STORAGE_OPTIONS` to be set.
 
+**Important:** The GDC manifest URI scheme is `gdc-manifest://` (not `gdc://`).
+The path must be absolute (triple slash: `gdc-manifest:///absolute/path`).
+
 ---
 
-## 9. Error Recovery & Troubleshooting
+## 10. Error Recovery & Troubleshooting
 
 | Symptom                              | Cause                                 | Fix                                                         |
 | ------------------------------------ | ------------------------------------- | ----------------------------------------------------------- |
@@ -472,7 +669,7 @@ A plain local `.txt` file passed as `--wsi-dir` is auto-coerced to
 
 ---
 
-## 10. Agent Decision Guide
+## 11. Agent Decision Guide
 
 Use this flowchart when deciding which command(s) to run:
 
@@ -486,6 +683,9 @@ Has the user provided WSIs?
 │        ├─ Need ncomp?   → wsinsight ncomp
 │        ├─ Need CME?     → wsinsight cme (runs across ALL slides; not parallelizable)
 │        └─ Need export?  → wsinsight export --geojson --omecsv
+├─ No slides, but user mentions TCGA / GDC / cancer cohort
+│        → Query GDC API for manifest (Section 8) → save .tsv
+│        → wsinsight run --wsi-dir "gdc-manifest:///path/to/manifest.tsv" ...
 └─ No slides or results → Ask user for --wsi-dir
 ```
 
@@ -505,10 +705,15 @@ Has the user provided WSIs?
    not passed as CLI flags.
 6. **`constraints.txt`** should always be used with `pip install -c` to prevent
    dependency drift.
+7. **When the user mentions TCGA, GDC, or a cancer cohort** (e.g. "analyze
+   TCGA-BRCA slides"), use the GDC API `curl` pattern from Section 8 to
+   generate a manifest TSV, then pass it via
+   `--wsi-dir "gdc-manifest:///absolute/path/to/manifest.tsv"`.  Do not ask
+   the user to download slides manually.
 
 ---
 
-## 11. Verification Checklist
+## 12. Verification Checklist
 
 After installation, an agent should verify:
 

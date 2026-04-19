@@ -585,10 +585,11 @@ Variable                         | Purpose | Example
 ## Remote and Large-Scale Data
 
 - S3 URIs are supported out of the box; configure credentials via `S3_STORAGE_OPTIONS`.
-- `--wsi-dir` can point to local folders, `s3://bucket/prefix` locations, `gdc://path/to/manifest.tsv`, or an `image-list:///path/to/filelist.txt` URI that references a text file listing one slide path per line (blank lines and `#` comments are ignored). When `--wsi-dir` is a plain local text file, it is automatically coerced to `image-list://`. `--results-dir`, GeoJSON, and OME-CSV outputs can be written to local disks or S3 buckets with the same URI syntax.
+- `--wsi-dir` can point to local folders, `s3://bucket/prefix` locations, `gdc-manifest:///path/to/manifest.tsv`, or an `image-list:///path/to/filelist.txt` URI that references a text file listing one slide path per line (blank lines and `#` comments are ignored). When `--wsi-dir` is a plain local text file, it is automatically coerced to `image-list://`. `--results-dir`, GeoJSON, and OME-CSV outputs can be written to local disks or S3 buckets with the same URI syntax.
 - Every CLI that accepts `--wsi-dir`, `--results-dir`, `--region-inference-dir`, or QuPath directories uses the same URI resolver as `wsinsight patch`/`infer`. Local paths require `exists=True`, while remote paths honor the `S3_STORAGE_OPTIONS` profile without checking for pre-existence—making it safe to point `--results-dir` at a brand-new bucket/key.
 - `WSINSIGHT_REMOTE_CACHE_DIR` determines where remote assets are materialized locally (default: `~/.cache/wsinsight`). Set it to a fast SSD mount when you process tera-scale cohorts.
-- GDC manifests can be referenced directly, and the downloaded tiles are cached via the same mechanism.
+- GDC manifests can be referenced directly via the `gdc-manifest://` URI scheme, and the downloaded slides are cached via the same mechanism.
+- **Acquiring a GDC manifest**: POST to `https://api.gdc.cancer.gov/files` with a JSON body containing `filters`, `"return_type": "manifest"`, and `"size": "99999"` to receive a TSV file listing slide UUIDs.  Filter by `cases.project.project_id` (e.g. `TCGA-BRCA`), `data_type` (`Slide Image`), and `experimental_strategy` (`Diagnostic Slide` or `Tissue Slide`).  TCGA slides are open-access — no authentication token is required.  Save the TSV and pass it as `--wsi-dir "gdc-manifest:///absolute/path/to/manifest.tsv"`.  See `SKILL.md` Section 8 for full curl examples and a table of common TCGA project IDs.
 - For throughput, adjust `--num-workers` to match CPU availability and tune `--batch-size` per GPU memory.
 
 ## Development and Testing

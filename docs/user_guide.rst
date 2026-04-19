@@ -218,6 +218,55 @@ scratch volume, and write final GeoJSON/OME-CSV artifacts back to another S3 buc
 without any code changes.
 
 
+Acquiring a TCGA slide manifest via the GDC API
+------------------------------------------------
+
+The NCI Genomic Data Commons hosts all TCGA whole-slide images.  Its REST API can
+return a **manifest file** directly — no ``gdc-client`` binary is needed.  WSInsight
+downloads the actual slides on demand during inference.
+
+POST to ``https://api.gdc.cancer.gov/files`` with ``return_type=manifest``::
+
+    curl --request POST \
+      --header "Content-Type: application/json" \
+      --data '{
+        "filters": {
+            "op": "and",
+            "content": [
+                {"op": "=", "content": {"field": "cases.project.project_id", "value": "TCGA-BRCA"}},
+                {"op": "=", "content": {"field": "data_type", "value": "Slide Image"}},
+                {"op": "=", "content": {"field": "experimental_strategy", "value": "Diagnostic Slide"}}
+            ]
+        },
+        "return_type": "manifest",
+        "size": "99999"
+      }' \
+      'https://api.gdc.cancer.gov/files' \
+      > tcga-brca-dx-manifest.tsv
+
+The manifest is a TSV with columns ``id``, ``filename``, ``md5``, ``size``, and
+``state``.  Pass it to WSInsight with the ``gdc-manifest://`` scheme::
+
+    wsinsight run \
+        --wsi-dir "gdc-manifest:///absolute/path/to/tcga-brca-dx-manifest.tsv" \
+        --results-dir results-brca/ \
+        --model breast-tumor-resnet34.tcga-brca \
+        --batch-size 32
+
+Common filter fields: ``cases.project.project_id`` (e.g. ``TCGA-BRCA``, ``TCGA-LUAD``,
+``TCGA-PRAD``), ``data_type`` (``Slide Image``), ``experimental_strategy``
+(``Diagnostic Slide`` or ``Tissue Slide``), and ``data_format`` (``SVS``).  Always set
+``"size": "99999"`` because the API default is only 10 results.
+
+TCGA diagnostic and tissue slides are **open-access** — no authentication token is
+required.
+
+.. tip::
+
+   See ``SKILL.md`` Section 8 for a comprehensive reference including all common TCGA
+   project IDs, combining filters for specific cases, and end-to-end examples.
+
+
 Multi-GPU parallel runs with tmux
 ----------------------------------
 
