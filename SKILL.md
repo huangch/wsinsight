@@ -1,3 +1,8 @@
+---
+name: wsinsight
+description: Fetch, install, and operate WSInsight for whole-slide-image pathology inference, spatial analytics, and export
+---
+
 # WSInsight — Agentic AI Skill File
 
 > **Purpose**: Enable an agentic AI (Claude, OpenClaw, Hermes, or any
