@@ -131,8 +131,8 @@ USER ${USERNAME}
 # ------------------------------------
 # Environment variables
 # ------------------------------------
-ENV WSINFER_ZOO_REGISTRY_PATH=/app/wsinsight/zoo/wsinfer-zoo-registry.json
-ENV KERAS_HOME=/app/wsinsight/keras
+ENV WSINFER_ZOO_REGISTRY_PATH=/app/zoo/wsinsight-zoo-registry.json
+ENV KERAS_HOME=/app/keras
 
 # ------------------------------------
 # Default interactive shell
