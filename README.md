@@ -213,11 +213,9 @@ Pick `run` when you want a one-liner for single slides or small batches; switch 
 │   ├── cells/<slide>.geojson        GeoJSON cell detections with CME labels
 │   └── cmes/<slide>.geojson         GeoJSON CME region annotations
 ├── graphs/
-│   └── <slide>.h5                  Cached Delaunay triangulation (shared by hplot/ncomp)
+│   └── <slide>.h5                  Cached Delaunay triangulation (shared by hplot/ncomp/cme)
 ├── export-csv/
 │   └── <slide>.csv                 Merged per-cell CSV (inference + hplot + ncomp + cme)
-├── export-csv/
-│   └── <slide>.csv                 Merged per-cell CSV used by the export command
 ├── export-geojson/
 │   └── <slide>.geojson             GeoJSON export (wsinsight export --geojson)
 ├── export-omecsv/
@@ -333,7 +331,7 @@ Annotation-level merged CME regions produced by `cme` or `run --cme`. Adjacent c
 
 ### `graphs/<slide>.h5`
 
-Cached Delaunay triangulation shared by `hplot` and `ncomp`. Created on the first run and reused on subsequent runs to skip the expensive `scipy.spatial.Delaunay` computation. The cache stores **unpruned** edges; each command applies its own distance threshold at load time.
+Cached Delaunay triangulation shared by `hplot`, `ncomp`, and `cme`. Created on the first run and reused on subsequent runs to skip the expensive `scipy.spatial.Delaunay` computation. The cache stores **unpruned** edges; each command applies its own distance threshold at load time.
 
 The file is automatically invalidated and rebuilt when the underlying `model-outputs-csv/<slide>.csv` changes (detected via cell count and a SHA-256 hash of cell centres).
 

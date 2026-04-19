@@ -46,14 +46,18 @@ WSInsight provides a CLI. Use :code:`--help` to explore available options:
    wsinsight --help
    wsinsight run --help
 
-Eight commands are available:
+Nine CLI entry points are available:
 
 ============================  ================================================================
 Command                       Purpose
 ============================  ================================================================
-``wsinsight run``             Convenience wrapper that extracts patches then runs inference/exports.
-                              Pass ``--export-geojson`` and/or ``--export-omecsv`` to merge
-                              all per-cell analytics and write GeoJSON / OME-CSV at the end.
+``wsinsight run``             One-shot workflow: tissue segmentation, patch extraction, model
+                              inference, and optional spatial analytics and exports.
+                              Orchestrates ``patch`` → ``infer`` → ``hplot`` → ``ncomp``
+                              → ``cme`` → ``export``.  Pass ``--hplot`` / ``--ncomp`` /
+                              ``--cme`` to enable spatial analytics and
+                              ``--export-geojson`` / ``--export-omecsv`` to write
+                              GeoJSON / OME-CSV files at the end of the run.
 ``wsinsight patch``           Generate tissue masks + patch caches inside ``--results-dir``.
 ``wsinsight infer``           Reuse cached patches to run models and emit GeoJSON/OME exports.
                               Supports inline region registration via
@@ -367,7 +371,7 @@ cell-detection inference outputs.  For each target cell (or every cell when no
 target types are given), it builds a Delaunay proximity graph, computes k-hop
 neighbors, and records the cell-type composition of each cell's local neighborhood.
 
-Both ``hplot`` and ``ncomp`` cache the Delaunay triangulation in
+``hplot``, ``ncomp``, and ``cme`` cache the Delaunay triangulation in
 ``graphs/<slide>.h5`` under the results directory.  The first command to run
 (whichever executes first) writes the cache; subsequent commands reuse it, skipping
 the expensive ``scipy.spatial.Delaunay`` computation.  The cache stores unpruned
@@ -489,9 +493,8 @@ Output structure
    ├── cme-outputs-geojson/    # CME GeoJSON exports
    │   ├── cells/              # cell detections with CME labels
    │   └── cmes/               # CME region annotations
-   ├── graphs/                 # cached Delaunay triangulations (HDF5, shared by hplot/ncomp)
-   ├── export-csv/             # merged per-cell CSV (inference + hplot + ncomp)
-   ├── export-csv/             # merged per-cell CSV (wsinsight export)
+   ├── graphs/                 # cached Delaunay triangulations (HDF5, shared by hplot/ncomp/cme)
+   ├── export-csv/             # merged per-cell CSV (inference + hplot + ncomp + cme)
    ├── export-geojson/         # GeoJSON export (wsinsight export --geojson)
    ├── export-omecsv/          # OME-CSV export (wsinsight export --omecsv)
    └── run_metadata_*.json     # configuration and runtime info
@@ -553,18 +556,18 @@ QuPath projects or ingested into downstream analytics pipelines without addition
 steps.
 
 For more control, use the standalone ``wsinsight export`` command.  It merges all
-available per-cell analytics — base inference CSVs, H-plot cell features, and ncomp
-neighborhood composition — into ``export-csv/``, then writes the merged data to
+available per-cell analytics — base inference CSVs, H-plot cell features, ncomp
+neighborhood composition, and CME labels/features — into ``export-csv/``, then writes the merged data to
 ``export-geojson/`` and/or ``export-omecsv/`` depending on the flags provided.  This
-command can be run at any time after inference, and optionally after ``hplot`` or
-``ncomp``, without re-running the full pipeline.
+command can be run at any time after inference, and optionally after ``hplot``,
+``ncomp``, or ``cme``, without re-running the full pipeline.
 
 At least one of ``--geojson`` or ``--omecsv`` must be supplied.
 
 Required options:
 
 * ``-o / --results-dir`` — results directory produced by a prior ``run`` / ``infer`` /
-  ``hplot`` / ``ncomp`` invocation.  Must contain a ``model-outputs-csv/`` subfolder.
+  ``hplot`` / ``ncomp`` / ``cme`` invocation.  Must contain a ``model-outputs-csv/`` subfolder.
 
 Optional options:
 
@@ -577,7 +580,7 @@ Optional options:
   exported feature.  Choices: ``tile``, ``detection``, ``annotation``.
 * ``--export-workers`` (default 4) — worker processes for parallel serialisation.
 * ``--overwrite`` — re-build export CSVs even when ``export-csv/`` already contains
-  up-to-date files.  Useful after re-running ``hplot`` or ``ncomp``.
+  up-to-date files.  Useful after re-running ``hplot``, ``ncomp``, or ``cme``.
 
 Example::
 

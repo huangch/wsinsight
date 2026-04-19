@@ -256,7 +256,7 @@ polygonal regions.
 ``graphs/<slide>.h5``
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-Cached Delaunay triangulation shared by ``hplot`` and ``ncomp``.  Created on
+Cached Delaunay triangulation shared by ``hplot``, ``ncomp``, and ``cme``.  Created on
 the first run and reused on subsequent runs to skip the expensive
 ``scipy.spatial.Delaunay`` computation.  The cache stores **unpruned** edges;
 each command applies its own distance threshold at load time.
@@ -293,8 +293,8 @@ SHA-256 hash of cell centres).
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 Merged per-cell CSV produced by ``wsinsight export``.  Left-joins the base
-inference CSV, H-plot cell features, and ncomp neighborhood data on shared
-geometry keys.
+inference CSV, H-plot cell features, ncomp neighborhood data, and CME
+labels/features on shared geometry keys.
 
 .. list-table::
    :header-rows: 1
@@ -314,6 +314,10 @@ geometry keys.
      - From ncomp output (when available)
    * - ``neighborhood_<class>_count``, ``neighborhood_<class>_prop``
      - From ncomp output (when available)
+   * - ``cme_*``
+     - From CME cell output (when available)
+   * - ``feature_normalized_*``, ``feature_raw_*``
+     - From CME cell output (when available)
 
 
 Key parameters
@@ -446,7 +450,7 @@ Inference performance
 Example workflows
 -----------------
 
-Run inference + H-plot + ncomp in a single command::
+Run inference + H-plot + ncomp + CME + export in a single command::
 
     wsinsight run \
       --wsi-dir slides/ \
@@ -458,7 +462,10 @@ Run inference + H-plot + ncomp in a single command::
       --hplot-target-types lymphocyte \
       --hplot-range-min -5 \
       --hplot-range-max 5 \
-      --ncomp
+      --ncomp \
+      --cme \
+      --export-geojson \
+      --export-omecsv
 
 Run H-plot on existing inference outputs::
 
@@ -500,4 +507,4 @@ Export merged analytics to GeoJSON / OME-CSV::
 .. click:: wsinsight.cli.cli:cli
    :prog: wsinsight
    :nested: full
-   :commands: run, patch, infer, export, hplot, hplot_finalize_cmd, reg, ncomp
+   :commands: run, patch, infer, export, hplot, hplot_finalize_cmd, reg, ncomp, cme
