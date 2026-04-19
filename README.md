@@ -145,6 +145,68 @@ wsinsight --help
 > [!TIP]
 > Every `python -m pip install …` line honors `constraints.txt`, keeping the dependency graph deterministic even as upstream wheels evolve.
 
+### Option C: Docker (no local installation required)
+
+A prebuilt GPU-enabled image is published to Docker Hub.  It includes all
+dependencies (conda, GDAL, PyTorch, TensorFlow, WSInsight) so **no local
+installation is needed** beyond Docker and the
+[NVIDIA Container Toolkit](https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/latest/install-guide.html).
+
+```bash
+# Pull the published image
+docker pull huangchtw/wsinsight:latest
+```
+
+The repository ships two helper scripts:
+
+Script | Purpose
+------ | -------
+[`docker-run.sh`](docker-run.sh) | Pull + run: mounts a data directory as `/workspace`. Supports interactive shell and direct-command modes. Usage: `bash docker-run.sh /path/to/data [GPU_ID] [COMMAND ...]`
+[`docker-build-push.sh`](docker-build-push.sh) | Build the image from source and push to Docker Hub (maintainers).
+
+Quick example — interactive shell:
+
+```bash
+# All GPUs, mount current directory
+bash docker-run.sh $(pwd)
+
+# Specific GPU
+bash docker-run.sh $(pwd) 2
+```
+
+Quick example — direct command (no interactive shell):
+
+```bash
+# All GPUs — pass "" as GPU_ID, then the wsinsight command
+bash docker-run.sh $(pwd) "" wsinsight run \
+  --wsi-dir /workspace/slides --results-dir /workspace/results \
+  --model breast-tumor-resnet34.tcga-brca --batch-size 32
+
+# Pin to GPU 2
+bash docker-run.sh $(pwd) 2 wsinsight run \
+  --wsi-dir /workspace/slides --results-dir /workspace/results \
+  --model breast-tumor-resnet34.tcga-brca --batch-size 32
+```
+
+Inside the container the conda `wsinsight` environment is pre-activated.  When
+no command is given after the GPU argument you land in an interactive shell;
+when a command is provided it runs and the container exits.
+
+Alternatively, run a one-shot command without an interactive shell:
+
+```bash
+docker run --rm -it \
+  --gpus all --shm-size=32g \
+  --user $(id -u):$(id -g) \
+  -v /path/to/slides:/slides \
+  -v /path/to/results:/results \
+  huangchtw/wsinsight:latest \
+  bash -lc 'wsinsight run --wsi-dir /slides --results-dir /results --model breast-tumor-resnet34.tcga-brca'
+```
+
+> [!TIP]
+> `--shm-size=32g` is recommended for multi-worker dataloaders.  The image bakes in `WSINFER_ZOO_REGISTRY_PATH` and `KERAS_HOME` so no environment setup is needed.
+
 ### Option B: Manual installation
 
 1. **Install deep learning backends**

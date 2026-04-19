@@ -551,22 +551,61 @@ Output structure
 GeoJSON/OME outputs can be loaded into QuPath, napari, or GIS tools for spatial analysis.
 
 
-Containers
-----------
+Containers (no local installation required)
+--------------------------------------------
 
-WSInsight can be run inside Docker or Apptainer/Singularity for reproducibility.
-Prebuilt images: https://hub.docker.com/r/huangch/wsinsight/tags
+A prebuilt GPU-enabled Docker image is published to Docker Hub.  It includes all
+dependencies (conda, GDAL, PyTorch, TensorFlow, WSInsight) so **no local
+installation is needed** beyond Docker and the
+`NVIDIA Container Toolkit <https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/latest/install-guide.html>`_.
 
-Example with Docker (GPU): ::
+::
+
+   docker pull huangchtw/wsinsight:latest
+
+The repository ships a helper script that pulls the image, mounts a data
+directory as ``/workspace``, and supports both interactive and direct-command
+modes::
+
+   # Interactive shell — all GPUs
+   bash docker-run.sh /path/to/data
+
+   # Interactive shell — pin to GPU 2
+   bash docker-run.sh /path/to/data 2
+
+   # Direct command — all GPUs (pass "" as GPU_ID)
+   bash docker-run.sh /path/to/data "" wsinsight run \
+       --wsi-dir /workspace/slides --results-dir /workspace/results \
+       --model breast-tumor-resnet34.tcga-brca
+
+   # Direct command — GPU 2
+   bash docker-run.sh /path/to/data 2 wsinsight run \
+       --wsi-dir /workspace/slides --results-dir /workspace/results \
+       --model breast-tumor-resnet34.tcga-brca
+
+When a command is provided after the GPU argument, the container executes it
+and exits.  When no command is given, you land in an interactive shell with the
+conda ``wsinsight`` environment already activated.
+
+Alternatively, run a one-shot command without the helper script::
 
    docker run --rm -it \
+      --gpus all --shm-size=32g \
       --user $(id -u):$(id -g) \
-      --mount type=bind,source=$(pwd),target=/work/ \
-      --gpus all \
-      huangch/wsinsight:latest run \
-         --wsi-dir /work/slides/ \
-         --results-dir /work/results/ \
-         --model breast-tumor-singlecell.tcga-brca
+      -v /path/to/slides:/slides \
+      -v /path/to/results:/results \
+      huangchtw/wsinsight:latest \
+      bash -lc 'wsinsight run --wsi-dir /slides --results-dir /results \
+         --model breast-tumor-resnet34.tcga-brca'
+
+``--shm-size=32g`` is recommended for multi-worker dataloaders (PyTorch uses
+``/dev/shm`` for shared memory).  The image bakes in
+``WSINFER_ZOO_REGISTRY_PATH`` and ``KERAS_HOME`` so the CLI works without any
+environment setup.
+
+To build the image from source (maintainers)::
+
+   bash docker-build-push.sh
 
 
 Using your own model

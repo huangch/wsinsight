@@ -94,20 +94,62 @@ cd wsinsight
 pip install -e .
 ```
 
-### 2.4 Docker
+### 2.4 Docker (no local installation required)
 
-A GPU-enabled Docker image is available based on `nvidia/cuda:12.8.0-cudnn-devel-ubuntu22.04`:
+A prebuilt GPU-enabled image based on `nvidia/cuda:12.8.0-cudnn-devel-ubuntu22.04`
+is published to Docker Hub.  All dependencies (conda, GDAL, PyTorch, TensorFlow,
+WSInsight) are pre-installed — **users do not need to install anything locally
+except Docker and the NVIDIA Container Toolkit**.
 
 ```bash
-# Build
-bash docker-build-push.sh
+# Pull the published image
+docker pull huangchtw/wsinsight:latest
+```
 
-# Run (mount slides and results)
-docker run --gpus all \
+**Option A — helper script** (`docker-run.sh`):
+
+```bash
+# Interactive shell — all GPUs
+bash docker-run.sh /path/to/data
+
+# Interactive shell — pin to GPU 2
+bash docker-run.sh /path/to/data 2
+
+# Direct command — all GPUs (no interactive shell)
+bash docker-run.sh /path/to/data "" wsinsight run \
+  --wsi-dir /workspace/slides --results-dir /workspace/results \
+  --model breast-tumor-resnet34.tcga-brca
+
+# Direct command — GPU 2
+bash docker-run.sh /path/to/data 2 wsinsight run \
+  --wsi-dir /workspace/slides --results-dir /workspace/results \
+  --model breast-tumor-resnet34.tcga-brca
+```
+
+When a command is provided after the GPU argument, the container executes it
+and exits.  When no command is given, you land in `/workspace` with the conda
+`wsinsight` environment already activated.
+
+**Option B — manual `docker run`**:
+
+```bash
+docker run --rm -it \
+  --gpus all --shm-size=32g \
+  --user $(id -u):$(id -g) \
   -v /path/to/slides:/slides \
   -v /path/to/results:/results \
-  wsinsight:latest \
-  wsinsight run --wsi-dir /slides --results-dir /results --model breast-tumor-resnet34.tcga-brca
+  huangchtw/wsinsight:latest \
+  bash -lc 'wsinsight run --wsi-dir /slides --results-dir /results --model breast-tumor-resnet34.tcga-brca'
+```
+
+`--shm-size=32g` is recommended for multi-worker dataloaders (PyTorch uses
+`/dev/shm` for shared memory).  The image bakes in `WSINFER_ZOO_REGISTRY_PATH`
+and `KERAS_HOME` so the CLI works without any environment setup.
+
+**Building from source** (maintainers only):
+
+```bash
+bash docker-build-push.sh   # builds + tags + pushes huangchtw/wsinsight:latest
 ```
 
 ### 2.5 Smoke Test
@@ -674,6 +716,13 @@ The path must be absolute (triple slash: `gdc-manifest:///absolute/path`).
 Use this flowchart when deciding which command(s) to run:
 
 ```text
+Is WSInsight already installed / is Docker available?
+├─ Docker available → Prefer Docker (Section 2.4): no install needed
+│        bash docker-run.sh /path/to/data "" wsinsight run ...
+│        Or interactive: bash docker-run.sh /path/to/data [GPU_ID]
+├─ Not installed, no Docker → Install via conda (Section 2.1–2.3)
+└─ Already installed → Continue below
+
 Has the user provided WSIs?
 ├─ Yes → Do they want a one-shot run?
 │        ├─ Yes → wsinsight run [--hplot] [--ncomp] [--cme] [--export-geojson]
@@ -710,6 +759,10 @@ Has the user provided WSIs?
    generate a manifest TSV, then pass it via
    `--wsi-dir "gdc-manifest:///absolute/path/to/manifest.tsv"`.  Do not ask
    the user to download slides manually.
+8. **Prefer Docker when available** — it avoids all local dependency
+   installation.  Use `bash docker-run.sh /path/to/data` (or a manual
+   `docker run`) and run `wsinsight` commands inside the container.  The
+   image pre-sets `WSINFER_ZOO_REGISTRY_PATH` and `KERAS_HOME`.
 
 ---
 
