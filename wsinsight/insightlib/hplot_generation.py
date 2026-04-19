@@ -115,20 +115,34 @@ def _worker(
 
     predicted_labels = nodes_df[prob_columns].idxmax(axis=1)
     prob_prefix = "prob_"
-    base_targets = {f"{prob_prefix}{bt}" for bt in base_type_list}
-    target_targets = {f"{prob_prefix}{tt}" for tt in target_type_list}
+
+    # Build a case-insensitive lookup: lowered column name -> actual column name
+    _col_lower_to_actual = {c.lower(): c for c in prob_columns}
+
+    def _resolve_types(type_list: Sequence[str]) -> set[str]:
+        """Map user-supplied type names to actual column names, case-insensitively."""
+        resolved = set()
+        for t in type_list:
+            candidate = f"{prob_prefix}{t}".lower()
+            actual = _col_lower_to_actual.get(candidate)
+            if actual is not None:
+                resolved.add(actual)
+        return resolved
+
+    base_targets = _resolve_types(base_type_list)
+    target_targets = _resolve_types(target_type_list)
     available_prob_cols = set(prob_columns)
-    if not (base_targets & available_prob_cols):
-        print(
-            f"WARNING: [{slide_id}] None of the base types {sorted(base_targets)} "
-            f"matched available columns {sorted(available_prob_cols)}. Skipping slide."
+    if not base_targets:
+        _logger.warning(
+            "[%s] None of the base types %s matched available columns %s (case-insensitive). Skipping slide.",
+            slide_id, sorted(base_type_list), sorted(available_prob_cols),
         )
         inner.close()
         return slide_id, None, None
-    if not (target_targets & available_prob_cols):
-        print(
-            f"WARNING: [{slide_id}] None of the target types {sorted(target_targets)} "
-            f"matched available columns {sorted(available_prob_cols)}. Skipping slide."
+    if not target_targets:
+        _logger.warning(
+            "[%s] None of the target types %s matched available columns %s (case-insensitive). Skipping slide.",
+            slide_id, sorted(target_type_list), sorted(available_prob_cols),
         )
         inner.close()
         return slide_id, None, None
