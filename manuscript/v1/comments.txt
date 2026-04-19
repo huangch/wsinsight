@@ -1,0 +1,36 @@
+Dear Dr Huang,
+
+Your manuscript "WSInsight as a cloud-native pipeline for single-cell pathology inference on whole-slide images" has now been assessed. If there are any reviewer comments on your manuscript, you can find them at the end of this email.
+
+Regrettably, your manuscript has been rejected for publication in npj Precision Oncology.
+
+Thank you for the opportunity to review your work. I'm sorry that we cannot be more positive on this occasion and hope you will not be deterred from submitting future work to npj Precision Oncology.
+
+Kind regards,
+
+Xiaofeng Jiang
+Editor
+npj Precision Oncology
+
+While I'm sorry we cannot publish your work in npj Precision Oncology, your manuscript may be a good fit for one of our other journals. At Springer Nature we provide a free service to give authors a range of personalised journal recommendations. The corresponding author will receive an email with more information in the next 2 days. 
+
+Reviewer Comments:
+
+Reviewer 1
+In this manuscript, the authors provide an open-source cloud-native pipeline for pathological image processing based on three deep learning models. While the topic is interesting, the current work appears to be too preliminary to publish, as only a script is provided without a web service or a data resource. If a web service or data resource is added, it will be more helpful. 
+
+Reviewer 2
+Please see the attached file.
+
+Comments
+ 
+This study developed WSInsight, an open-source, cloud-native pipeline designed enable single-cell pathology inference directly on whole slide images. By mainly following one prior study that developed WSInfer for providing a reproducible, modular framwork for patch-level whole slide inference, this study makes extensions to cloud-native, single-cell-resolved analyses. The study has merits in facilitating to reproduce or deploy pathology AI models across institutions. However, it also has some issues that should be considered, which are listed below:
+ 
+(1) The paper title does not properly highlight the functions or usages for the developed WSInsight tool. The current title only highlights its application to single-cell pathology inference; however, the pipeline is extended from the WSInfer, and hence is also applicable to all functions (e.g., patch-level classification) equipped with WSInfer.
+(2) How to integrate model outputs with Qupath and OMERO+ are not well explained? Some examples for the integration would be beneficial.
+(3) Authors are suggested to include a table listing the available models used by WSInsight, which help readers retrieve accessible models for using.
+(4) Comparisons in terms of visual examples or other formats with the WSInfer would be suggested, so that the advantages or differences are clearly highlighted.
+(5) Some examples for cell-level annotations from paired Xenium and H&E data based on the WSInsight should be provided.
+(6) Authors are suggested to generate a tutorial video for explaining how to use the WSInsight. The videos may be uploaded to Youtube with a website link in the github website. This would greatly help readers access the developed tool.
+(7) Data availability is suggested to be provided.
+
