@@ -859,6 +859,9 @@ def infer(
     model_obj: HFModel | models.LocalModelTorchScript
     if model_name is not None:
         model_obj = models.get_registered_model(name=model_name)
+        object_based = False
+        mixed_precision = False
+        halo_size_px = 0
         
     elif config is not None:
         with Path(config).open("r", encoding="utf-8") as f:
