@@ -389,6 +389,221 @@ After a full pipeline run, `--results-dir` contains:
 └── run_metadata_*.json             Configuration & runtime info
 ```
 
+### 6.1 `patches/<slide>.h5` — Patch Coordinates (HDF5)
+
+| HDF5 path | Type | Shape / dtype | Description |
+|---|---|---|---|
+| `/slide` | group | — | Slide metadata group |
+| `/slide.attrs["slide_path"]` | attribute | UTF-8 string | Original WSI file path |
+| `/slide.attrs["slide_mpp"]` | attribute | float | Microns per pixel |
+| `/slide.attrs["slide_width"]` | attribute | float | Slide width in pixels |
+| `/slide.attrs["slide_height"]` | attribute | float | Slide height in pixels |
+| `/coords` | dataset | `(N, 2)` int32 | Patch top-left `[x, y]` at level 0; gzip-compressed |
+| `/coords.attrs["patch_size"]` | attribute | int | Patch side length in pixels |
+| `/coords.attrs["patch_level"]` | attribute | int | Always `0` |
+| `/coords.attrs["patch_spacing_um_px"]` | attribute | float | Spacing in µm/px |
+| `/coords.attrs["tile_dim"]` | attribute | `(2,)` int (optional) | Tile dimensions when set |
+| `/images` | dataset (optional) | `(N, patch_size, patch_size, 3)` uint8 | Cached RGB patches; only when `cache_image_patches=True` |
+| `/polygons` | group (optional) | — | Present when polygons are supplied |
+| `/polygons/coords` | dataset | `(K, 2)` float32 | All polygon vertices concatenated; attr `columns=["x","y"]` |
+| `/polygons/offsets` | dataset | `(N+1,)` int64 | Ragged offsets: polygon `i` → `coords[offsets[i]:offsets[i+1]]` |
+| `/polygons.attrs["layout"]` | attribute | string | Always `"ragged_offsets"` |
+
+### 6.2 `model-outputs-csv/<slide>.csv` — Inference Results
+
+| Column | dtype | Description |
+|---|---|---|
+| `minx` | int | Patch top-left x (level-0 pixels) |
+| `miny` | int | Patch top-left y (level-0 pixels) |
+| `width` | int | Patch width in pixels |
+| `height` | int | Patch height in pixels |
+| `prob_<class>` | float32 | One column per model class (e.g. `prob_tumor`, `prob_lymphocyte`). Names from `model_info.config.class_names` |
+
+Conditional columns:
+
+| Column | When present |
+|---|---|
+| `qupath_detection_parent` | QuPath pseudo-model with detection TSV |
+| `region_minx`, `region_miny`, `region_width`, `region_height`, `region_prob_<class>`, … | `--region-inference-dir` set with `object_based=True`. All region CSV columns prefixed with `region_` |
+
+### 6.3 `graphs/<slide>.h5` — Delaunay Graph Cache (HDF5)
+
+| HDF5 path | Type | Shape / dtype | Description |
+|---|---|---|---|
+| `file.attrs["num_cells"]` | attribute | int64 | Number of cell centers N |
+| `file.attrs["mpp"]` | attribute | float64 | Microns per pixel |
+| `file.attrs["centers_hash"]` | attribute | bytes (np.void) | SHA-256 of `cell_centers.tobytes()` for cache invalidation |
+| `cell_centers` | dataset | `(N, 2)` int32 | Cell center `[x, y]` |
+| `simplices` | dataset | `(M, 3)` int32 | Delaunay triangle vertex indices |
+| `edges_source` | dataset | `(E,)` int32 | Source node index per undirected edge |
+| `edges_target` | dataset | `(E,)` int32 | Target node index per undirected edge |
+| `edges_length` | dataset | `(E,)` float64 | Euclidean edge length in pixels |
+
+Edges are stored **unpruned**; pruning to `max_edge_length_px` happens at read time.
+
+### 6.4 `hplot-outputs-csv/` — H-Plot Outputs
+
+**`hplots/<slide>.csv`** — per-layer H-plot curve:
+
+| Column | Description |
+|---|---|
+| `layer` | Signed integer layer (0 = border, negative = inside base, positive = outside) |
+| `base_type_prop` | Proportion of base-type cells in this layer |
+| `target_type_prop` | Proportion of target-type cells in this layer |
+| `base_type_count` | Count of base-type cells in this layer |
+| `target_type_count` | Count of target-type cells in this layer |
+| `all_type_count` | Total cell count in this layer |
+| `distance` | Cumulative average edge length from border (negative inward, positive outward) |
+
+**`cells/<slide>.csv`** — per-cell features (all model-outputs-csv columns plus):
+
+| Column | Description |
+|---|---|
+| `center_x`, `center_y` | Cell center coordinates (int32) |
+| `is_base_type` | Boolean: predicted label is a base type |
+| `is_target_type` | Boolean: predicted label is a target type |
+| `signed_distance_to_border` | Signed hop distance (negative = inside base region, positive = outside); NaN if unreachable |
+
+**`hmetrics/<slide>.json`** — per-slide H-plot metrics:
+
+```json
+{
+  "valid": true,
+  "intra": {
+    "convergence_distance": 0.0,
+    "abundance_score": 0.0,
+    "penetration_score": 0.0,
+    "layerwise_enrichment_index": 0.0,
+    "global_enrichment_index": 0.0,
+    "weighted_global_enrichment_index": 0.0
+  },
+  "peri": {
+    "convergence_distance": 0.0,
+    "abundance_score": 0.0,
+    "proximity_score": 0.0,
+    "layerwise_enrichment_index": 0.0,
+    "global_enrichment_index": 0.0,
+    "weighted_global_enrichment_index": 0.0
+  }
+}
+```
+
+**`hplot-outputs.csv`** — aggregated across all slides (from `hplot-finalize`):
+
+| Column | Description |
+|---|---|
+| `id` | Slide stem |
+| `layer` | Signed layer index |
+| `target_prop` | Proportion of target-type cells |
+| `target_count` | Count of target-type cells |
+| `base_prop` | Proportion of base-type cells |
+| `base_count` | Count of base-type cells |
+| `all_count` | Total cell count |
+| `distance` | Cumulative distance from border |
+
+**`hmetrics-outputs.csv`** — one row per slide:
+
+| Column | Description |
+|---|---|
+| `id` | Slide stem |
+| `valid` | Whether metrics are valid |
+| `convergence_distance (intra)` | Intra-tumoral convergence distance |
+| `abundance_score (intra)` | Intra-tumoral abundance |
+| `penetration_score (intra)` | Intra-tumoral penetration |
+| `layerwise_enrichment_index (intra)` | Intra-tumoral layerwise enrichment |
+| `global_enrichment_index (intra)` | Intra-tumoral global enrichment |
+| `weighted_global_enrichment_index (intra)` | Intra-tumoral weighted global enrichment |
+| `convergence_distance (peri)` | Peri-tumoral convergence distance |
+| `abundance_score (peri)` | Peri-tumoral abundance |
+| `proximity_score (peri)` | Peri-tumoral proximity |
+| `layerwise_enrichment_index (peri)` | Peri-tumoral layerwise enrichment |
+| `global_enrichment_index (peri)` | Peri-tumoral global enrichment |
+| `weighted_global_enrichment_index (peri)` | Peri-tumoral weighted global enrichment |
+| `exclusion_index` | Exclusion index |
+| `desert_index` | Desert index |
+| `inflammation_index` | Inflammation index |
+| `layerwise_enrichment_index` | Overall layerwise enrichment |
+| `global_enrichment_index` | Overall global enrichment |
+| `weighted_global_enrichment_index` | Overall weighted global enrichment |
+
+### 6.5 `ncomp-outputs-csv/<slide>.csv` — Neighborhood Composition
+
+| Column | Description |
+|---|---|
+| `center_x` | Cell center x |
+| `center_y` | Cell center y |
+| `cell_type` | Argmax class label (e.g. `"tumor"`, `"lymphocyte"`) |
+| `neighborhood_size` | Number of k-hop neighbors (excluding self) |
+| `neighborhood_<type>_count` | Count of neighbors per class (e.g. `neighborhood_tumor_count`) |
+| `neighborhood_<type>_prop` | Proportion of neighbors per class; NaN when `neighborhood_size == 0` |
+
+### 6.6 `cme-outputs-csv/` — Cellular Microenvironment Outputs
+
+**`cells/<slide>.csv`** — per-cell CME features (all model-outputs-csv columns plus):
+
+| Column | Description |
+|---|---|
+| `feature_normalized_k{k}_{class}` | Normalized k-hop neighborhood feature. `k` ranges 0…`k_hops`, `class` is each class name (e.g. `feature_normalized_k0_tumor`) |
+| `feature_raw_k{k}_{class}` | Raw (unnormalized) k-hop feature, same naming |
+| `cme_0`, `cme_1`, …, `cme_{K-1}` | One-hot CME cluster assignment (0.0 or 1.0). K = `cme_clustering_k` |
+
+Isolated cells (no graph neighbors) have NaN in feature/CME columns.
+
+**`cmes/<slide>.csv`** — merged CME regions:
+
+| Column | Description |
+|---|---|
+| `cme_0`, `cme_1`, …, `cme_{K-1}` | One-hot CME label for this region |
+| `polygon_wkt` | WKT string of the merged Voronoi polygon |
+| `area` | Polygon area in pixel² |
+
+### 6.7 `export-csv/<slide>.csv` — Merged Per-Cell Export
+
+Left-join of all available analytics on a per-cell basis:
+
+| Source | Join key | Columns added |
+|---|---|---|
+| `model-outputs-csv/` | *(base table)* | `minx`, `miny`, `width`, `height`, `prob_<class>`, `center_x`, `center_y` |
+| `hplot-outputs-csv/cells/` | `minx`, `miny` | `is_base_type`, `is_target_type`, `signed_distance_to_border` |
+| `ncomp-outputs-csv/` | `center_x`, `center_y` | `cell_type`, `neighborhood_size`, `neighborhood_<type>_count`, `neighborhood_<type>_prop` |
+| `cme-outputs-csv/cells/` | `minx`, `miny` | `feature_normalized_k{k}_{class}`, `feature_raw_k{k}_{class}`, `cme_0`…`cme_{K-1}` |
+
+### 6.8 GeoJSON Outputs
+
+`model-outputs-geojson/`, `cme-outputs-geojson/`, and `export-geojson/` all use the same schema — a GeoJSON FeatureCollection:
+
+```json
+{
+  "type": "Feature",
+  "id": "<uuid4>",
+  "geometry": {
+    "type": "Polygon",
+    "coordinates": [[[x1,y1],[x2,y2],...]]
+  },
+  "properties": {
+    "isLocked": true,
+    "objectType": "tile",
+    "classification": { "name": "prob_<winner>", "color": [R,G,B] },
+    "measurements": { "<every numeric non-geometry column>": value }
+  }
+}
+```
+
+Geometry is the overlap-shrunk patch rectangle by default, or from `polygon_wkt` when present (CME regions).  `measurements` includes all numeric columns **except** `minx`, `miny`, `width`, `height`, `center_x`, `center_y`, `polygon_wkt`.
+
+### 6.9 OME-CSV Outputs
+
+`model-outputs-omecsv/` and `export-omecsv/` write gzip-compressed OME-CSV files:
+
+| Column | Description |
+|---|---|
+| `object` | Row index (int) |
+| `secondary_object` | Same as `object` |
+| `polygon` | WKT polygon string for the overlap-shrunk box |
+| `objectType` | Always `"tile"` |
+| `classification` | Argmax class name (prob_ prefix stripped) |
+| *(all numeric non-geometry columns)* | `prob_*`, H-plot, ncomp, CME columns when present. NaN → `"NaN"` |
+
 ---
 
 ## 7. Common Workflows
