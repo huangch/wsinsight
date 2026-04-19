@@ -677,7 +677,106 @@ processes it.
 
 ---
 
-## 9. URI & Remote Data Support
+## 9. Acquiring TCGA Clinical & Molecular Data
+
+WSInsight produces per-slide morphological outputs.  Linking them to clinical
+endpoints (survival, treatment, subtypes) requires external clinical tables.
+TCGA slide filenames encode the patient barcode:
+
+```text
+TCGA-A7-A0CE-01Z-00-DX1.svs
+└─── patient ───┘
+```
+
+Extract the first 12 characters (`TCGA-A7-A0CE`) as the join key.
+
+### 9.1 GDC `/cases` API — Demographics, Staging & Treatment
+
+```bash
+curl 'https://api.gdc.cancer.gov/cases?filters={"op":"=","content":{"field":"cases.project.project_id","value":"TCGA-BRCA"}}&expand=diagnoses,diagnoses.treatments,demographic&size=99999&format=TSV' \
+  > tcga-brca-clinical.tsv
+```
+
+Fields returned via `expand=`:
+
+| Expand path              | Key fields                                                                                     |
+| ------------------------ | ---------------------------------------------------------------------------------------------- |
+| `demographic`            | `vital_status`, `days_to_death`, `days_to_birth`, `gender`, `race`, `ethnicity`                |
+| `diagnoses`              | `ajcc_pathologic_stage`, `ajcc_pathologic_t/n/m`, `primary_diagnosis`, `age_at_diagnosis`, `days_to_last_follow_up`, `days_to_recurrence`, `progression_or_recurrence`, `tumor_grade` |
+| `diagnoses.treatments`   | `treatment_type` (Surgery / Radiation / Pharmaceutical), `therapeutic_agents`, `treatment_intent_type` (Adjuvant / First-Line) |
+
+Join key: `submitter_id` in the TSV (e.g. `TCGA-A7-A0CE`).
+
+### 9.2 Curated Survival — Liu et al. 2018 (Recommended)
+
+The GDC raw fields (`days_to_death`, `days_to_last_follow_up`) require manual
+curation.  **Liu et al.** already did this for all 33 TCGA cancer types:
+
+> Liu J et al. "An Integrated TCGA Pan-Cancer Clinical Data Resource to Drive
+> High-Quality Survival Outcome Analytics." *Cell* 173(2):400-416, 2018.
+> DOI: [10.1016/j.cell.2018.02.052](https://doi.org/10.1016/j.cell.2018.02.052)
+
+Download **Supplementary Table 1** (Excel).  Columns:
+
+| Column      | Meaning                                |
+| ----------- | -------------------------------------- |
+| `bcr_patient_barcode` | Patient ID (e.g. `TCGA-A7-A0CE`) |
+| `OS`, `OS.time`       | Overall Survival (event + days)  |
+| `PFI`, `PFI.time`     | Progression-Free Interval        |
+| `DFI`, `DFI.time`     | Disease-Free Interval            |
+| `DSS`, `DSS.time`     | Disease-Specific Survival        |
+
+This is the gold-standard source for survival analysis on TCGA data.
+
+### 9.3 Molecular Subtypes & Biomarkers
+
+| Data type               | Best source                                | Join key           | Notes                                                        |
+| ----------------------- | ------------------------------------------ | ------------------ | ------------------------------------------------------------ |
+| **PAM50** (BRCA)        | TCGA BRCA paper supplementary or cBioPortal | `PATIENT_ID`       | Luminal A/B, HER2-enriched, Basal-like, Normal-like          |
+| **MSI-H / MSS**         | TCGA PanCanAtlas or MANTIS/MSISensor scores | `PATIENT_ID`       | Relevant for COAD, READ, STAD, UCEC                          |
+| **Immune subtypes**     | Thorsson et al. 2018 (*Immunity*)          | `TCGA Participant Barcode` | C1–C6 pan-cancer immune subtypes                     |
+| **ER / PR / HER2**      | cBioPortal clinical data tab               | `PATIENT_ID`       | Receptor status for breast cancer                            |
+| **Mutations / CNA**     | cBioPortal or GDC MAF files                | `PATIENT_ID`       | TP53, PIK3CA, BRAF, KRAS, etc.                               |
+
+### 9.4 cBioPortal — One-Stop Download
+
+[cBioPortal](https://www.cbioportal.org/) aggregates clinical, molecular, and
+genomic data into downloadable TSVs.  Example for TCGA-BRCA:
+
+```text
+https://www.cbioportal.org/study/clinicalData?id=brca_tcga_pan_can_atlas_2018
+```
+
+Download the "Clinical Data" tab as TSV — it includes PAM50, ER/PR/HER2
+status, survival, and staging in a single table keyed by `PATIENT_ID`.
+
+### 9.5 Joining Clinical Data with WSInsight Outputs
+
+```python
+import pandas as pd
+from pathlib import Path
+
+# Load WSInsight per-slide output
+slide_csv = Path("results/model-outputs-csv/TCGA-A7-A0CE-01Z-00-DX1.csv")
+df = pd.read_csv(slide_csv)
+
+# Extract patient barcode from filename
+patient_id = slide_csv.stem.rsplit("-", 3)[0]   # "TCGA-A7-A0CE"
+
+# Load clinical table (e.g. Liu et al. or cBioPortal)
+clinical = pd.read_csv("tcga-brca-clinical.tsv", sep="\t")
+
+# Join
+patient_row = clinical[clinical["bcr_patient_barcode"] == patient_id]
+print(patient_row[["OS", "OS.time", "PFI", "PFI.time"]].iloc[0])
+```
+
+For cohort-level analysis, iterate over all CSVs in `model-outputs-csv/`,
+extract each patient barcode, and merge into a single DataFrame.
+
+---
+
+## 10. URI & Remote Data Support
 
 `--wsi-dir` and `--results-dir` accept:
 
@@ -696,7 +795,7 @@ The path must be absolute (triple slash: `gdc-manifest:///absolute/path`).
 
 ---
 
-## 10. Error Recovery & Troubleshooting
+## 11. Error Recovery & Troubleshooting
 
 | Symptom                              | Cause                                 | Fix                                                         |
 | ------------------------------------ | ------------------------------------- | ----------------------------------------------------------- |
@@ -711,7 +810,7 @@ The path must be absolute (triple slash: `gdc-manifest:///absolute/path`).
 
 ---
 
-## 11. Agent Decision Guide
+## 12. Agent Decision Guide
 
 Use this flowchart when deciding which command(s) to run:
 
@@ -735,6 +834,9 @@ Has the user provided WSIs?
 ├─ No slides, but user mentions TCGA / GDC / cancer cohort
 │        → Query GDC API for manifest (Section 8) → save .tsv
 │        → wsinsight run --wsi-dir "gdc-manifest:///path/to/manifest.tsv" ...
+├─ User needs clinical / molecular labels (survival, PAM50, MSI, treatment)
+│        → See Section 9: GDC /cases API, Liu et al. 2018, or cBioPortal
+│        → Join on first 12 chars of slide filename (patient barcode)
 └─ No slides or results → Ask user for --wsi-dir
 ```
 
@@ -763,10 +865,14 @@ Has the user provided WSIs?
    installation.  Use `bash docker-run.sh /path/to/data` (or a manual
    `docker run`) and run `wsinsight` commands inside the container.  The
    image pre-sets `WSINFER_ZOO_REGISTRY_PATH` and `KERAS_HOME`.
+9. **When the user needs clinical labels** (survival, PAM50, MSI, treatment),
+   refer to Section 9.  Use the GDC `/cases` API for demographics/staging,
+   Liu et al. 2018 for curated survival endpoints, and cBioPortal for
+   molecular subtypes.  Join on the first 12 characters of the slide filename.
 
 ---
 
-## 12. Verification Checklist
+## 13. Verification Checklist
 
 After installation, an agent should verify:
 

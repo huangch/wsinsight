@@ -267,6 +267,43 @@ required.
    project IDs, combining filters for specific cases, and end-to-end examples.
 
 
+Acquiring TCGA clinical and molecular data
+------------------------------------------
+
+WSInsight produces per-slide morphological outputs.  To link them to clinical
+endpoints (survival, treatment, molecular subtypes), obtain external clinical tables
+and join on the TCGA patient barcode — the first 12 characters of the slide filename
+(e.g. ``TCGA-A7-A0CE`` from ``TCGA-A7-A0CE-01Z-00-DX1.svs``).
+
+Recommended sources:
+
+* **GDC** ``/cases`` **API** — demographics, AJCC staging, treatment::
+
+      curl 'https://api.gdc.cancer.gov/cases?filters={"op":"=","content":{"field":"cases.project.project_id","value":"TCGA-BRCA"}}&expand=diagnoses,diagnoses.treatments,demographic&size=99999&format=TSV' \
+        > tcga-brca-clinical.tsv
+
+  Join key: ``submitter_id`` column.
+
+* **Liu et al. 2018** (*Cell* 173(2):400–416;
+  `DOI <https://doi.org/10.1016/j.cell.2018.02.052>`_) — curated survival
+  endpoints (OS, PFI, DFI, DSS) for all 33 TCGA cancer types.  Download
+  Supplementary Table 1.  Join key: ``bcr_patient_barcode``.
+
+* **cBioPortal** (`cbioportal.org <https://www.cbioportal.org/>`_) — one-stop
+  download of clinical + molecular data (PAM50, MSI-H/MSS, ER/PR/HER2, mutations)
+  as a single TSV.  Example for TCGA-BRCA::
+
+      https://www.cbioportal.org/study/clinicalData?id=brca_tcga_pan_can_atlas_2018
+
+  Join key: ``PATIENT_ID``.
+
+.. tip::
+
+   See ``SKILL.md`` Section 9 for a complete reference including all recommended
+   sources, field tables, and a Python code snippet for joining clinical data with
+   WSInsight per-slide outputs.
+
+
 Multi-GPU parallel runs with tmux
 ----------------------------------
 
