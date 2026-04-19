@@ -1,0 +1,94 @@
+{
+  "models": {
+    "pancancer-lymphocytes-inceptionv4.tcga": {
+      "description": "Pancancer lymphocytes",
+      "hf_repo_id": "kaczmarj/pancancer-lymphocytes-inceptionv4.tcga",
+      "hf_revision": "main"
+    },
+    "breast-tumor-resnet34.tcga-brca": {
+      "description": "Breast tumor",
+      "hf_repo_id": "kaczmarj/breast-tumor-resnet34.tcga-brca",
+      "hf_revision": "main"
+    },
+    "lung-tumor-resnet34.tcga-luad": {
+      "description": "Lung tumor",
+      "hf_repo_id": "kaczmarj/lung-tumor-resnet34.tcga-luad",
+      "hf_revision": "main"
+    },
+    "pancreas-tumor-preactresnet34.tcga-paad": {
+      "description": "Pancreas tumor",
+      "hf_repo_id": "kaczmarj/pancreas-tumor-preactresnet34.tcga-paad",
+      "hf_revision": "main"    
+    },
+    "prostate-tumor-resnet34.tcga-prad": {
+      "description": "Prostate tumor",
+      "hf_repo_id": "kaczmarj/prostate-tumor-resnet34.tcga-prad",
+      "hf_revision": "main"
+    },
+    "lymphnodes-tiatoolbox-resnet50.patchcamelyon": {
+      "description": "Lymph node metastasis (PatchCamelyon)",
+      "hf_repo_id": "kaczmarj/lymphnodes-tiatoolbox-resnet50.patchcamelyon",
+      "hf_revision": "main"
+    },
+    "colorectal-tiatoolbox-resnet50.kather100k": {
+      "description": "Colorectal cancer tissue classification (Kather100K)",
+      "hf_repo_id": "kaczmarj/colorectal-tiatoolbox-resnet50.kather100k",
+      "hf_revision": "main"
+    },
+    "colorectal-resnet34.penn": {
+      "description": "Colorectal cancer tissue classification (Penn)",
+      "hf_repo_id": "kaczmarj/colorectal-resnet34.penn",
+      "hf_revision": "main"
+    },
+    "CellViT-256-x20": {
+      "description": "CellViT-256-x20",
+      "hf_repo_id": "huangch/CellViT-256-x20",
+      "hf_revision": "main"
+    },
+    "CellViT-256-x40": {
+      "description": "CellViT-256-x40",
+      "hf_repo_id": "huangch/CellViT-256-x40",
+      "hf_revision": "main"
+    },
+    "CellViT-256-x40-AMP": {
+      "description": "CellViT-256-x40-AMP",
+      "hf_repo_id": "huangch/CellViT-256-x40-AMP",
+      "hf_revision": "main"
+    },
+    "CellViT-SAM-H-x20": {
+      "description": "CellViT-CellViT-SAM-H-x20",
+      "hf_repo_id": "huangch/CellViT-CellViT-SAM-H-x20",
+      "hf_revision": "main"
+    },
+    "CellViT-SAM-H-x40": {
+      "description": "CellViT-CellViT-SAM-H-x40",
+      "hf_repo_id": "huangch/CellViT-CellViT-SAM-H-x40",
+      "hf_revision": "main"
+    },
+    "CellViT-SAM-H-x40-AMP": {
+      "description": "CellViT-CellViT-SAM-H-x40-AMP",
+      "hf_repo_id": "huangch/CellViT-CellViT-SAM-H-x40-AMP",
+      "hf_revision": "main"
+    },
+    "CellViT-Virchow-x40-AMP": {
+      "description": "CellViT-CellViT-Virchow-x40-AMP",
+      "hf_repo_id": "huangch/CellViT-CellViT-Virchow-x40-AMP",
+      "hf_revision": "main"
+    },
+    "hovernet_fast_pannuke": {
+      "description": "hovernet_fast_pannuke",
+      "hf_repo_id": "huangch/hovernet_fast_pannuke",
+      "hf_revision": "main"
+    },
+    "10xGenomics-BRCA-CellViT-SAM-H-x40": {
+      "description": "10xGenomics-BRCA-CellViT-SAM-H-x40",
+      "hf_repo_id": "huangch/10xGenomics-BRCA-CellViT-SAM-H-x40",
+      "hf_revision": "main"
+    },
+    "hne_cell_classification": {
+      "description": "hne_cell_classification",
+      "hf_repo_id": "huangch/hne_cell_classification",
+      "hf_revision": "main"
+    }
+  }
+}

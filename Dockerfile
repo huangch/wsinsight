@@ -74,6 +74,8 @@ ENV PATH="$CONDA_DIR/envs/wsinsight/bin:$PATH"
 # ------------------------------------
 WORKDIR /app/wsinsight
 COPY . .
+RUN mv ./keras /app/keras
+RUN mv ./zoo /app/zoo
 
 # ------------------------------------
 # Install ML libraries (Torch + TensorFlow + Keras + StarDist)
