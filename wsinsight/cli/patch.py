@@ -725,6 +725,7 @@ def patch(
     model_obj: HFModel | models.LocalModelTorchScript
     if model_name is not None:
         model_obj = models.get_registered_model(name=model_name)
+        halo_size_px = 0
         
     elif config is not None:
         with open(config) as f:
