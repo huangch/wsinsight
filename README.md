@@ -190,8 +190,10 @@ Pick `run` when you want a one-liner for single slides or small batches; switch 
 
 ```text
 <results-dir>/
-├── masks/                          Tissue segmentation masks (produced by patch / run)
-├── patches/                        HDF5 patch files (produced by patch / run)
+├── masks/
+│   └── <slide>.jpg                 Tissue segmentation masks (produced by patch / run)
+├── patches/
+│   └── <slide>.h5                  HDF5 patch files (produced by patch / run)
 ├── model-outputs-csv/
 │   └── <slide>.csv                 Per-patch/cell inference results
 ├── model-outputs-geojson/
@@ -570,12 +572,12 @@ wsinsight reg \
 
 WSInsight reads the following environment variables at startup. Set them in your shell profile, conda activation script, or container environment so they apply to every command automatically.
 
-Variable | Purpose | Example
---- | --- | ---
-`WSINFER_ZOO_REGISTRY_PATH` | Path to a local `wsinfer-zoo-registry.json` file. **Required in air-gapped / restricted-SSL environments.** When set (and the file exists), no network call to HuggingFace is made. | `export WSINFER_ZOO_REGISTRY_PATH=/workspace/wsinsight/devel/zoo/wsinfer-zoo-registry.json`
-`S3_STORAGE_OPTIONS` | JSON object passed verbatim to `s3fs` / `fsspec` (e.g. AWS profile, endpoint URL). Required to read/write S3 URIs. | `export S3_STORAGE_OPTIONS='{"profile":"saml"}'`
-`WSINSIGHT_REMOTE_CACHE_DIR` | Local directory where remote assets (S3 tiles, GDC downloads) are materialised. Defaults to `~/.cache/wsinsight`. Point it at a fast SSD for large cohorts. | `export WSINSIGHT_REMOTE_CACHE_DIR=/scratch/wsinsight-cache`
-`KERAS_HOME` | Override the Keras configuration/weights directory, useful when the default home directory is on a slow or quota-limited filesystem. | `export KERAS_HOME=/workspace/wsinsight/keras`
+Variable                         | Purpose | Example
+-------------------------------- | ------- | -------
+`WSINFER_ZOO_REGISTRY_PATH`      | Path to a local `wsinfer-zoo-registry.json` file. **Required in air-gapped / restricted-SSL environments.** When set (and the file exists), no network call to HuggingFace is made. | `export WSINFER_ZOO_REGISTRY_PATH=/workspace/wsinsight/devel/zoo/wsinfer-zoo-registry.json`
+`S3_STORAGE_OPTIONS`             | JSON object passed verbatim to `s3fs` / `fsspec` (e.g. AWS profile, endpoint URL). Required to read/write S3 URIs. | `export S3_STORAGE_OPTIONS='{"profile":"saml"}'`
+`WSINSIGHT_REMOTE_CACHE_DIR`     | Local directory where remote assets (S3 tiles, GDC downloads) are materialised. Defaults to `~/.cache/wsinsight`. Point it at a fast SSD for large cohorts. | `export WSINSIGHT_REMOTE_CACHE_DIR=/scratch/wsinsight-cache`
+`KERAS_HOME`                     | Override the Keras configuration/weights directory, useful when the default home directory is on a slow or quota-limited filesystem. | `export KERAS_HOME=/workspace/wsinsight/keras`
 
 > [!TIP]
 > If the CLI hangs or prints SSL errors on startup, you are almost certainly in an environment where `huggingface.co` is blocked.  Set `WSINFER_ZOO_REGISTRY_PATH` to the local registry file and the issue will disappear.
