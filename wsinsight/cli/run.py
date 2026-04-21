@@ -21,9 +21,11 @@ from platformdirs import user_cache_dir
 import wsinfer_zoo.client
 from .infer import infer as infer_command
 from .cme import cme as cme_command
+from .ecomp import ecomp as ecomp_command
 from .hplot import hplot as hplot_command
 from .ncomp import ncomp as ncomp_command
 from .patch import patch as patch_command
+from .tcomp import tcomp as tcomp_command
 from ..export_helpers import build_export_csvs
 from ..qupath import make_qupath_project
 from ..uri_path import URIPath, URIPathType
@@ -166,6 +168,24 @@ _NCOMP_PARAM_NAMES: tuple[str, ...] = (
     "results_dir",
     "ncomp_max_neighbor_distance",
     "ncomp_k",
+    "overwrite",
+    "num_workers",
+)
+
+_ECOMP_PARAM_NAMES: tuple[str, ...] = (
+    "wsi_dir",
+    "results_dir",
+    "ecomp_max_edge",
+    "ecomp_k",
+    "overwrite",
+    "num_workers",
+)
+
+_TCOMP_PARAM_NAMES: tuple[str, ...] = (
+    "wsi_dir",
+    "results_dir",
+    "tcomp_max_edge",
+    "tcomp_k",
     "overwrite",
     "num_workers",
 )
@@ -634,6 +654,48 @@ def _select_kwargs(values: dict[str, Any], keys: tuple[str, ...]) -> dict[str, A
     help="Number of hops defining the ncomp neighborhood radius.",
 )
 @click.option(
+    "--ecomp",
+    is_flag=True,
+    default=False,
+    show_default=True,
+    help="Run edge-level composition (ecomp) analysis after ncomp.",
+)
+@click.option(
+    "--ecomp-max-edge",
+    default=25.0,
+    type=click.FloatRange(min=0),
+    show_default=True,
+    help="Maximum Delaunay edge length (µm) for ecomp; longer edges are pruned.",
+)
+@click.option(
+    "--ecomp-k",
+    default=2,
+    type=click.IntRange(min=1),
+    show_default=True,
+    help="Number of hops defining the ecomp neighborhood radius (k-hop on the line graph).",
+)
+@click.option(
+    "--tcomp",
+    is_flag=True,
+    default=False,
+    show_default=True,
+    help="Run triad-level composition (tcomp) analysis after ecomp.",
+)
+@click.option(
+    "--tcomp-max-edge",
+    default=25.0,
+    type=click.FloatRange(min=0),
+    show_default=True,
+    help="Maximum Delaunay edge length (µm) for tcomp; triads with any longer edge are pruned.",
+)
+@click.option(
+    "--tcomp-k",
+    default=2,
+    type=click.IntRange(min=1),
+    show_default=True,
+    help="Number of hops defining the tcomp neighborhood radius (k-hop on the dual graph).",
+)
+@click.option(
     "--cme",
     is_flag=True,
     default=False,
@@ -726,6 +788,12 @@ def run(
     ncomp: bool = False,
     ncomp_max_neighbor_distance: float = 25.0,
     ncomp_k: int = 2,
+    ecomp: bool = False,
+    ecomp_max_edge: float = 25.0,
+    ecomp_k: int = 2,
+    tcomp: bool = False,
+    tcomp_max_edge: float = 25.0,
+    tcomp_k: int = 2,
     cme: bool = False,
     cme_hoptimus: bool = False,
     cme_clusters: int | None = None,
@@ -778,9 +846,17 @@ def run(
     if hplot:
         ctx.invoke(hplot_command, **_select_kwargs(params, _HPLOT_PARAM_NAMES))
 
-    # Stage 4 (optional): neighborhood composition analytics.
+    # Stage 4 (optional): node-level (cell) composition analytics.
     if ncomp:
         ctx.invoke(ncomp_command, **_select_kwargs(params, _NCOMP_PARAM_NAMES))
+
+    # Stage 4b (optional): edge-level composition analytics.
+    if ecomp:
+        ctx.invoke(ecomp_command, **_select_kwargs(params, _ECOMP_PARAM_NAMES))
+
+    # Stage 4c (optional): triad-level composition analytics.
+    if tcomp:
+        ctx.invoke(tcomp_command, **_select_kwargs(params, _TCOMP_PARAM_NAMES))
 
     # Stage 5 (optional): cellular microenvironment (CME) analysis.
     if cme:

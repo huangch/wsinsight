@@ -120,11 +120,17 @@ def export(
     \b
       model-outputs-csv/       — base inference probabilities (+ reg columns)
       hplot-outputs-csv/cells/ — H-Plot per-cell layer features
-      ncomp-outputs-csv/       — neighbourhood composition features
+      ncomp-outputs-csv/       — node-level (cell) composition features
 
-    All available sources are left-joined into export-csv/, then
-    written to export-geojson/ and/or export-omecsv/
-    depending on the flags provided.
+    All per-cell sources above are left-joined into export-csv/, then
+    written to export-geojson/ and/or export-omecsv/ depending on the
+    flags provided.
+
+    Edge-level (``ecomp-outputs-csv/``) and triad-level
+    (``tcomp-outputs-csv/``) composition outputs are standalone
+    simplicial deliverables and are NOT merged into the per-cell
+    export (they have different primary keys).  Consume them
+    directly from their respective subdirectories.
 
     At least one of --geojson or --omecsv must be supplied.
 

@@ -185,13 +185,15 @@ air-gapped networks the first variable is mandatory.
 
 ```text
 wsinsight
-├── run               One-shot: patch → infer → hplot → ncomp → cme → export
+├── run               One-shot: patch → infer → hplot → ncomp → ecomp → tcomp → cme → export
 ├── patch             Tissue segmentation + patch extraction → HDF5
 ├── infer             Model inference on cached patches → CSV
 ├── reg               Post-hoc region registration
 ├── hplot             H-plot spatial analytics
 ├── hplot-finalize    Aggregate parallel H-plot runs
-├── ncomp             Neighborhood composition
+├── ncomp             Node-level (cell) composition
+├── ecomp             Edge-level composition
+├── tcomp             Triad-level composition
 ├── cme               Cellular microenvironment (cross-slide)
 └── export            Merge analytics → GeoJSON / OME-CSV
 ```
@@ -207,7 +209,7 @@ wsinsight
 ### 4.3 `wsinsight run` — Full Pipeline
 
 The one-shot orchestrator.  Delegates to `patch`, `infer`, `hplot`, `ncomp`,
-`cme`, and `export` in sequence.
+`ecomp`, `tcomp`, `cme`, and `export` in sequence.
 
 ```bash
 wsinsight run \
@@ -218,6 +220,8 @@ wsinsight run \
   [--num-workers 4] \
   [--hplot] [--hplot-base-types tumor] [--hplot-target-types lymphocyte] \
   [--ncomp] \
+  [--ecomp] \
+  [--tcomp] \
   [--cme] \
   [--export-geojson] [--export-omecsv]
 ```
@@ -236,6 +240,8 @@ wsinsight run \
 | `--num-workers / -n`     | int       | Dataloader workers (auto)                                |
 | `--hplot`                | flag      | Enable H-plot analytics                                  |
 | `--ncomp`                | flag      | Enable neighborhood composition                          |
+| `--ecomp`                | flag      | Enable edge-level composition                            |
+| `--tcomp`                | flag      | Enable triad-level composition                           |
 | `--cme`                  | flag      | Enable cellular microenvironment                         |
 | `--export-geojson`       | flag      | Write GeoJSON export files                               |
 | `--export-omecsv`        | flag      | Write OME-CSV export files                               |
@@ -265,6 +271,10 @@ Reads from `patches/`, writes to `model-outputs-csv/`.
 
 ### 4.6 `wsinsight hplot` — H-Plot Analytics
 
+> ⚠️ **Experimental.** `hplot` (and its `hmetrics` outputs) are research
+> features under active development. The CLI flags, output schemas, and
+> metric definitions may change without notice in future releases.
+
 ```bash
 wsinsight hplot \
   --wsi-dir <WSI_DIR> \
@@ -279,17 +289,59 @@ wsinsight hplot \
 
 ### 4.7 `wsinsight hplot-finalize` — Aggregate Parallel H-Plots
 
+> ⚠️ **Experimental.** Same caveats as `hplot` apply to the aggregated
+> `hplot-outputs.csv` / `hmetrics-outputs.csv` cohort summaries.
+
 ```bash
 wsinsight hplot-finalize --results-dir <RESULTS_DIR>
 ```
 
-### 4.8 `wsinsight ncomp` — Neighborhood Composition
+### 4.8 `wsinsight ncomp` — Node-level (Cell) Composition
+
+> ⚠️ **Experimental.** The three simplicial composition commands — `ncomp`,
+> `ecomp`, and `tcomp` — are research features under active development.
+> CLI flags, output directory layouts, and column schemas may change without
+> notice in future releases.
 
 ```bash
 wsinsight ncomp \
   --wsi-dir <WSI_DIR> \
   --results-dir <RESULTS_DIR> \
   [--ncomp-k 2] [--ncomp-max-neighbor-distance 25.0] [--overwrite]
+```
+
+### 4.8.1 Simplicial composition hierarchy — `ncomp` / `ecomp` / `tcomp`
+
+The three composition commands form a symmetric simplicial hierarchy on the
+Delaunay triangulation, sharing the `graphs/<slide>.h5` cache:
+
+| Command | Simplex       | Unit              | Adjacency      | Graph       | Output dir            |
+| ------- | ------------- | ----------------- | -------------- | ----------- | --------------------- |
+| `ncomp` | 0-simplex (n) | cell              | Delaunay edge  | primal      | `ncomp-outputs-csv/`  |
+| `ecomp` | 1-simplex (e) | Delaunay edge     | shared vertex  | line graph  | `ecomp-outputs-csv/`  |
+| `tcomp` | 2-simplex (t) | Delaunay triangle | shared vertex  | dual graph  | `tcomp-outputs-csv/`  |
+
+All three default to a 25 µm edge filter and a 2-hop neighborhood radius.
+Only `tcomp` emits per-triad geometry (area µm², perimeter µm, regularity).
+Edge/triad outputs are **standalone** — not merged into `export-csv/` because
+they have different primary keys.
+
+### 4.8.2 `wsinsight ecomp` — Edge-level Composition
+
+```bash
+wsinsight ecomp \
+  --wsi-dir <WSI_DIR> \
+  --results-dir <RESULTS_DIR> \
+  [--ecomp-k 2] [--ecomp-max-edge 25.0] [--overwrite]
+```
+
+### 4.8.3 `wsinsight tcomp` — Triad-level Composition
+
+```bash
+wsinsight tcomp \
+  --wsi-dir <WSI_DIR> \
+  --results-dir <RESULTS_DIR> \
+  [--tcomp-k 2] [--tcomp-max-edge 25.0] [--overwrite]
 ```
 
 ### 4.9 `wsinsight cme` — Cellular Microenvironment
@@ -371,7 +423,11 @@ After a full pipeline run, `--results-dir` contains:
 ├── hplot-outputs.csv               Aggregated H-plot (all slides)
 ├── hmetrics-outputs.csv            Aggregated H-plot metrics (all slides)
 ├── ncomp-outputs-csv/
-│   └── <slide>.csv                 Neighborhood composition
+│   └── <slide>.csv                 Per-cell composition (node-level)
+├── ecomp-outputs-csv/
+│   └── <slide>.csv                 Per-edge composition
+├── tcomp-outputs-csv/
+│   └── <slide>.csv                 Per-triad composition + geometry
 ├── cme-outputs-csv/
 │   ├── cells/<slide>.csv           Per-cell CME labels
 │   └── cmes/<slide>.csv            Merged CME regions
@@ -442,6 +498,10 @@ Conditional columns:
 Edges are stored **unpruned**; pruning to `max_edge_length_px` happens at read time.
 
 ### 6.4 `hplot-outputs-csv/` — H-Plot Outputs
+
+> ⚠️ **Experimental.** `hplot` per-cell / per-layer CSVs and the
+> aggregated `hplot-outputs.csv` / `hmetrics-outputs.csv` schemas may
+> change in future releases.
 
 **`hplots/<slide>.csv`** — per-layer H-plot curve:
 
@@ -526,7 +586,10 @@ Edges are stored **unpruned**; pruning to `max_edge_length_px` happens at read t
 | `global_enrichment_index` | Overall global enrichment |
 | `weighted_global_enrichment_index` | Overall weighted global enrichment |
 
-### 6.5 `ncomp-outputs-csv/<slide>.csv` — Neighborhood Composition
+### 6.5 `ncomp-outputs-csv/<slide>.csv` — Node-level (Cell) Composition
+
+> ⚠️ **Experimental.** Schema may change; applies to `ncomp` / `ecomp` /
+> `tcomp` outputs below.
 
 | Column | Description |
 |---|---|
@@ -536,6 +599,38 @@ Edges are stored **unpruned**; pruning to `max_edge_length_px` happens at read t
 | `neighborhood_size` | Number of k-hop neighbors (excluding self) |
 | `neighborhood_<type>_count` | Count of neighbors per class (e.g. `neighborhood_tumor_count`) |
 | `neighborhood_<type>_prop` | Proportion of neighbors per class; NaN when `neighborhood_size == 0` |
+
+### 6.5.1 `ecomp-outputs-csv/<slide>.csv` — Edge-level Composition
+
+| Column | Description |
+|---|---|
+| `edge_id` | Sequential edge index |
+| `vertex_1_id`, `vertex_2_id` | Cell row indices defining the edge (sorted ascending) |
+| `center_x`, `center_y` | Edge midpoint |
+| `edge_length_um` | Delaunay edge length (µm) |
+| `cell_type_1`, `cell_type_2` | Endpoint cell types (alphabetized) |
+| `edge_type` | `"<type1>__<type2>"` sorted label |
+| `neighborhood_size` | Number of k-hop neighbor edges on the line graph |
+| `neighborhood_mean_edge_length_um` / `neighborhood_std_edge_length_um` | Neighbor edge length stats |
+| `neighborhood_<edge_type>_count` / `_prop` | One pair of columns per edge-type (C·(C+1)/2 pairs) |
+
+### 6.5.2 `tcomp-outputs-csv/<slide>.csv` — Triad-level Composition
+
+| Column | Description |
+|---|---|
+| `triad_id` | Sequential triad index |
+| `vertex_1_id`, `vertex_2_id`, `vertex_3_id` | Cell row indices (sorted ascending) |
+| `centroid_x`, `centroid_y` | Triangle centroid |
+| `triad_max_edge_um` | Longest edge (µm); ≤ `--tcomp-max-edge` |
+| `triad_area_um2` | Area from shoelace (µm²) |
+| `triad_perimeter_um` | Perimeter (µm) |
+| `triad_regularity` | 12·√3·A / P² ∈ [0, 1]; 1.0 for equilateral |
+| `cell_type_1`, `cell_type_2`, `cell_type_3` | Endpoint types (alphabetized) |
+| `triad_type` | `"<t1>__<t2>__<t3>"` sorted label |
+| `neighborhood_size` | Number of k-hop neighbor triads on the dual graph |
+| `neighborhood_mean_area_um2` / `neighborhood_std_area_um2` | Neighbor area stats |
+| `neighborhood_mean_max_edge_um` | Neighbor max-edge stat |
+| `neighborhood_<triad_type>_count` / `_prop` | One pair per triad-type (C·(C+1)·(C+2)/6 pairs) |
 
 ### 6.6 `cme-outputs-csv/` — Cellular Microenvironment Outputs
 

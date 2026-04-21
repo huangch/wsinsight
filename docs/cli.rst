@@ -1,6 +1,15 @@
 Command reference
 =================
 
+.. note::
+
+   **Experimental commands.** The spatial-analytics commands ``hplot``,
+   ``hplot-finalize``, ``ncomp``, ``ecomp``, and ``tcomp`` (together with
+   their ``hplot-outputs.csv`` / ``hmetrics-outputs.csv`` / ``ncomp-outputs-csv/``
+   / ``ecomp-outputs-csv/`` / ``tcomp-outputs-csv/`` outputs) are research
+   features under active development.  Their CLI flags, output directory
+   layouts, and column schemas may change without notice in future releases.
+
 Nine CLI entry points are available:
 
 ============================  ================================================================
@@ -34,6 +43,15 @@ Command                       Purpose
                               For each target cell, builds a Delaunay graph, collects k-hop
                               neighbors, and records per-cell type counts and proportions.
                               Can also run inline via ``wsinsight run --ncomp``.
+``wsinsight ecomp``           Edge-level composition analysis.  For each Delaunay edge,
+                              builds the line graph, collects k-hop edge neighbors, and
+                              records per-edge type counts and proportions.  Can also run
+                              inline via ``wsinsight run --ecomp``.
+``wsinsight tcomp``           Triad-level composition analysis.  For each Delaunay triangle,
+                              builds the dual graph (triads sharing \u22651 vertex), collects
+                              k-hop triad neighbors, and records per-triad type counts,
+                              proportions, and geometry (area, perimeter, regularity).
+                              Can also run inline via ``wsinsight run --tcomp``.
 ``wsinsight cme``             Cellular microenvironment (CME) analysis across a cohort of
                               slides.  Builds per-slide Delaunay cell graphs, trains a
                               global DGI encoder, clusters the embeddings, and writes
@@ -385,6 +403,88 @@ Neighborhood composition (``--ncomp-*`` in ``run`` and ``wsinsight ncomp``)
      - Recompute and overwrite existing per-slide ncomp outputs
 
 
+Simplicial composition hierarchy — ``ncomp`` / ``ecomp`` / ``tcomp``
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+WSInsight's three composition commands form a symmetric simplicial hierarchy
+on the Delaunay triangulation:
+
+.. list-table::
+   :header-rows: 1
+   :widths: 10 15 20 20 15 20
+
+   * - Command
+     - Simplex
+     - Unit
+     - Adjacency
+     - Graph
+     - Output dir
+   * - ``ncomp``
+     - 0-simplex (n)
+     - cell
+     - Delaunay edge
+     - primal
+     - ``ncomp-outputs-csv/``
+   * - ``ecomp``
+     - 1-simplex (e)
+     - Delaunay edge
+     - shared vertex
+     - line graph
+     - ``ecomp-outputs-csv/``
+   * - ``tcomp``
+     - 2-simplex (t)
+     - Delaunay triad (triangle)
+     - shared vertex
+     - dual graph
+     - ``tcomp-outputs-csv/``
+
+All three commands share the Delaunay cache (``graphs/<slide>.h5``), a 25 µm
+default edge filter, and a 2-hop default neighborhood radius.  Only ``tcomp``
+emits per-triad geometry (area µm², perimeter µm, regularity ∈ [0, 1] where
+1.0 is equilateral).  Edge- and triad-level outputs are standalone and are
+**not** merged into ``export-csv/`` (they have different primary keys).
+
+Edge composition (``--ecomp-*`` in ``run`` and ``wsinsight ecomp``)
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. list-table::
+   :header-rows: 1
+   :widths: 35 15 50
+
+   * - Option
+     - Default
+     - Description
+   * - ``--ecomp-max-edge``
+     - ``25.0``
+     - Maximum Delaunay edge length in µm
+   * - ``--ecomp-k``
+     - ``2``
+     - k-hop neighborhood radius on the line graph
+   * - ``--overwrite``
+     - off
+     - Recompute and overwrite existing per-slide ecomp outputs
+
+Triad composition (``--tcomp-*`` in ``run`` and ``wsinsight tcomp``)
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. list-table::
+   :header-rows: 1
+   :widths: 35 15 50
+
+   * - Option
+     - Default
+     - Description
+   * - ``--tcomp-max-edge``
+     - ``25.0``
+     - Longest-edge threshold (µm); triads with any edge above this are pruned
+   * - ``--tcomp-k``
+     - ``2``
+     - k-hop neighborhood radius on the dual graph
+   * - ``--overwrite``
+     - off
+     - Recompute and overwrite existing per-slide tcomp outputs
+
+
 Model selection
 ~~~~~~~~~~~~~~~
 
@@ -507,4 +607,4 @@ Export merged analytics to GeoJSON / OME-CSV::
 .. click:: wsinsight.cli.cli:cli
    :prog: wsinsight
    :nested: full
-   :commands: run, patch, infer, export, hplot, hplot_finalize_cmd, reg, ncomp, cme
+   :commands: run, patch, infer, export, hplot, hplot_finalize_cmd, reg, ncomp, ecomp, tcomp, cme

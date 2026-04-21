@@ -1,7 +1,12 @@
-"""Neighborhood composition (ncomp) generation for WSInsight.
+"""Node-level (cell) composition (ncomp) generation for WSInsight.
 
-For each cell, compute the cell-type composition of its k-hop graph neighborhood
-built via Delaunay triangulation — the same graph construction used by H-Plot.
+Here ``n`` stands for *node* — the 0-simplex of the Delaunay triangulation.
+``ncomp`` is the cell-level member of WSInsight's simplicial composition
+family (``ncomp`` / ``ecomp`` / ``tcomp`` for nodes / edges / triads).
+
+For each cell, compute the cell-type composition of its k-hop graph
+neighborhood built via Delaunay triangulation — the same graph construction
+used by H-Plot, ``ecomp``, and ``tcomp``.
 
 Outputs
 -------
@@ -121,52 +126,52 @@ def _worker(
         inner.close()
         return slide_id, None
 
-    neighbor_lists, _A, _Mk = k_hop_neighbors(len(nodes_df), edges_df, ncomp_k)
+    _neighbor_lists, _A, Mk = k_hop_neighbors(len(nodes_df), edges_df, ncomp_k)
     _step("k-hop neighbors")
 
-    # --- Determine target cells ----------------------------------------------
+    # --- Vectorised neighborhood aggregation via sparse @ one-hot -----------
+    # Mk has self-loops on its diagonal; subtract them to exclude self from the
+    # neighborhood. We keep types in alphabetical order to match cache layout.
+    from scipy.sparse import csr_matrix as _csr
+
     all_types = [c.removeprefix("prob_") for c in prob_columns]
-    target_indices = nodes_df.index.tolist()
-
-    # --- Compute per-cell neighborhood composition --------------------------
-    type_counts: dict[str, list] = {t: [] for t in all_types}
-    ncomp_sizes: list[int] = []
-    cell_types: list[str] = []
-    center_xs: list[int] = []
-    center_ys: list[int] = []
-
+    type_to_col = {t: i for i, t in enumerate(all_types)}
+    N_cells = len(nodes_df)
     cell_type_array = nodes_df["cell_type"].to_numpy()
+    type_idx = np.fromiter(
+        (type_to_col[t] for t in cell_type_array),
+        count=N_cells,
+        dtype=np.int64,
+    )
 
-    for i in target_indices:
-        nbrs = [n for n in neighbor_lists[i] if n != i]  # exclude self
-        ncomp_size = len(nbrs)
-        ncomp_sizes.append(ncomp_size)
-        cell_types.append(cell_type_array[i])
-        center_xs.append(int(nodes_df.at[i, "center_x"]))
-        center_ys.append(int(nodes_df.at[i, "center_y"]))
+    onehot = _csr(
+        (
+            np.ones(N_cells, dtype=np.float32),
+            (np.arange(N_cells, dtype=np.int64), type_idx),
+        ),
+        shape=(N_cells, len(all_types)),
+    )
 
-        if ncomp_size > 0:
-            nbr_types = cell_type_array[nbrs]
-            for t in all_types:
-                type_counts[t].append(int(np.sum(nbr_types == t)))
-        else:
-            for t in all_types:
-                type_counts[t].append(0)
+    # A_k: k-hop reachability with zero diagonal (exclude self).
+    A_k = Mk.copy().astype(np.float32)
+    A_k.setdiag(0)
+    A_k.eliminate_zeros()
+
+    counts_mat = (A_k @ onehot).toarray().astype(np.float64)
+    ncomp_sizes_arr = counts_mat.sum(axis=1)
     _step("nhood composition")
 
     # --- Build per-cell DataFrame -------------------------------------------
-    n = len(target_indices)
-    ncomp_sizes_arr = np.array(ncomp_sizes, dtype=np.float64)
     denom = np.where(ncomp_sizes_arr > 0, ncomp_sizes_arr, np.nan)
 
     per_cell_data: dict[str, list | np.ndarray] = {
-        "center_x": center_xs,
-        "center_y": center_ys,
-        "cell_type": cell_types,
-        "neighborhood_size": ncomp_sizes,
+        "center_x": nodes_df["center_x"].to_numpy().astype(np.int64),
+        "center_y": nodes_df["center_y"].to_numpy().astype(np.int64),
+        "cell_type": cell_type_array,
+        "neighborhood_size": ncomp_sizes_arr.astype(np.int64),
     }
-    for t in all_types:
-        counts = np.array(type_counts[t], dtype=np.float64)
+    for j, t in enumerate(all_types):
+        counts = counts_mat[:, j]
         per_cell_data[f"neighborhood_{t}_count"] = counts
         per_cell_data[f"neighborhood_{t}_prop"] = counts / denom
 

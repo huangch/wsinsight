@@ -48,6 +48,15 @@ WSInsight provides a CLI. Use :code:`--help` to explore available options:
 
 Nine CLI entry points are available:
 
+.. note::
+
+   **Experimental commands.** The spatial-analytics commands ``hplot``,
+   ``hplot-finalize``, ``ncomp``, ``ecomp``, and ``tcomp`` (together with
+   their ``hplot-outputs.csv`` / ``hmetrics-outputs.csv`` /
+   ``ncomp-outputs-csv/`` / ``ecomp-outputs-csv/`` / ``tcomp-outputs-csv/``
+   outputs) are research features under active development.  CLI flags,
+   output layouts, and column schemas may change without notice.
+
 ============================  ================================================================
 Command                       Purpose
 ============================  ================================================================
@@ -376,6 +385,12 @@ Example::
 H-plot analysis
 ---------------
 
+.. note::
+
+   **Experimental.** ``hplot`` / ``hplot-finalize`` and their
+   ``hplot-outputs.csv`` / ``hmetrics-outputs.csv`` outputs are under
+   active development; flags and schemas may change without notice.
+
 ``wsinsight hplot`` computes H-plot spatial metrics from existing cell-detection
 inference outputs inside ``--results-dir``.  It builds a proximity graph over detected
 cells, identifies tumour-core regions, and calculates layer-wise abundance profiles for
@@ -451,6 +466,13 @@ Example::
 
 Neighborhood composition
 ------------------------
+
+.. note::
+
+   **Experimental.** The simplicial composition commands
+   ``ncomp`` / ``ecomp`` / ``tcomp`` and their ``*-outputs-csv/``
+   directories are research features under active development; flags and
+   schemas may change without notice.
 
 ``wsinsight ncomp`` computes per-cell neighborhood composition from existing
 cell-detection inference outputs.  For each target cell (or every cell when no

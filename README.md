@@ -234,6 +234,12 @@ The editable install enables rapid iteration on CLI commands, model definitions,
 
 ## CLI Overview
 
+> ⚠️ **Experimental commands.** `hplot`, `hplot-finalize`, `ncomp`, `ecomp`,
+> and `tcomp` (together with their `hplot-outputs.csv` / `hmetrics-outputs.csv` /
+> `ncomp-outputs-csv/` / `ecomp-outputs-csv/` / `tcomp-outputs-csv/` outputs) are
+> research features under active development.  Their CLI flags, output directory
+> layouts, and column schemas may change without notice in future releases.
+
  Command                    | Purpose
 ----------------------------|------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
  `wsinsight run`            | Segment tissue, extract patches, execute model inference, and optionally run H-plot/ncomp/CME analytics and export (one-shot orchestration of `patch` → `infer` → `hplot` → `ncomp` → `cme` → `export`). Pass `--hplot` / `--ncomp` / `--cme` to enable spatial analytics and `--export-geojson` / `--export-omecsv` to write GeoJSON / OME-CSV files at the end of the run.
@@ -243,6 +249,8 @@ The editable install enables rapid iteration on CLI commands, model definitions,
  `wsinsight hplot`          | Standalone H-plot analysis on existing inference outputs. Requires cell-type-aware model outputs and both `--hplot-base-types` and `--hplot-target-types`. Computes layer-wise cell-type proportions from tumour boundary outward.
  `wsinsight hplot-finalize` | Aggregate per-slide H-plot intermediates into a single `hplot-outputs.csv` and `hmetrics-outputs.csv`. Use after running parallel `hplot` jobs that share the same `--results-dir`.
  `wsinsight ncomp`          | Neighborhood composition analysis on existing cell-detection outputs. For each target cell, builds a Delaunay graph, collects k-hop neighbors, and records the cell-type composition of the local neighborhood. Outputs per-cell CSVs under `ncomp-outputs-csv/`.
+ `wsinsight ecomp`          | Edge-level composition analysis.  For each Delaunay edge, builds the line graph, collects k-hop edge neighbors, and records the composition of edge types in the local neighborhood.  Outputs per-edge CSVs under `ecomp-outputs-csv/`.
+ `wsinsight tcomp`          | Triad-level composition analysis.  For each Delaunay triangle, builds the dual graph (triads sharing ≥1 vertex), collects k-hop triad neighbors, and records the composition of triad types plus per-triad geometry (area, perimeter, regularity).  Outputs per-triad CSVs under `tcomp-outputs-csv/`.
  `wsinsight cme`            | Cellular microenvironment (CME) analysis across a cohort of slides. Builds per-slide Delaunay cell graphs, trains a global Deep Graph Infomax (DGI) encoder, clusters the resulting embeddings, and writes per-cell CME labels plus annotation-level region merges under `cme-outputs-csv/`.
  `wsinsight export`         | Merge all available per-cell analytics (inference, H-plot, ncomp, CME) into `export-csv/` and write GeoJSON and/or OME-CSV files. Can be run any time after inference — and optionally after `hplot`/`ncomp`/`cme` — without repeating the full pipeline.
 
@@ -269,7 +277,11 @@ Pick `run` when you want a one-liner for single slides or small batches; switch 
 ├── hplot-outputs.csv               Aggregated H-plot curve (all slides)
 ├── hmetrics-outputs.csv            Aggregated H-plot metrics (all slides)
 ├── ncomp-outputs-csv/
-│   └── <slide>.csv                 Per-cell neighborhood composition
+│   └── <slide>.csv                 Per-cell (node-level) composition
+├── ecomp-outputs-csv/
+│   └── <slide>.csv                 Per-edge composition
+├── tcomp-outputs-csv/
+│   └── <slide>.csv                 Per-triad composition + geometry
 ├── cme-outputs-csv/
 │   ├── cells/<slide>.csv           Per-cell CME labels + features
 │   └── cmes/<slide>.csv            Annotation-level merged CME regions
@@ -431,6 +443,10 @@ Merged per-cell CSV produced by `build_export_csvs()` (called programmatically v
 
 ### H-Plot (`--hplot-*` options in `run` and `wsinsight hplot`)
 
+> ⚠️ **Experimental.** The `hplot` / `hplot-finalize` commands and the
+> `hplot-outputs.csv` / `hmetrics-outputs.csv` outputs are under active
+> development; flags and schemas may change without notice.
+
  Option                                  | Default  | Description
 -----------------------------------------|----------|-------------------------------------------------------------------------------
  `--hplot-base-types`                    | required | Comma-separated base cell types that define the tumour cluster (e.g. `tumor`)
@@ -446,11 +462,48 @@ Merged per-cell CSV produced by `build_export_csvs()` (called programmatically v
 
 ### Neighborhood Composition (`--ncomp-*` options in `run` and `wsinsight ncomp`)
 
+> ⚠️ **Experimental.** `ncomp`, `ecomp`, and `tcomp` (below) are research
+> features under active development; flags and output schemas may change
+> without notice.
+
  Option                          | Default | Description
 ---------------------------------|---------|--------------------------------------
  `--ncomp-max-neighbor-distance` | `25.0`  | Maximum Delaunay edge length in µm
  `--ncomp-k`                     | `2`     | k-hop neighborhood radius
  `--overwrite`                   | off     | Recompute existing per-slide outputs
+
+### Simplicial Composition Hierarchy — `ncomp` / `ecomp` / `tcomp`
+
+WSInsight's three composition commands form a symmetric simplicial hierarchy
+on the Delaunay triangulation:
+
+ Command  | Simplex       | Unit          | Adjacency           | Graph        | Output dir
+----------|---------------|---------------|---------------------|--------------|----------------------
+ `ncomp`  | 0-simplex (n) | cell          | Delaunay edge       | primal       | `ncomp-outputs-csv/`
+ `ecomp`  | 1-simplex (e) | Delaunay edge | shared vertex       | line graph   | `ecomp-outputs-csv/`
+ `tcomp`  | 2-simplex (t) | Delaunay triad (triangle) | shared vertex | dual graph | `tcomp-outputs-csv/`
+
+All three share the same Delaunay cache (`graphs/<slide>.h5`), the same 25 µm
+default edge filter, and the same 2-hop default neighborhood radius.  Only
+`tcomp` emits per-triad geometry (area µm², perimeter µm, regularity ∈ [0, 1]
+where 1.0 is equilateral).  Outputs are standalone — edges and triads are
+**not** merged into `export-csv/` (different primary keys).
+
+### Edge Composition (`--ecomp-*` options in `run` and `wsinsight ecomp`)
+
+ Option             | Default | Description
+--------------------|---------|--------------------------------------
+ `--ecomp-max-edge` | `25.0`  | Maximum Delaunay edge length in µm
+ `--ecomp-k`        | `2`     | k-hop neighborhood radius (line graph)
+ `--overwrite`      | off     | Recompute existing per-slide outputs
+
+### Triad Composition (`--tcomp-*` options in `run` and `wsinsight tcomp`)
+
+ Option             | Default | Description
+--------------------|---------|--------------------------------------
+ `--tcomp-max-edge` | `25.0`  | Longest-edge threshold (µm); triads with any edge above this are pruned
+ `--tcomp-k`        | `2`     | k-hop neighborhood radius (dual graph)
+ `--overwrite`      | off     | Recompute existing per-slide outputs
 
 ### Cellular Microenvironment (`--cme-*` options in `run` and `wsinsight cme`)
 
@@ -636,7 +689,7 @@ WSInsight reads the following environment variables at startup. Set them in your
 
  Variable                     | Purpose                                                                                                                                                                             | Example
 ------------------------------|-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|---------------------------------------------------------------------------------------------
- `WSINFER_ZOO_REGISTRY_PATH`  | Path to a local `wsinfer-zoo-registry.json` file. **Required in air-gapped / restricted-SSL environments.** When set (and the file exists), no network call to HuggingFace is made. | `export WSINFER_ZOO_REGISTRY_PATH=/workspace/wsinsight/devel/zoo/wsinfer-zoo-registry.json`
+ `WSINFER_ZOO_REGISTRY_PATH`  | Path to a local `wsinfer-zoo-registry.json` file. **Required in air-gapped / restricted-SSL environments.** When set (and the file exists), no network call to HuggingFace is made. | `export WSINFER_ZOO_REGISTRY_PATH=/workspace/wsinsight/devel/zoo/wsinsight-zoo-registry.json`
  `S3_STORAGE_OPTIONS`         | JSON object passed verbatim to `s3fs` / `fsspec` (e.g. AWS profile, endpoint URL). Required to read/write S3 URIs.                                                                  | `export S3_STORAGE_OPTIONS='{"profile":"saml"}'`
  `WSINSIGHT_REMOTE_CACHE_DIR` | Local directory where remote assets (S3 tiles, GDC downloads) are materialised. Defaults to `~/.cache/wsinsight`. Point it at a fast SSD for large cohorts.                         | `export WSINSIGHT_REMOTE_CACHE_DIR=/scratch/wsinsight-cache`
  `KERAS_HOME`                 | Override the Keras configuration/weights directory, useful when the default home directory is on a slow or quota-limited filesystem.                                                | `export KERAS_HOME=/workspace/wsinsight/keras`
