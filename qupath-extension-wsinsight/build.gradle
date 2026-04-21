@@ -1,0 +1,67 @@
+plugins {
+    id 'java-library'
+    id 'org.openjfx.javafxplugin'
+    id 'com.github.johnrengelman.shadow'
+}
+
+ext.moduleName = 'qupath.extension.wsinsight'
+ext.qupathVersion = gradle.ext.qupathVersion
+
+base {
+    description = 'QuPath extension providing a GUI wrapper around the WSInsight Docker image'
+    version = '0.1.0'
+    group = 'io.github.qupath'
+}
+
+javafx {
+    version = libs.versions.javafx.get()
+    modules = ['javafx.base', 'javafx.controls', 'javafx.graphics', 'javafx.fxml']
+}
+
+compileJava.options.encoding = 'UTF-8'
+compileTestJava.options.encoding = 'UTF-8'
+
+java {
+    toolchain {
+        languageVersion = JavaLanguageVersion.of(25)
+    }
+}
+
+dependencies {
+    // QuPath-provided; declared as shadow so they are NOT bundled into the fat jar.
+    shadow "io.github.qupath:qupath-gui-fx:${qupathVersion}"
+    shadow "io.github.qupath:qupath-core:${qupathVersion}"
+    shadow "io.github.qupath:qupath-core-processing:${qupathVersion}"
+    shadow libs.qupath.fxtras
+    shadow libs.slf4j
+
+    // Bundled: we genuinely need these at runtime and QuPath doesn't guarantee them.
+    implementation 'org.json:json:20231013'
+
+    testImplementation libs.junit
+}
+
+processResources {
+    from("${projectDir}/LICENSE") {
+        into 'META-INF/licenses/'
+    }
+}
+
+jar {
+    manifest {
+        attributes(
+                'Implementation-Title': project.name,
+                'Implementation-Version': archiveVersion,
+                'Automatic-Module-Name': moduleName
+        )
+    }
+}
+
+shadowJar {
+    archiveClassifier = 'all'
+    mergeServiceFiles()
+}
+
+tasks.named('test') {
+    useJUnitPlatform()
+}
