@@ -16,10 +16,10 @@ QuPath 0.7 extension that exposes the [WSInsight](https://github.com/huangch/wsi
 
 ```bash
 cd qupath-extension-wsinsight
-./gradlew clean shadowJar
+./gradlew clean jar
 ```
 
-The fat jar lands in `build/libs/qupath-extension-wsinsight-0.1.0-all.jar`. Drop it into QuPath's `extensions/` directory and restart QuPath.
+The jar lands in `build/libs/qupath-extension-wsinsight-0.1.0.jar`. Drop it into QuPath's `extensions/` directory and restart QuPath. All runtime dependencies (QuPath, JavaFX, slf4j) are provided by the host application.
 
 ## Configure
 
