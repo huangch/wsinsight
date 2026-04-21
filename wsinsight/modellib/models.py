@@ -21,18 +21,48 @@ class LocalModelTorchScript(Model):
     ...
 
 
+_ZOO_REGISTRY_ENV = "WSINSIGHT_ZOO_REGISTRY_PATH"
+_ZOO_REGISTRY_ENV_LEGACY = "WSINFER_ZOO_REGISTRY_PATH"
+_LEGACY_WARNED = False
+
+
+def resolve_zoo_registry_path() -> Path | None:
+    """Return the effective model-zoo registry path, or ``None``.
+
+    Preference order:
+    1. ``WSINSIGHT_ZOO_REGISTRY_PATH`` (if set and file exists).
+    2. ``WSINFER_ZOO_REGISTRY_PATH`` (deprecated; emits ``DeprecationWarning``).
+    3. The default cached registry shipped with ``wsinfer_zoo`` (if present).
+    4. ``None`` — callers then fall back to ``hf_hub_download``.
+    """
+
+    global _LEGACY_WARNED
+    new = os.getenv(_ZOO_REGISTRY_ENV)
+    if new and Path(new).exists():
+        return Path(new)
+    legacy = os.getenv(_ZOO_REGISTRY_ENV_LEGACY)
+    if legacy and Path(legacy).exists():
+        if not _LEGACY_WARNED:
+            warnings.warn(
+                f"{_ZOO_REGISTRY_ENV_LEGACY} is deprecated; "
+                f"use {_ZOO_REGISTRY_ENV} instead.",
+                DeprecationWarning,
+                stacklevel=2,
+            )
+            _LEGACY_WARNED = True
+        return Path(legacy)
+    default = Path(wsinfer_zoo.client.WSINFER_ZOO_REGISTRY_DEFAULT_PATH)
+    if default.exists():
+        return default
+    return None
+
+
 def get_registered_model(name: str) -> HFModelTorchScript:
     """Resolve a model name to the corresponding TorchScript handle."""
 
-    # registry = wsinfer_zoo.client.load_registry(registry_file=Path.home() / ".wsinfer-zoo" if not os.getenv("WSINFER_ZOO_DIR", default=None) else Path(os.getenv("WSINFER_ZOO_DIR", default=None)) / "wsinfer-zoo-registry.json")
-    _reg_env = os.getenv("WSINFER_ZOO_REGISTRY_PATH")
-    _default_reg = Path(wsinfer_zoo.client.WSINFER_ZOO_REGISTRY_DEFAULT_PATH)
-    _registry_file = (
-        Path(_reg_env) if _reg_env and Path(_reg_env).exists()
-        else _default_reg if _default_reg.exists()
-        else None
+    registry = wsinfer_zoo.client.load_registry(
+        registry_file=resolve_zoo_registry_path()
     )
-    registry = wsinfer_zoo.client.load_registry(registry_file=_registry_file)
 
     model = registry.get_model_by_name(name=name)
     return model.load_model_torchscript()

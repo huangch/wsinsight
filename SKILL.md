@@ -143,7 +143,7 @@ docker run --rm -it \
 ```
 
 `--shm-size=32g` is recommended for multi-worker dataloaders (PyTorch uses
-`/dev/shm` for shared memory).  The image bakes in `WSINFER_ZOO_REGISTRY_PATH`
+`/dev/shm` for shared memory).  The image bakes in `WSINSIGHT_ZOO_REGISTRY_PATH`
 and `KERAS_HOME` so the CLI works without any environment setup.
 
 **Building from source** (maintainers only):
@@ -169,7 +169,7 @@ air-gapped networks the first variable is mandatory.
 
 | Variable                       | Required | Purpose                                                                                  |
 | ------------------------------ | -------- | ---------------------------------------------------------------------------------------- |
-| `WSINFER_ZOO_REGISTRY_PATH`   | Yes*     | Path to a local `wsinfer-zoo-registry.json`. Prevents network calls to HuggingFace.      |
+| `WSINSIGHT_ZOO_REGISTRY_PATH` | Yes*     | Path to a local `wsinsight-zoo-registry.json`. Prevents network calls to HuggingFace. Legacy `WSINFER_ZOO_REGISTRY_PATH` still honored (emits `DeprecationWarning`). |
 | `S3_STORAGE_OPTIONS`           | If S3    | JSON passed to `s3fs` / `fsspec` for AWS credentials (e.g. `'{"profile":"saml"}'`).      |
 | `WSINSIGHT_REMOTE_CACHE_DIR`   | No       | Local cache dir for remote assets. Default: `~/.cache/wsinsight`.                        |
 | `KERAS_HOME`                   | No       | Override Keras config/weights directory.                                                  |
@@ -1109,7 +1109,7 @@ The path must be absolute (triple slash: `gdc-manifest:///absolute/path`).
 
 | Symptom                              | Cause                                 | Fix                                                         |
 | ------------------------------------ | ------------------------------------- | ----------------------------------------------------------- |
-| SSL errors / hang on startup         | HuggingFace Hub unreachable           | Set `WSINFER_ZOO_REGISTRY_PATH` to local registry JSON      |
+| SSL errors / hang on startup         | HuggingFace Hub unreachable           | Set `WSINSIGHT_ZOO_REGISTRY_PATH` to local registry JSON    |
 | `numpy >= 2.0` assertion failure     | Dependency upgraded numpy             | `pip install -c constraints.txt "numpy<2"`                   |
 | `ModuleNotFoundError: osgeo`         | GDAL not installed via conda          | `conda install -c conda-forge gdal=3.11.3`                  |
 | CUDA out of memory                   | Batch size too large                  | Reduce `--batch-size`                                       |
@@ -1174,7 +1174,7 @@ Has the user provided WSIs?
 8. **Prefer Docker when available** — it avoids all local dependency
    installation.  Use `bash docker-run.sh /path/to/data` (or a manual
    `docker run`) and run `wsinsight` commands inside the container.  The
-   image pre-sets `WSINFER_ZOO_REGISTRY_PATH` and `KERAS_HOME`.
+   image pre-sets `WSINSIGHT_ZOO_REGISTRY_PATH` and `KERAS_HOME`.
 9. **When the user needs clinical labels** (survival, PAM50, MSI, treatment),
    refer to Section 9.  Use the GDC `/cases` API for demographics/staging,
    Liu et al. 2018 for curated survival endpoints, and cBioPortal for

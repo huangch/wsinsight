@@ -19,6 +19,7 @@ import tqdm
 from platformdirs import user_cache_dir
 
 import wsinfer_zoo.client
+from ..modellib.models import resolve_zoo_registry_path
 from .infer import infer as infer_command
 from .cme import cme as cme_command
 from .ecomp import ecomp as ecomp_command
@@ -382,12 +383,8 @@ def _select_kwargs(values: dict[str, Any], keys: tuple[str, ...]) -> dict[str, A
     "--model",
     "model_name",
     type=click.Choice(sorted(wsinfer_zoo.client.load_registry(
-        registry_file=Path(os.getenv("WSINFER_ZOO_REGISTRY_PATH", default=None)) \
-            if os.getenv("WSINFER_ZOO_REGISTRY_PATH", default=None) is not None and Path(os.getenv("WSINFER_ZOO_REGISTRY_PATH", default=None)).exists() \
-            else Path(wsinfer_zoo.client.WSINFER_ZOO_REGISTRY_DEFAULT_PATH) \
-            if Path(wsinfer_zoo.client.WSINFER_ZOO_REGISTRY_DEFAULT_PATH).exists() \
-            else None
-        ).models.keys())),
+        registry_file=resolve_zoo_registry_path(),
+    ).models.keys())),
     help="Name of the model to use from WSInsight Model Zoo. Mutually exclusive with"
     " --config.",
 )

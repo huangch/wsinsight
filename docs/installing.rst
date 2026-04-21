@@ -64,7 +64,7 @@ Smoke-test the CLI (optional) with representative environment variables:
 .. code-block:: bash
 
    S3_STORAGE_OPTIONS='{"profile":"saml"}' \
-   WSINFER_ZOO_REGISTRY_PATH='/workspace/wsinsight/wsinsight/zoo/wsinfer-zoo-registry.json' \
+   WSINSIGHT_ZOO_REGISTRY_PATH='/workspace/wsinsight/wsinsight/zoo/wsinsight-zoo-registry.json' \
    WSINSIGHT_REMOTE_CACHE_DIR='/tmp' \
    KERAS_HOME='/workspace/wsinsight/wsinsight/keras' \
    wsinsight --help
@@ -152,8 +152,9 @@ profile or job scheduler) to enable seamless access to cloud storage and manifes
    ``s3://`` URIs and writing ``--results-dir`` outputs back to S3.
 * ``WSINSIGHT_REMOTE_CACHE_DIR`` — Directory used to cache remote assets locally. Defaults
    to ``~/.cache/wsinsight``; point it at a fast SSD for tera-scale slides.
-* ``WSINFER_ZOO_REGISTRY_PATH`` — Optional path/URI for a custom copy of the WSInfer model
-   registry (local file, ``s3://…``, etc.).
+* ``WSINSIGHT_ZOO_REGISTRY_PATH`` — Optional path/URI for a custom copy of the WSInfer model
+   registry (local file, ``s3://…``, etc.). The legacy name ``WSINFER_ZOO_REGISTRY_PATH`` is
+   still honored for one release and emits a ``DeprecationWarning``.
 
 With these variables in place, all CLI commands accept local paths, ``s3://`` URIs, or
 ``gdc-manifest://`` manifests for ``--wsi-dir`` and can write outputs to either local disks or S3

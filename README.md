@@ -136,7 +136,7 @@ Optionally, run a smoke test to ensure the CLI starts with representative enviro
 
 ```bash
 S3_STORAGE_OPTIONS='{"profile":"saml"}' \
-WSINFER_ZOO_REGISTRY_PATH='/workspace/wsinsight/wsinsight/zoo/wsinfer-zoo-registry.json' \
+WSINSIGHT_ZOO_REGISTRY_PATH='/workspace/wsinsight/wsinsight/zoo/wsinsight-zoo-registry.json' \
 WSINSIGHT_REMOTE_CACHE_DIR='/tmp' \
 KERAS_HOME='/workspace/wsinsight/wsinsight/keras' \
 wsinsight --help
@@ -205,7 +205,7 @@ docker run --rm -it \
 ```
 
 > [!TIP]
-> `--shm-size=32g` is recommended for multi-worker dataloaders.  The image bakes in `WSINFER_ZOO_REGISTRY_PATH` and `KERAS_HOME` so no environment setup is needed.
+> `--shm-size=32g` is recommended for multi-worker dataloaders.  The image bakes in `WSINSIGHT_ZOO_REGISTRY_PATH` and `KERAS_HOME` so no environment setup is needed.
 
 ### Option B: Manual installation
 
@@ -689,13 +689,13 @@ WSInsight reads the following environment variables at startup. Set them in your
 
  Variable                     | Purpose                                                                                                                                                                             | Example
 ------------------------------|-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|---------------------------------------------------------------------------------------------
- `WSINFER_ZOO_REGISTRY_PATH`  | Path to a local `wsinfer-zoo-registry.json` file. **Required in air-gapped / restricted-SSL environments.** When set (and the file exists), no network call to HuggingFace is made. | `export WSINFER_ZOO_REGISTRY_PATH=/workspace/wsinsight/devel/zoo/wsinsight-zoo-registry.json`
+ `WSINSIGHT_ZOO_REGISTRY_PATH` | Path to a local `wsinsight-zoo-registry.json` file. **Required in air-gapped / restricted-SSL environments.** When set (and the file exists), no network call to HuggingFace is made. The legacy name `WSINFER_ZOO_REGISTRY_PATH` is still honored for one release (emits a `DeprecationWarning`). | `export WSINSIGHT_ZOO_REGISTRY_PATH=/workspace/wsinsight/devel/zoo/wsinsight-zoo-registry.json`
  `S3_STORAGE_OPTIONS`         | JSON object passed verbatim to `s3fs` / `fsspec` (e.g. AWS profile, endpoint URL). Required to read/write S3 URIs.                                                                  | `export S3_STORAGE_OPTIONS='{"profile":"saml"}'`
  `WSINSIGHT_REMOTE_CACHE_DIR` | Local directory where remote assets (S3 tiles, GDC downloads) are materialised. Defaults to `~/.cache/wsinsight`. Point it at a fast SSD for large cohorts.                         | `export WSINSIGHT_REMOTE_CACHE_DIR=/scratch/wsinsight-cache`
  `KERAS_HOME`                 | Override the Keras configuration/weights directory, useful when the default home directory is on a slow or quota-limited filesystem.                                                | `export KERAS_HOME=/workspace/wsinsight/keras`
 
 > [!TIP]
-> If the CLI hangs or prints SSL errors on startup, you are almost certainly in an environment where `huggingface.co` is blocked.  Set `WSINFER_ZOO_REGISTRY_PATH` to the local registry file and the issue will disappear.
+> If the CLI hangs or prints SSL errors on startup, you are almost certainly in an environment where `huggingface.co` is blocked.  Set `WSINSIGHT_ZOO_REGISTRY_PATH` to the local registry file and the issue will disappear.
 
 ## Remote and Large-Scale Data
 

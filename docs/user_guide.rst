@@ -219,8 +219,9 @@ Environment variables tune remote behavior:
 * ``S3_STORAGE_OPTIONS`` — JSON blob passed to ``fsspec`` (e.g., ``{"profile": "research"}``).
 * ``WSINSIGHT_REMOTE_CACHE_DIR`` — directory where remote assets are materialized. Default
    is ``~/.cache/wsinsight``; point it at a fast SSD for large batches.
-* ``WSINFER_ZOO_REGISTRY_PATH`` — optional override for the model registry JSON if you
-   mirror the zoo to local/S3 storage.
+* ``WSINSIGHT_ZOO_REGISTRY_PATH`` — optional override for the model registry JSON if you
+  mirror the zoo to local/S3 storage. (The legacy name ``WSINFER_ZOO_REGISTRY_PATH`` is
+  still honored for one release and emits a ``DeprecationWarning``.)
 
 With these options, it is common to read WSIs from S3, spill temporary files to a local
 scratch volume, and write final GeoJSON/OME-CSV artifacts back to another S3 bucket
@@ -659,7 +660,7 @@ Alternatively, run a one-shot command without the helper script::
 
 ``--shm-size=32g`` is recommended for multi-worker dataloaders (PyTorch uses
 ``/dev/shm`` for shared memory).  The image bakes in
-``WSINFER_ZOO_REGISTRY_PATH`` and ``KERAS_HOME`` so the CLI works without any
+``WSINSIGHT_ZOO_REGISTRY_PATH`` and ``KERAS_HOME`` so the CLI works without any
 environment setup.
 
 To build the image from source (maintainers)::

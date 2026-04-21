@@ -30,6 +30,7 @@ from wsinfer_zoo.client import Model, ModelConfiguration
 
 from .. import errors
 from ..modellib import models
+from ..modellib.models import resolve_zoo_registry_path
 from ..patchlib import segment_and_patch_directory_of_slides
 from ..uri_path import URIPathType, URIPath
 from ..wsi import _validate_wsi_directory
@@ -439,12 +440,8 @@ def _optional_uri_paths(ctx: click.Context, param: click.Option, value):
     "--model",
     "model_name",
     type=click.Choice(sorted(wsinfer_zoo.client.load_registry(
-        registry_file=Path(os.getenv("WSINFER_ZOO_REGISTRY_PATH", default=None)) \
-            if os.getenv("WSINFER_ZOO_REGISTRY_PATH", default=None) is not None and Path(os.getenv("WSINFER_ZOO_REGISTRY_PATH", default=None)).exists() \
-            else Path(wsinfer_zoo.client.WSINFER_ZOO_REGISTRY_DEFAULT_PATH) \
-            if Path(wsinfer_zoo.client.WSINFER_ZOO_REGISTRY_DEFAULT_PATH).exists() \
-            else None
-        ).models.keys())),
+        registry_file=resolve_zoo_registry_path(),
+    ).models.keys())),
     help="Name of the model to use from WSInsight Model Zoo. Mutually exclusive with"
     " --config.",
 )
