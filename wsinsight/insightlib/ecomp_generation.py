@@ -174,14 +174,23 @@ def _worker(
         _step("k-hop neighbors")  # advance pbar — skipped
 
         cell_type_array = nodes_df["cell_type"].to_numpy()
-        ct_a = cell_type_array[edge_src]
-        ct_b = cell_type_array[edge_dst]
-        swap = ct_a > ct_b
-        ct1 = np.where(swap, ct_b, ct_a)
-        ct2 = np.where(swap, ct_a, ct_b)
+        all_types = sorted(c.removeprefix("prob_") for c in prob_columns)
+        K = len(all_types)
+        ct_to_idx = {t: i for i, t in enumerate(all_types)}
+        ct_to_idx_get = np.vectorize(ct_to_idx.__getitem__, otypes=[np.int64])
+        ct_a_idx = ct_to_idx_get(cell_type_array[edge_src])
+        ct_b_idx = ct_to_idx_get(cell_type_array[edge_dst])
+        lo = np.minimum(ct_a_idx, ct_b_idx)
+        hi = np.maximum(ct_a_idx, ct_b_idx)
+        swap = ct_a_idx > ct_b_idx
         v1 = np.where(swap, edge_dst, edge_src)
         v2 = np.where(swap, edge_src, edge_dst)
-        edge_type = np.char.add(np.char.add(ct1.astype(str), "__"), ct2.astype(str))
+        edge_type_idx = (lo * (2 * K - lo + 1) // 2 + (hi - lo)).astype(np.int64)
+        vocab_arr = np.asarray(_edge_type_vocab(all_types), dtype=object)
+        all_types_arr = np.asarray(all_types, dtype=object)
+        ct1 = all_types_arr[lo]
+        ct2 = all_types_arr[hi]
+        edge_type = vocab_arr[edge_type_idx]
         edge_len_um = edge_len_px * mpp
         mid_x = ((centers[edge_src, 0] + centers[edge_dst, 0]) / 2).astype(np.int32)
         mid_y = ((centers[edge_src, 1] + centers[edge_dst, 1]) / 2).astype(np.int32)
@@ -228,13 +237,13 @@ def _worker(
         L_gpu = build_line_graph_gpu(edges, num_vertices=N)
         _step("line graph")
 
-        A_k_gpu = k_hop_adjacency_matrix_gpu(L_gpu, ecomp_k).astype(cp.float32)
+        A_k_gpu = k_hop_adjacency_matrix_gpu(L_gpu, ecomp_k)
         _step("k-hop neighbors")
     else:
         L = build_line_graph(edges, num_vertices=N)
         _step("line graph")
 
-        A_k = k_hop_adjacency_matrix(L, ecomp_k).astype(np.float32)
+        A_k = k_hop_adjacency_matrix(L, ecomp_k)
         _step("k-hop neighbors")
 
     # --- Per-edge features --------------------------------------------------
@@ -242,29 +251,43 @@ def _worker(
     all_types = sorted(c.removeprefix("prob_") for c in prob_columns)
     edge_type_vocab = _edge_type_vocab(all_types)
 
-    # Per-edge cell types (sorted per pair to canonicalize edge type).
-    ct_a = cell_type_array[edge_src]
-    ct_b = cell_type_array[edge_dst]
-    # Alphabetize (a, b): swap where ct_a > ct_b.
-    swap = ct_a > ct_b
-    ct1 = np.where(swap, ct_b, ct_a)
-    ct2 = np.where(swap, ct_a, ct_b)
+    # Map each cell type to its integer index in ``all_types``.  Building the
+    # edge-type index from these integers is O(E) numpy, avoiding per-string
+    # hashing or ``np.char.add`` concatenation (both are Python-level and
+    # were measured to dominate ecomp runtime before this refactor).
+    K = len(all_types)
+    ct_to_idx = {t: i for i, t in enumerate(all_types)}
+    ct_to_idx_get = np.vectorize(ct_to_idx.__getitem__, otypes=[np.int64])
+    ct_a_idx = ct_to_idx_get(cell_type_array[edge_src])
+    ct_b_idx = ct_to_idx_get(cell_type_array[edge_dst])
+
+    # Canonicalize (lo <= hi) so ct1 always points to the smaller index.
+    lo = np.minimum(ct_a_idx, ct_b_idx)
+    hi = np.maximum(ct_a_idx, ct_b_idx)
+    swap = ct_a_idx > ct_b_idx
+
     # Also reorder vertex ids correspondingly so vertex_1 corresponds to cell_type_1.
     v1 = np.where(swap, edge_dst, edge_src)
     v2 = np.where(swap, edge_src, edge_dst)
 
-    edge_type = np.char.add(np.char.add(ct1.astype(str), "__"), ct2.astype(str))
+    # combinations_with_replacement(all_types, 2) flat index:
+    #   index(a, b) = a*(2K - a + 1) // 2 + (b - a), for 0 <= a <= b < K.
+    # This matches the ordering used by _edge_type_vocab().
+    edge_type_idx = (lo * (2 * K - lo + 1) // 2 + (hi - lo)).astype(np.int64)
+
+    # Derive string columns by a single O(E) gather (only for CSV output).
+    all_types_arr = np.asarray(all_types, dtype=object)
+    vocab_arr = np.asarray(edge_type_vocab, dtype=object)
+    ct1 = all_types_arr[lo]
+    ct2 = all_types_arr[hi]
+    edge_type = vocab_arr[edge_type_idx]
 
     edge_len_um = edge_len_px * mpp
     mid_x = ((centers[edge_src, 0] + centers[edge_dst, 0]) / 2).astype(np.int32)
     mid_y = ((centers[edge_src, 1] + centers[edge_dst, 1]) / 2).astype(np.int32)
 
     # --- Vectorised neighborhood aggregation via sparse matrix products ----
-    type_to_col = {t: i for i, t in enumerate(edge_type_vocab)}
     V = len(edge_type_vocab)
-    edge_type_idx = np.fromiter(
-        (type_to_col[t] for t in edge_type), count=E, dtype=np.int64
-    )
 
     if use_gpu:
         T_onehot = cpsp.csr_matrix(

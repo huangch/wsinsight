@@ -218,7 +218,7 @@ def _worker(
     _step("dual graph")
 
     # --- k-hop on dual graph (as sparse matrix for vectorised aggregation) -
-    A_k = k_hop_adjacency_matrix(D, tcomp_k).astype(np.float32)
+    A_k = k_hop_adjacency_matrix(D, tcomp_k)
     _step("k-hop neighbors")
 
     # --- Per-triad features ------------------------------------------------
