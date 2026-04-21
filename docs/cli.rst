@@ -3,79 +3,101 @@ Command reference
 
 .. note::
 
-   **Experimental commands.** The spatial-analytics commands ``hplot``,
-   ``hplot-finalize``, ``ncomp``, ``ecomp``, and ``tcomp`` (together with
-   their ``hplot-outputs.csv`` / ``hmetrics-outputs.csv`` / ``ncomp-outputs-csv/``
-   / ``ecomp-outputs-csv/`` / ``tcomp-outputs-csv/`` outputs) are research
-   features under active development.  Their CLI flags, output directory
-   layouts, and column schemas may change without notice in future releases.
+   **Experimental commands.** ``hplot``, ``hplot-finalize``, ``cme``,
+   ``ecomp``, and ``tcomp`` (together with their ``hplot-outputs.csv`` /
+   ``hmetrics-outputs.csv`` / ``ecomp-outputs-csv/`` / ``tcomp-outputs-csv/``
+   outputs) are research features under active development.  Their CLI flags,
+   output directory layouts, and column schemas may change without notice in
+   future releases.  They are hidden from ``wsinsight --help`` and refuse to
+   run unless the environment variable ``WSINSIGHT_EXPERIMENTAL=1`` is set.
+   ``wsinsight describe`` always emits the full schema so downstream tools
+   (the QuPath extension) can discover every command; only invocation is
+   gated.
 
-Nine CLI entry points are available:
+Stable commands
+---------------
+
+Six CLI entry points are available by default:
 
 ============================  ================================================================
 Command                       Purpose
 ============================  ================================================================
 ``wsinsight run``             One-shot workflow: tissue segmentation, patch extraction, model
-                              inference, and optional spatial analytics and exports.
-                              Orchestrates ``patch`` → ``infer`` → ``hplot`` → ``ncomp``
-                              → ``cme`` → ``export``.  Pass ``--hplot`` / ``--ncomp`` /
-                              ``--cme`` to enable spatial analytics and
+                              inference, and optional ncomp analytics and exports.
+                              Orchestrates ``patch`` → ``infer`` → ``ncomp`` → ``export``.
+                              Pass ``--ncomp`` to enable neighborhood composition and
                               ``--export-geojson`` / ``--export-omecsv`` to write
-                              GeoJSON / OME-CSV files at the end of the run.
+                              GeoJSON / OME-CSV files at the end of the run.  Experimental
+                              ``--hplot`` / ``--cme`` flags require
+                              ``WSINSIGHT_EXPERIMENTAL=1``.
 ``wsinsight patch``           Segment tissue and cache patches to HDF5; safe to rerun to
                               resume interrupted jobs.
 ``wsinsight infer``           Reuse cached patches to run models and produce per-cell CSV
                               outputs.  Supports region registration via
                               ``--region-inference-dir`` and ``--overwrite``.
-                              Use standalone ``hplot``/``ncomp``/``export`` commands
-                              (or ``run``) for downstream analytics.
+                              Use standalone ``ncomp``/``export`` commands (or ``run``) for
+                              downstream analytics.
 ``wsinsight reg``             Post-hoc object-to-region registration on already-completed
                               runs.  Enriches object CSVs with ``region_prob_*`` columns from
                               a prior region-level run.  Use ``--overwrite`` to replace
                               existing region columns.
-``wsinsight hplot``           Standalone H-plot analysis on existing object-based inference
-                              outputs.  Requires both ``--hplot-base-types`` and
-                              ``--hplot-target-types``.
-``wsinsight hplot-finalize``  Aggregate per-slide H-plot intermediates into cohort-level
-                              ``hplot-outputs.csv`` and ``hmetrics-outputs.csv``.  Run this
-                              after parallel ``hplot`` jobs that share an output directory.
 ``wsinsight ncomp``           Neighborhood composition analysis on existing inference outputs.
                               For each target cell, builds a Delaunay graph, collects k-hop
                               neighbors, and records per-cell type counts and proportions.
                               Can also run inline via ``wsinsight run --ncomp``.
+``wsinsight export``          Merge all per-cell analytics (inference, ncomp, and — when
+                              enabled — H-plot / CME) into ``export-csv/`` and write
+                              GeoJSON and/or OME-CSV files.  Can be run after inference
+                              without repeating the full pipeline.
+============================  ================================================================
+
+Use ``run`` for simple single-machine jobs, and switch to the explicit
+``patch`` → ``infer`` flow when you need to resume work, share caches across
+models, or process slides on multiple nodes.  ``run`` is the only command
+that orchestrates all stages — ``infer`` focuses solely on model inference.
+Use the standalone ``ncomp`` command to re-run neighborhood analytics on
+existing inference outputs without repeating inference.  Use ``reg`` to enrich
+earlier runs with region-level probabilities without re-running inference.
+All commands share the same URI-aware options for local folders, ``s3://``
+buckets, ``gdc-manifest://`` manifests, and ``image-list://`` file lists
+(a text file with one slide path per line; blank lines and ``#`` comments
+are ignored).  When ``--wsi-dir`` points to a plain local text file it is
+automatically coerced to ``image-list://``.
+
+Experimental commands
+---------------------
+
+Set ``WSINSIGHT_EXPERIMENTAL=1`` to unhide and enable these research commands.
+
+============================  ================================================================
+Command                       Purpose
+============================  ================================================================
+``wsinsight hplot``           Standalone H-plot analysis on existing object-based inference
+                              outputs.  Requires both ``--hplot-base-types`` and
+                              ``--hplot-target-types``.  Computes layer-wise cell-type
+                              proportions from tumour boundary outward.  Can also run inline
+                              via ``wsinsight run --hplot``.
+``wsinsight hplot-finalize``  Aggregate per-slide H-plot intermediates into cohort-level
+                              ``hplot-outputs.csv`` and ``hmetrics-outputs.csv``.  Run this
+                              after parallel ``hplot`` jobs that share an output directory.
 ``wsinsight ecomp``           Edge-level composition analysis.  For each Delaunay edge,
                               builds the line graph, collects k-hop edge neighbors, and
-                              records per-edge type counts and proportions.  Can also run
-                              inline via ``wsinsight run --ecomp``.
+                              records per-edge type counts and proportions.  Standalone
+                              command — not inlined by ``run``.
 ``wsinsight tcomp``           Triad-level composition analysis.  For each Delaunay triangle,
-                              builds the dual graph (triads sharing \u22651 vertex), collects
+                              builds the dual graph (triads sharing ≥1 vertex), collects
                               k-hop triad neighbors, and records per-triad type counts,
                               proportions, and geometry (area, perimeter, regularity).
-                              Can also run inline via ``wsinsight run --tcomp``.
+                              Standalone command — not inlined by ``run``.
 ``wsinsight cme``             Cellular microenvironment (CME) analysis across a cohort of
                               slides.  Builds per-slide Delaunay cell graphs, trains a
                               global DGI encoder, clusters the embeddings, and writes
                               per-cell CME labels plus annotation-level region merges.
-                              Can also run inline via ``wsinsight run --cme``.
-``wsinsight export``          Merge all per-cell analytics (inference, H-plot, ncomp, CME)
-                              into ``export-csv/`` and write GeoJSON and/or OME-CSV files.
-                              Can be run after inference — and optionally after ``hplot`` /
-                              ``ncomp`` / ``cme`` — without repeating the full pipeline.
+                              Can also run inline via ``wsinsight run --cme``.  CME is a
+                              cross-slide analysis (global DGI training + global clustering)
+                              and cannot be parallelized across GPU shards — run it after
+                              merging all per-shard inference outputs.
 ============================  ================================================================
-
-Use ``run`` for simple single-machine jobs, and switch to the explicit ``patch`` → ``infer``
-flow when you need to resume work, share caches across models, or process slides on
-multiple nodes.  ``run`` is the only command that orchestrates all stages — ``infer``
-focuses solely on model inference.  Use the standalone ``hplot``, ``ncomp``, and ``cme``
-commands to re-run analytics on existing inference outputs without repeating inference.
-Note: CME is a cross-slide analysis (global DGI training + global clustering) and cannot be
-parallelized across GPU shards — run it after merging all per-shard inference outputs.  Run
-``hplot-finalize`` to assemble the cohort-level summary after parallel ``hplot`` jobs.  Use
-``reg`` to enrich earlier runs with region-level probabilities without re-running inference.
-All commands share the same URI-aware options for local folders, ``s3://`` buckets,
-``gdc-manifest://`` manifests, and ``image-list://`` file lists (a text file with one
-slide path per line; blank lines and ``#`` comments are ignored).  When ``--wsi-dir``
-points to a plain local text file it is automatically coerced to ``image-list://``.
 
 
 Output file formats

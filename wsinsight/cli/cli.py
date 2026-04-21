@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import logging
+import os
 from pathlib import Path
 from typing import Any, Literal
 
@@ -24,6 +25,17 @@ from .cme import cme
 
 _logging_levels = ["debug", "info", "warning", "error", "critical"]
 
+# Subcommands hidden unless the user opts into experimental features by
+# setting the WSINSIGHT_EXPERIMENTAL environment variable. Keep this list in
+# sync with qupath-extension-wsinsight/commands/WSInsightCommands.EXPERIMENTAL.
+_EXPERIMENTAL_COMMANDS = ("hplot", "hplot-finalize", "cme", "tcomp", "ecomp")
+
+
+def _experimental_enabled() -> bool:
+    v = os.environ.get("WSINSIGHT_EXPERIMENTAL", "").strip().lower()
+    return v in {"1", "true", "yes", "on"}
+
+
 # We use invoke_without_command=True so that 'wsinsight' on its own can be used for
 # inference on slides.
 @click.group()
@@ -40,8 +52,11 @@ _logging_levels = ["debug", "info", "warning", "error", "critical"]
     help="Set the loudness of logging.",
 )
 @click.version_option()
+@click.pass_context
 def cli(
-    backend: Literal["openslide"] | Literal["tiffslide"] | None, log_level: str
+    ctx: click.Context,
+    backend: Literal["openslide"] | Literal["tiffslide"] | None,
+    log_level: str,
 ) -> None:
     """Configure logging/backends and expose the core WSInsight subcommands."""
 
@@ -52,6 +67,16 @@ def cli(
 
     if backend is not None:
         set_backend(backend)
+
+    # Block invocation of experimental subcommands unless opted in. They remain
+    # registered so `wsinsight describe` emits a full schema for the QuPath
+    # extension, but cannot be executed without WSINSIGHT_EXPERIMENTAL=1.
+    sub = ctx.invoked_subcommand
+    if sub in _EXPERIMENTAL_COMMANDS and not _experimental_enabled():
+        raise click.UsageError(
+            f"'{sub}' is an experimental WSInsight subcommand. "
+            "Set WSINSIGHT_EXPERIMENTAL=1 to enable it."
+        )
 
 
 cli.add_command(run)
@@ -66,6 +91,15 @@ cli.add_command(ncomp)
 cli.add_command(ecomp)
 cli.add_command(tcomp)
 cli.add_command(cme)
+
+# Hide experimental commands from --help unless WSINSIGHT_EXPERIMENTAL is set.
+# They remain registered so `describe` can emit the full schema; invocation is
+# blocked in the group callback above.
+if not _experimental_enabled():
+    for _name in _EXPERIMENTAL_COMMANDS:
+        _cmd = cli.commands.get(_name)
+        if _cmd is not None:
+            _cmd.hidden = True
 
 
 def _describe_param(param: click.Parameter) -> dict[str, Any]:
