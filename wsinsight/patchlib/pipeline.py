@@ -48,7 +48,7 @@ PATCHES_DIR = "patches"
 def segment_and_patch_one_slide(
     slide_path: URIPath,
     save_dir: URIPath,
-    qupath_detection_dir: URIPath,
+    qupath_measurement_detection_dir: URIPath,
     qupath_geojson_detection_dir: URIPath,
     qupath_geojson_annotation_dir: URIPath,
     patch_size_px: int,
@@ -173,14 +173,14 @@ def segment_and_patch_one_slide(
 
     if (
         object_based
-        and qupath_detection_dir is not None
+        and qupath_measurement_detection_dir is not None
         and qupath_geojson_detection_dir is None
         and qupath_geojson_annotation_dir is None
     ):
         patch_size = patch_size_px
         half_patch_size = round(patch_size / 2)
 
-        slide_det = qupath_detection_dir / f"{slide_prefix}.txt"
+        slide_det = qupath_measurement_detection_dir / f"{slide_prefix}.txt"
 
         if not slide_det.exists():
             logger.info(f"Skipping because detection file not found: {slide_det}")
@@ -210,7 +210,7 @@ def segment_and_patch_one_slide(
 
     elif (
         object_based
-        and qupath_detection_dir is None
+        and qupath_measurement_detection_dir is None
         and qupath_geojson_detection_dir is not None
         and qupath_geojson_annotation_dir is None
     ):
@@ -264,7 +264,7 @@ def segment_and_patch_one_slide(
 
     elif (
         object_based
-        and qupath_detection_dir is None
+        and qupath_measurement_detection_dir is None
         and qupath_geojson_detection_dir is None
         and qupath_geojson_annotation_dir is None
         and object_detection == "end2end"
@@ -302,7 +302,7 @@ def segment_and_patch_one_slide(
 
     elif (
         object_based
-        and qupath_detection_dir is None
+        and qupath_measurement_detection_dir is None
         and qupath_geojson_detection_dir is None
         and qupath_geojson_annotation_dir is None
         and object_detection != "end2end"
@@ -450,7 +450,7 @@ def segment_and_patch_directory_of_slides(
     wsi_dir: URIPath,
     slide_paths: List[URIPath],
     save_dir: URIPath,
-    qupath_detection_dir: str | URIPath,
+    qupath_measurement_detection_dir: str | URIPath,
     qupath_geojson_detection_dir: str | URIPath,
     qupath_geojson_annotation_dir: str | URIPath,
     patch_size_px: int,
@@ -483,7 +483,7 @@ def segment_and_patch_directory_of_slides(
                 segment_and_patch_one_slide(
                     slide_path=slide_path,
                     save_dir=save_dir,
-                    qupath_detection_dir=qupath_detection_dir,
+                    qupath_measurement_detection_dir=qupath_measurement_detection_dir,
                     qupath_geojson_detection_dir=qupath_geojson_detection_dir,
                     qupath_geojson_annotation_dir=qupath_geojson_annotation_dir,
                     patch_size_px=patch_size_px,

@@ -99,10 +99,20 @@ class URIPath:
 
     # ------------------------ Coercion helpers -----------------
     def coerce_image_list(self) -> "URIPath":
-        """If this is a plain local file, treat it as an image-list:// virtual directory."""
+        """Validate the ``--wsi-dir`` value.
+
+        Historically a plain local text file passed as ``--wsi-dir`` was
+        silently treated as an ``image-list://`` manifest. That hidden coercion
+        hides bugs (e.g. pointing at a stray ``README.txt``) and is now a hard
+        error: callers that want to pass a slide list must spell it out as
+        ``image-list:///path/to/filelist.txt``.
+        """
         if self.is_local and self._path.is_file():
-            abs_path = os.path.abspath(os.fspath(self._path))
-            return URIPath(f"image-list://{abs_path}", cache_dir=self._cache_dir, _skip_validation=True, **self.storage_options)
+            raise ValueError(
+                f"--wsi-dir points at a regular file ({self.uri}). To process "
+                "a list of slides, pass it as 'image-list:///path/to/filelist.txt'. "
+                "Otherwise point --wsi-dir at a directory."
+            )
         return self
 
     # ------------------------ Path-ish ------------------------

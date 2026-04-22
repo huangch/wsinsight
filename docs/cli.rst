@@ -61,8 +61,8 @@ earlier runs with region-level probabilities without re-running inference.
 All commands share the same URI-aware options for local folders, ``s3://``
 buckets, ``gdc-manifest://`` manifests, and ``image-list://`` file lists
 (a text file with one slide path per line; blank lines and ``#`` comments
-are ignored).  When ``--wsi-dir`` points to a plain local text file it is
-automatically coerced to ``image-list://``.
+are ignored).  A plain local text file passed directly as ``--wsi-dir`` is
+rejected — prefix it with ``image-list://`` to pass a slide list.
 
 Experimental commands
 ---------------------
@@ -157,7 +157,7 @@ Produced by ``infer``, ``run``, and ``reg``.
    * - ``prob_<class>``
      - Model probability for each class (e.g. ``prob_tumor``)
    * - ``qupath_detection_parent``
-     - Parent annotation name — only with ``--qupath-detection-dir``
+     - Parent annotation name — only with ``--qupath-measurement-detection-dir``
    * - ``region_minx``, ``region_miny``, ``region_width``, ``region_height``
      - Matched region bounding box — only with ``--region-inference-dir``
    * - ``region_prob_<class>``

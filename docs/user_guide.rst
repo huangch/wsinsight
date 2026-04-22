@@ -174,7 +174,7 @@ QuPath inputs and exports
 
 WSInsight can both consume and generate QuPath-compatible assets:
 
-* Use ``--qupath-detection-dir`` and ``--qupath-geojson-*-dir`` to ingest detections or
+* Use ``--qupath-measurement-detection-dir`` and ``--qupath-geojson-*-dir`` to ingest detections or
    annotations created in QuPath. Override the pseudo-model settings via
    ``--qupath-detection-patch-size``, ``--qupath-annotation-patch-size``, and
    ``--qupath-spacing-um-px``. Pass ``--qupath-name-as-class`` if you prefer QuPath's
@@ -207,8 +207,9 @@ All CLI commands accept the same URI-aware options:
 * ``--wsi-dir`` may point to local folders, ``s3://bucket/prefix`` paths,
   ``gdc-manifest://`` manifests, or ``image-list:///path/to/filelist.txt`` URIs.
   An ``image-list://`` URI references a plain text file listing one slide path per
-  line (blank lines and ``#`` comments are ignored).  When ``--wsi-dir`` is a plain
-  local text file it is automatically coerced to ``image-list://``.
+  line (blank lines and ``#`` comments are ignored).  Passing a plain local text file
+  directly as ``--wsi-dir`` is rejected with a clear error — use the
+  ``image-list://`` prefix instead.
   GDC manifests stream WSIs through the built-in cache.
 * ``--results-dir`` (and the derived GeoJSON/OME outputs) may target local disks or S3
    buckets. Remote destinations do **not** need to exist beforehand; they are created as

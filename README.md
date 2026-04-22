@@ -331,7 +331,7 @@ Produced by `infer`, `run`, and `reg`.
  `minx`, `miny`                                                | Top-left corner of the patch/detection bounding box (pixels)
  `width`, `height`                                             | Bounding box size (pixels)
  `prob_<class>`                                                | Model probability for each class (e.g. `prob_tumor`, `prob_lymphocyte`)
- `qupath_detection_parent`                                     | Parent annotation name — only with `--qupath-detection-dir`
+ `qupath_detection_parent`                                     | Parent annotation name — only with `--qupath-measurement-detection-dir`
  `region_minx`, `region_miny`, `region_width`, `region_height` | Matched region bounding box — only with `--region-inference-dir`
  `region_prob_<class>`                                         | Region-level class probabilities — only with `--region-inference-dir`
 
@@ -721,7 +721,7 @@ WSInsight reads the following environment variables at startup. Set them in your
 ## Remote and Large-Scale Data
 
 - S3 URIs are supported out of the box; configure credentials via `S3_STORAGE_OPTIONS`.
-- `--wsi-dir` can point to local folders, `s3://bucket/prefix` locations, `gdc-manifest:///path/to/manifest.tsv`, or an `image-list:///path/to/filelist.txt` URI that references a text file listing one slide path per line (blank lines and `#` comments are ignored). When `--wsi-dir` is a plain local text file, it is automatically coerced to `image-list://`. `--results-dir`, GeoJSON, and OME-CSV outputs can be written to local disks or S3 buckets with the same URI syntax.
+- `--wsi-dir` can point to local folders, `s3://bucket/prefix` locations, `gdc-manifest:///path/to/manifest.tsv`, or an `image-list:///path/to/filelist.txt` URI that references a text file listing one slide path per line (blank lines and `#` comments are ignored). If you pass a plain local text file, `wsinsight` now errors with a clear "use `image-list://`" message instead of silently coercing it. `--results-dir`, GeoJSON, and OME-CSV outputs can be written to local disks or S3 buckets with the same URI syntax.
 - Every CLI that accepts `--wsi-dir`, `--results-dir`, `--region-inference-dir`, or QuPath directories uses the same URI resolver as `wsinsight patch`/`infer`. Local paths require `exists=True`, while remote paths honor the `S3_STORAGE_OPTIONS` profile without checking for pre-existence—making it safe to point `--results-dir` at a brand-new bucket/key.
 - `WSINSIGHT_REMOTE_CACHE_DIR` determines where remote assets are materialized locally (default: `~/.cache/wsinsight`). Set it to a fast SSD mount when you process tera-scale cohorts.
 - GDC manifests can be referenced directly via the `gdc-manifest://` URI scheme, and the downloaded slides are cached via the same mechanism.

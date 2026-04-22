@@ -48,7 +48,7 @@ def run_inference(
     slide_paths: List[URIPath] | None,
     results_dir: URIPath,
     region_inference_dir: str | URIPath | None,
-    qupath_detection_dir: str | URIPath | None,
+    qupath_measurement_detection_dir: str | URIPath | None,
     qupath_geojson_detection_dir: str | URIPath | None,
     qupath_geojson_annotation_dir: str | URIPath | None,
     qupath_name_as_class: bool,
@@ -165,7 +165,7 @@ def run_inference(
         device = torch.device("cpu")
     print(f'Using device "{device}"')
 
-    if qupath_detection_dir is None and qupath_geojson_detection_dir is None and qupath_geojson_annotation_dir is None:
+    if qupath_measurement_detection_dir is None and qupath_geojson_detection_dir is None and qupath_geojson_annotation_dir is None:
         # model.to(device)
         model = get_pretrained_torch_module(
             model=model_info, 
@@ -329,12 +329,12 @@ def run_inference(
             slide_superior_structure = None  # initialized here; set per-branch below
 
             if object_based \
-                and qupath_detection_dir is not None \
+                and qupath_measurement_detection_dir is not None \
                 and qupath_geojson_detection_dir is None \
                 and qupath_geojson_annotation_dir is None:
                 
                 slide_det_name = wsi_path.with_suffix(".txt").name
-                slide_det = qupath_detection_dir / slide_det_name
+                slide_det = qupath_measurement_detection_dir / slide_det_name
                 
                 if not slide_det.exists():
                     failed_inference.append(wsi_path.stem)
@@ -370,7 +370,7 @@ def run_inference(
                 
                 
             elif object_based \
-                and qupath_detection_dir is None \
+                and qupath_measurement_detection_dir is None \
                 and qupath_geojson_detection_dir is not None \
                 and qupath_geojson_annotation_dir is None:
                 

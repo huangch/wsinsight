@@ -1097,8 +1097,9 @@ extract each patient barcode, and merge into a single DataFrame.
 | GDC manifest         | `gdc-manifest:///absolute/path/to/manifest.tsv`            |
 | Image list           | `image-list:///path/to/filelist.txt`                       |
 
-A plain local `.txt` file passed as `--wsi-dir` is auto-coerced to
-`image-list://`.  S3 access requires `S3_STORAGE_OPTIONS` to be set.
+A plain local `.txt` file passed as `--wsi-dir` is rejected with a clear
+error — prefix it with `image-list://` to pass a slide list.  S3 access
+requires `S3_STORAGE_OPTIONS` to be set.
 
 **Important:** The GDC manifest URI scheme is `gdc-manifest://` (not `gdc://`).
 The path must be absolute (triple slash: `gdc-manifest:///absolute/path`).
