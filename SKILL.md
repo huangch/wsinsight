@@ -482,6 +482,20 @@ Conditional columns:
 | `qupath_detection_parent` | QuPath pseudo-model with detection TSV |
 | `region_minx`, `region_miny`, `region_width`, `region_height`, `region_prob_<class>`, … | `--region-inference-dir` set with `object_based=True`. All region CSV columns prefixed with `region_` |
 
+**Deriving a per-cell tumor mask from `region_prob_*`**: when region inference
+is enabled, each cell carries one `region_prob_<class>` column per region class.
+Argmax over those columns yields a per-cell region label — select the tumor
+column (e.g. `region_prob_Tumor` for BRCA, `region_prob_ColorectalAdenocarcinomaEpithelium`
+for CRC) to build a `bool` tumor/non-tumor mask for region-stratified analytics.
+
+```python
+import pandas as pd
+df = pd.read_csv("results/model-outputs-csv/SLIDE.csv")
+region_cols = [c for c in df.columns if c.startswith("region_prob_")]
+region_argmax = df[region_cols].to_numpy().argmax(axis=1)
+in_tumor = region_argmax == region_cols.index("region_prob_Tumor")
+```
+
 ### 6.3 `graphs/<slide>.h5` — Delaunay Graph Cache (HDF5)
 
 | HDF5 path | Type | Shape / dtype | Description |
@@ -1083,6 +1097,52 @@ print(patient_row[["OS", "OS.time", "PFI", "PFI.time"]].iloc[0])
 
 For cohort-level analysis, iterate over all CSVs in `model-outputs-csv/`,
 extract each patient barcode, and merge into a single DataFrame.
+
+### 9.6 Example: cross-cohort biomarker-landscape screen
+
+A reference end-to-end pattern (TCGA-BRCA + TCGA-CRC) lives at
+`experiments/biomarker-landscape.ipynb`. It uses only two WSInsight artefacts
+per slide — `model-outputs-csv/<slide>.csv` and `graphs/<slide>.h5` — and
+computes a shared 279-feature vector stratified into three region strata
+(`all` / `tumor` / `nontumor`):
+
+- `til_ratio__<stratum>` — fraction of inflammatory cells in the stratum (3 features)
+- `ncomp__<stratum>__<t>__nbr_<u>` — mean 1-hop Delaunay neighborhood composition of type *u* around center cells of type *t* in the stratum (3 × 36 = 108)
+- `triad__<stratum>__<a>_<b>_<c>` — fraction of Delaunay triads whose three vertices all fall in the stratum (3 × 56 = 168)
+
+The pipeline works independently of the `wsinsight ncomp` / `tcomp` CLI because
+it reads `graphs/<slide>.h5` directly:
+
+```python
+import h5py, numpy as np
+with h5py.File("results/graphs/SLIDE.h5", "r") as fh:
+    simplices = fh["simplices"][()]           # (M, 3) int32
+    centers   = fh["cell_centers"][()]        # (N, 2) int32
+
+# Prune simplices by µm edge length (25 µm default, matches ncomp/hplot).
+EDGE_LIMIT_UM = 25.0
+SPACING_UM_PX = 0.25                          # 40x slides
+edge_limit_px = EDGE_LIMIT_UM / SPACING_UM_PX
+coords = centers[simplices]
+max_edge = np.linalg.norm(coords[:, [0, 1, 0]] - coords[:, [1, 2, 2]], axis=2).max(axis=1)
+simp_ok = simplices[max_edge <= edge_limit_px]
+```
+
+Slide features are then averaged to the patient level (first-12-char barcode)
+and screened univariately against every available clinical score per cohort —
+binary outcomes (receptor status, stage, MSI-H, 5-year OS event) via
+two-sided Mann–Whitney *U* / AUC, continuous outcomes (tumor purity, CYT,
+GZMA, PRF1, Leukocyte Fraction, Thorsson immune scores, age) via Spearman *ρ*,
+with Benjamini–Hochberg FDR correction per (cohort, score). Survival is
+handled with `lifelines` (KM + Cox HR on the top/bottom 10 % deciles).
+
+The cohort-level artefacts produced
+(`biomarker_landscape_results/{slide_features_<cohort>.csv, biomarker_landscape_screen.csv, biomarker_landscape_best.csv, km_best_per_cohort.{png,svg}, …}`)
+demonstrate that WSInsight cell + graph outputs are a sufficient substrate for
+cohort-scale biomarker discovery with no cohort-specific feature engineering —
+adding a new cohort only requires a `COHORTS[...]` entry and a clinical-score
+assembly function that emits a long-form `(patient_barcode, score_name, score_type, value)`
+table.
 
 ---
 
