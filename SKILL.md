@@ -16,8 +16,8 @@ description: Fetch, install, and operate WSInsight for whole-slide-image patholo
 WSInsight is a Python CLI tool that delivers end-to-end pathology inference on
 giga-pixel whole slide images (WSIs).  It orchestrates tissue segmentation,
 patch extraction, GPU-accelerated model inference (patch-based and cell-based),
-spatial analytics (H-plot, neighborhood composition, cellular
-microenvironments), and export to GeoJSON / OME-CSV.
+per-cell neighborhood composition on a Delaunay graph, and export to
+GeoJSON / OME-CSV.
 
 - **Repository**: <https://github.com/huangch/wsinsight>
 - **License**: Apache 2.0
@@ -174,6 +174,7 @@ air-gapped networks the first variable is mandatory.
 | `WSINSIGHT_REMOTE_CACHE_DIR`   | No       | Local cache dir for remote assets. Default: `~/.cache/wsinsight`.                        |
 | `KERAS_HOME`                   | No       | Override Keras config/weights directory.                                                  |
 | `CUDA_VISIBLE_DEVICES`         | No       | Pin to specific GPU(s) (e.g. `0` or `0,1`).                                             |
+| `WSINSIGHT_EXPERIMENTAL`       | No       | Set to `1` to unlock experimental subcommands (`hplot`, `hplot-finalize`, `ecomp`, `tcomp`, `cme`). Not needed for normal use. |
 
 \* Required when HuggingFace Hub is unreachable (SSL errors, air-gapped).
 
@@ -185,18 +186,20 @@ air-gapped networks the first variable is mandatory.
 
 ```text
 wsinsight
-├── run               One-shot: patch → infer → hplot → ncomp → ecomp → tcomp → cme → export
+├── run               One-shot: patch → infer → (optional ncomp) → export
 ├── patch             Tissue segmentation + patch extraction → HDF5
 ├── infer             Model inference on cached patches → CSV
 ├── reg               Post-hoc region registration
-├── hplot             H-plot spatial analytics
-├── hplot-finalize    Aggregate parallel H-plot runs
-├── ncomp             Node-level (cell) composition
-├── ecomp             Edge-level composition
-├── tcomp             Triad-level composition
-├── cme               Cellular microenvironment (cross-slide)
-└── export            Merge analytics → GeoJSON / OME-CSV
+├── ncomp             Node-level (cell) composition + Delaunay graph cache
+├── export            Merge analytics → GeoJSON / OME-CSV
+└── describe          Emit a machine-readable JSON schema of every subcommand
 ```
+
+> Additional subcommands — `hplot`, `hplot-finalize`, `ecomp`, `tcomp`, `cme` —
+> are gated as **experimental**. They are hidden from `--help` and cannot be
+> executed unless `WSINSIGHT_EXPERIMENTAL=1` is exported. Their CLI flags,
+> output schemas, and metric definitions may change without notice. This
+> skill file documents only the stable surface.
 
 ### 4.2 Global Options (All Commands)
 
@@ -208,8 +211,8 @@ wsinsight
 
 ### 4.3 `wsinsight run` — Full Pipeline
 
-The one-shot orchestrator.  Delegates to `patch`, `infer`, `hplot`, `ncomp`,
-`ecomp`, `tcomp`, `cme`, and `export` in sequence.
+The one-shot orchestrator. Delegates to `patch`, `infer`, and optionally
+`ncomp` + `export` in sequence.
 
 ```bash
 wsinsight run \
@@ -218,11 +221,7 @@ wsinsight run \
   --model <MODEL_NAME> \
   [--batch-size 32] \
   [--num-workers 4] \
-  [--hplot] [--hplot-base-types tumor] [--hplot-target-types lymphocyte] \
   [--ncomp] \
-  [--ecomp] \
-  [--tcomp] \
-  [--cme] \
   [--export-geojson] [--export-omecsv]
 ```
 
@@ -238,14 +237,14 @@ wsinsight run \
 | `--zoo-model-dir / -z`   | path      | Folder with `config.json` + `torchscript_model.pt`       |
 | `--batch-size / -b`      | int       | Inference batch size (default 32)                        |
 | `--num-workers / -n`     | int       | Dataloader workers (auto)                                |
-| `--hplot`                | flag      | Enable H-plot analytics                                  |
-| `--ncomp`                | flag      | Enable neighborhood composition                          |
-| `--ecomp`                | flag      | Enable edge-level composition                            |
-| `--tcomp`                | flag      | Enable triad-level composition                           |
-| `--cme`                  | flag      | Enable cellular microenvironment                         |
+| `--ncomp`                | flag      | Enable node-level (cell) composition analytics           |
 | `--export-geojson`       | flag      | Write GeoJSON export files                               |
 | `--export-omecsv`        | flag      | Write OME-CSV export files                               |
 | `--overwrite`            | flag      | Recompute existing outputs                               |
+
+> `run` also accepts `--hplot`, `--ecomp`, `--tcomp`, and `--cme` flags that
+> chain the matching experimental subcommands. These are disabled unless
+> `WSINSIGHT_EXPERIMENTAL=1` is set and are outside the scope of this skill.
 
 ### 4.4 `wsinsight patch` — Tissue Segmentation & Patch Extraction
 
@@ -269,39 +268,10 @@ wsinsight infer \
 
 Reads from `patches/`, writes to `model-outputs-csv/`.
 
-### 4.6 `wsinsight hplot` — H-Plot Analytics
+### 4.6 `wsinsight ncomp` — Node-level (Cell) Composition
 
-> ⚠️ **Experimental.** `hplot` (and its `hmetrics` outputs) are research
-> features under active development. The CLI flags, output schemas, and
-> metric definitions may change without notice in future releases.
-
-```bash
-wsinsight hplot \
-  --wsi-dir <WSI_DIR> \
-  --results-dir <RESULTS_DIR> \
-  --hplot-base-types tumor \
-  --hplot-target-types lymphocyte \
-  [--hplot-k 2] [--hplot-n 8] [--hplot-r 0.5] \
-  [--hplot-max-neighbor-distance 25.0] \
-  [--hplot-range-min -5] [--hplot-range-max 5] \
-  [--overwrite]
-```
-
-### 4.7 `wsinsight hplot-finalize` — Aggregate Parallel H-Plots
-
-> ⚠️ **Experimental.** Same caveats as `hplot` apply to the aggregated
-> `hplot-outputs.csv` / `hmetrics-outputs.csv` cohort summaries.
-
-```bash
-wsinsight hplot-finalize --results-dir <RESULTS_DIR>
-```
-
-### 4.8 `wsinsight ncomp` — Node-level (Cell) Composition
-
-> ⚠️ **Experimental.** The three simplicial composition commands — `ncomp`,
-> `ecomp`, and `tcomp` — are research features under active development.
-> CLI flags, output directory layouts, and column schemas may change without
-> notice in future releases.
+Builds (or reuses) a Delaunay cell graph per slide under
+`graphs/<slide>.h5` and emits per-cell k-hop neighborhood composition.
 
 ```bash
 wsinsight ncomp \
@@ -310,54 +280,12 @@ wsinsight ncomp \
   [--ncomp-k 2] [--ncomp-max-neighbor-distance 25.0] [--overwrite]
 ```
 
-### 4.8.1 Simplicial composition hierarchy — `ncomp` / `ecomp` / `tcomp`
+Defaults: 25 µm edge filter, 2-hop neighborhood radius. Outputs go to
+`ncomp-outputs-csv/<slide>.csv`. The `graphs/<slide>.h5` cache is keyed by a
+SHA-256 hash of the cell-center coordinates, so `ncomp` reruns are idempotent
+and safe to resume.
 
-The three composition commands form a symmetric simplicial hierarchy on the
-Delaunay triangulation, sharing the `graphs/<slide>.h5` cache:
-
-| Command | Simplex       | Unit              | Adjacency      | Graph       | Output dir            |
-| ------- | ------------- | ----------------- | -------------- | ----------- | --------------------- |
-| `ncomp` | 0-simplex (n) | cell              | Delaunay edge  | primal      | `ncomp-outputs-csv/`  |
-| `ecomp` | 1-simplex (e) | Delaunay edge     | shared vertex  | line graph  | `ecomp-outputs-csv/`  |
-| `tcomp` | 2-simplex (t) | Delaunay triangle | shared vertex  | dual graph  | `tcomp-outputs-csv/`  |
-
-All three default to a 25 µm edge filter and a 2-hop neighborhood radius.
-Only `tcomp` emits per-triad geometry (area µm², perimeter µm, regularity).
-Edge/triad outputs are **standalone** — not merged into `export-csv/` because
-they have different primary keys.
-
-### 4.8.2 `wsinsight ecomp` — Edge-level Composition
-
-```bash
-wsinsight ecomp \
-  --wsi-dir <WSI_DIR> \
-  --results-dir <RESULTS_DIR> \
-  [--ecomp-k 2] [--ecomp-max-edge 25.0] [--overwrite]
-```
-
-### 4.8.3 `wsinsight tcomp` — Triad-level Composition
-
-```bash
-wsinsight tcomp \
-  --wsi-dir <WSI_DIR> \
-  --results-dir <RESULTS_DIR> \
-  [--tcomp-k 2] [--tcomp-max-edge 25.0] [--overwrite]
-```
-
-### 4.9 `wsinsight cme` — Cellular Microenvironment
-
-Cross-slide analysis: builds Delaunay cell graphs per slide, trains a global
-DGI encoder, and clusters embeddings.  **Cannot be parallelized across GPU
-shards** — run after all per-shard inference has completed.
-
-```bash
-wsinsight cme \
-  --wsi-dir <WSI_DIR> \
-  --results-dir <RESULTS_DIR> \
-  [--cme-hoptimus] [--cme-clusters 10] [--overwrite]
-```
-
-### 4.10 `wsinsight export` — Merge & Export
+### 4.7 `wsinsight export` — Merge & Export
 
 ```bash
 wsinsight export \
@@ -366,13 +294,24 @@ wsinsight export \
   [--export-workers 8] [--overwrite]
 ```
 
-### 4.11 `wsinsight reg` — Region Registration
+### 4.8 `wsinsight reg` — Region Registration
 
 ```bash
 wsinsight reg \
   --results-dir <RESULTS_DIR> \
   --region-inference-dir <REGION_DIR> \
   [--geojson] [--omecsv] [--overwrite]
+```
+
+### 4.9 `wsinsight describe` — Machine-readable CLI Schema
+
+Emits a JSON description of every subcommand, its options, types, defaults,
+and flag forms. Intended for downstream tooling (e.g. the QuPath extension)
+that needs to render forms without hard-coding the CLI.
+
+```bash
+wsinsight describe                         # stdout
+wsinsight describe --output schema.json    # file
 ```
 
 ---
@@ -416,34 +355,22 @@ After a full pipeline run, `--results-dir` contains:
 │   └── <slide>.geojson             Region-registered GeoJSON
 ├── model-outputs-omecsv/
 │   └── <slide>.ome.csv.gz          Region-registered OME-CSV
-├── hplot-outputs-csv/
-│   ├── hplots/<slide>.csv          H-plot curves
-│   ├── cells/<slide>.csv           Per-cell spatial annotations
-│   └── hmetrics/<slide>.json       Per-slide H-plot metrics
-├── hplot-outputs.csv               Aggregated H-plot (all slides)
-├── hmetrics-outputs.csv            Aggregated H-plot metrics (all slides)
 ├── ncomp-outputs-csv/
 │   └── <slide>.csv                 Per-cell composition (node-level)
-├── ecomp-outputs-csv/
-│   └── <slide>.csv                 Per-edge composition
-├── tcomp-outputs-csv/
-│   └── <slide>.csv                 Per-triad composition + geometry
-├── cme-outputs-csv/
-│   ├── cells/<slide>.csv           Per-cell CME labels
-│   └── cmes/<slide>.csv            Merged CME regions
-├── cme-outputs-geojson/
-│   ├── cells/<slide>.geojson       Cell GeoJSON with CME labels
-│   └── cmes/<slide>.geojson        CME region GeoJSON
 ├── graphs/
-│   └── <slide>.h5                  Delaunay cache (shared by hplot/ncomp/cme)
+│   └── <slide>.h5                  Delaunay cache (produced by ncomp)
 ├── export-csv/
-│   └── <slide>.csv                 Merged per-cell CSV (all analytics)
+│   └── <slide>.csv                 Merged per-cell CSV (model + ncomp)
 ├── export-geojson/
 │   └── <slide>.geojson             GeoJSON export
 ├── export-omecsv/
 │   └── <slide>.ome.csv.gz          OME-CSV export
 └── run_metadata_*.json             Configuration & runtime info
 ```
+
+> Experimental subcommands (`hplot`, `ecomp`, `tcomp`, `cme`) add their own
+> `*-outputs-csv/` / `*-outputs-geojson/` subdirectories when enabled. They
+> are not documented here.
 
 ### 6.1 `patches/<slide>.h5` — Patch Coordinates (HDF5)
 
@@ -511,99 +438,7 @@ in_tumor = region_argmax == region_cols.index("region_prob_Tumor")
 
 Edges are stored **unpruned**; pruning to `max_edge_length_px` happens at read time.
 
-### 6.4 `hplot-outputs-csv/` — H-Plot Outputs
-
-> ⚠️ **Experimental.** `hplot` per-cell / per-layer CSVs and the
-> aggregated `hplot-outputs.csv` / `hmetrics-outputs.csv` schemas may
-> change in future releases.
-
-**`hplots/<slide>.csv`** — per-layer H-plot curve:
-
-| Column | Description |
-|---|---|
-| `layer` | Signed integer layer (0 = border, negative = inside base, positive = outside) |
-| `base_type_prop` | Proportion of base-type cells in this layer |
-| `target_type_prop` | Proportion of target-type cells in this layer |
-| `base_type_count` | Count of base-type cells in this layer |
-| `target_type_count` | Count of target-type cells in this layer |
-| `all_type_count` | Total cell count in this layer |
-| `distance` | Cumulative average edge length from border (negative inward, positive outward) |
-
-**`cells/<slide>.csv`** — per-cell features (all model-outputs-csv columns plus):
-
-| Column | Description |
-|---|---|
-| `center_x`, `center_y` | Cell center coordinates (int32) |
-| `is_base_type` | Boolean: predicted label is a base type |
-| `is_target_type` | Boolean: predicted label is a target type |
-| `signed_distance_to_border` | Signed hop distance (negative = inside base region, positive = outside); NaN if unreachable |
-
-**`hmetrics/<slide>.json`** — per-slide H-plot metrics:
-
-```json
-{
-  "valid": true,
-  "intra": {
-    "convergence_distance": 0.0,
-    "abundance_score": 0.0,
-    "penetration_score": 0.0,
-    "layerwise_enrichment_index": 0.0,
-    "global_enrichment_index": 0.0,
-    "weighted_global_enrichment_index": 0.0
-  },
-  "peri": {
-    "convergence_distance": 0.0,
-    "abundance_score": 0.0,
-    "proximity_score": 0.0,
-    "layerwise_enrichment_index": 0.0,
-    "global_enrichment_index": 0.0,
-    "weighted_global_enrichment_index": 0.0
-  }
-}
-```
-
-**`hplot-outputs.csv`** — aggregated across all slides (from `hplot-finalize`):
-
-| Column | Description |
-|---|---|
-| `id` | Slide stem |
-| `layer` | Signed layer index |
-| `target_prop` | Proportion of target-type cells |
-| `target_count` | Count of target-type cells |
-| `base_prop` | Proportion of base-type cells |
-| `base_count` | Count of base-type cells |
-| `all_count` | Total cell count |
-| `distance` | Cumulative distance from border |
-
-**`hmetrics-outputs.csv`** — one row per slide:
-
-| Column | Description |
-|---|---|
-| `id` | Slide stem |
-| `valid` | Whether metrics are valid |
-| `convergence_distance (intra)` | Intra-tumoral convergence distance |
-| `abundance_score (intra)` | Intra-tumoral abundance |
-| `penetration_score (intra)` | Intra-tumoral penetration |
-| `layerwise_enrichment_index (intra)` | Intra-tumoral layerwise enrichment |
-| `global_enrichment_index (intra)` | Intra-tumoral global enrichment |
-| `weighted_global_enrichment_index (intra)` | Intra-tumoral weighted global enrichment |
-| `convergence_distance (peri)` | Peri-tumoral convergence distance |
-| `abundance_score (peri)` | Peri-tumoral abundance |
-| `proximity_score (peri)` | Peri-tumoral proximity |
-| `layerwise_enrichment_index (peri)` | Peri-tumoral layerwise enrichment |
-| `global_enrichment_index (peri)` | Peri-tumoral global enrichment |
-| `weighted_global_enrichment_index (peri)` | Peri-tumoral weighted global enrichment |
-| `exclusion_index` | Exclusion index |
-| `desert_index` | Desert index |
-| `inflammation_index` | Inflammation index |
-| `layerwise_enrichment_index` | Overall layerwise enrichment |
-| `global_enrichment_index` | Overall global enrichment |
-| `weighted_global_enrichment_index` | Overall weighted global enrichment |
-
-### 6.5 `ncomp-outputs-csv/<slide>.csv` — Node-level (Cell) Composition
-
-> ⚠️ **Experimental.** Schema may change; applies to `ncomp` / `ecomp` /
-> `tcomp` outputs below.
+### 6.4 `ncomp-outputs-csv/<slide>.csv` — Node-level (Cell) Composition
 
 | Column | Description |
 |---|---|
@@ -614,72 +449,21 @@ Edges are stored **unpruned**; pruning to `max_edge_length_px` happens at read t
 | `neighborhood_<type>_count` | Count of neighbors per class (e.g. `neighborhood_tumor_count`) |
 | `neighborhood_<type>_prop` | Proportion of neighbors per class; NaN when `neighborhood_size == 0` |
 
-### 6.5.1 `ecomp-outputs-csv/<slide>.csv` — Edge-level Composition
+### 6.5 `export-csv/<slide>.csv` — Merged Per-Cell Export
 
-| Column | Description |
-|---|---|
-| `edge_id` | Sequential edge index |
-| `vertex_1_id`, `vertex_2_id` | Cell row indices defining the edge (sorted ascending) |
-| `center_x`, `center_y` | Edge midpoint |
-| `edge_length_um` | Delaunay edge length (µm) |
-| `cell_type_1`, `cell_type_2` | Endpoint cell types (alphabetized) |
-| `edge_type` | `"<type1>__<type2>"` sorted label |
-| `neighborhood_size` | Number of k-hop neighbor edges on the line graph |
-| `neighborhood_mean_edge_length_um` / `neighborhood_std_edge_length_um` | Neighbor edge length stats |
-| `neighborhood_<edge_type>_count` / `_prop` | One pair of columns per edge-type (C·(C+1)/2 pairs) |
-
-### 6.5.2 `tcomp-outputs-csv/<slide>.csv` — Triad-level Composition
-
-| Column | Description |
-|---|---|
-| `triad_id` | Sequential triad index |
-| `vertex_1_id`, `vertex_2_id`, `vertex_3_id` | Cell row indices (sorted ascending) |
-| `centroid_x`, `centroid_y` | Triangle centroid |
-| `triad_max_edge_um` | Longest edge (µm); ≤ `--tcomp-max-edge` |
-| `triad_area_um2` | Area from shoelace (µm²) |
-| `triad_perimeter_um` | Perimeter (µm) |
-| `triad_regularity` | 12·√3·A / P² ∈ [0, 1]; 1.0 for equilateral |
-| `cell_type_1`, `cell_type_2`, `cell_type_3` | Endpoint types (alphabetized) |
-| `triad_type` | `"<t1>__<t2>__<t3>"` sorted label |
-| `neighborhood_size` | Number of k-hop neighbor triads on the dual graph |
-| `neighborhood_mean_area_um2` / `neighborhood_std_area_um2` | Neighbor area stats |
-| `neighborhood_mean_max_edge_um` | Neighbor max-edge stat |
-| `neighborhood_<triad_type>_count` / `_prop` | One pair per triad-type (C·(C+1)·(C+2)/6 pairs) |
-
-### 6.6 `cme-outputs-csv/` — Cellular Microenvironment Outputs
-
-**`cells/<slide>.csv`** — per-cell CME features (all model-outputs-csv columns plus):
-
-| Column | Description |
-|---|---|
-| `feature_normalized_k{k}_{class}` | Normalized k-hop neighborhood feature. `k` ranges 0…`k_hops`, `class` is each class name (e.g. `feature_normalized_k0_tumor`) |
-| `feature_raw_k{k}_{class}` | Raw (unnormalized) k-hop feature, same naming |
-| `cme_0`, `cme_1`, …, `cme_{K-1}` | One-hot CME cluster assignment (0.0 or 1.0). K = `cme_clustering_k` |
-
-Isolated cells (no graph neighbors) have NaN in feature/CME columns.
-
-**`cmes/<slide>.csv`** — merged CME regions:
-
-| Column | Description |
-|---|---|
-| `cme_0`, `cme_1`, …, `cme_{K-1}` | One-hot CME label for this region |
-| `polygon_wkt` | WKT string of the merged Voronoi polygon |
-| `area` | Polygon area in pixel² |
-
-### 6.7 `export-csv/<slide>.csv` — Merged Per-Cell Export
-
-Left-join of all available analytics on a per-cell basis:
+Left-join of the available analytics on a per-cell basis:
 
 | Source | Join key | Columns added |
 |---|---|---|
 | `model-outputs-csv/` | *(base table)* | `minx`, `miny`, `width`, `height`, `prob_<class>`, `center_x`, `center_y` |
-| `hplot-outputs-csv/cells/` | `minx`, `miny` | `is_base_type`, `is_target_type`, `signed_distance_to_border` |
 | `ncomp-outputs-csv/` | `center_x`, `center_y` | `cell_type`, `neighborhood_size`, `neighborhood_<type>_count`, `neighborhood_<type>_prop` |
-| `cme-outputs-csv/cells/` | `minx`, `miny` | `feature_normalized_k{k}_{class}`, `feature_raw_k{k}_{class}`, `cme_0`…`cme_{K-1}` |
 
-### 6.8 GeoJSON Outputs
+When experimental subcommands were run, `export-csv/` may include additional
+columns sourced from their outputs.
 
-`model-outputs-geojson/`, `cme-outputs-geojson/`, and `export-geojson/` all use the same schema — a GeoJSON FeatureCollection:
+### 6.6 GeoJSON Outputs
+
+`model-outputs-geojson/` and `export-geojson/` use the same schema — a GeoJSON FeatureCollection:
 
 ```json
 {
@@ -698,9 +482,9 @@ Left-join of all available analytics on a per-cell basis:
 }
 ```
 
-Geometry is the overlap-shrunk patch rectangle by default, or from `polygon_wkt` when present (CME regions).  `measurements` includes all numeric columns **except** `minx`, `miny`, `width`, `height`, `center_x`, `center_y`, `polygon_wkt`.
+Geometry is the overlap-shrunk patch rectangle by default. `measurements` includes all numeric columns **except** `minx`, `miny`, `width`, `height`, `center_x`, `center_y`.
 
-### 6.9 OME-CSV Outputs
+### 6.7 OME-CSV Outputs
 
 `model-outputs-omecsv/` and `export-omecsv/` write gzip-compressed OME-CSV files:
 
@@ -711,7 +495,7 @@ Geometry is the overlap-shrunk patch rectangle by default, or from `polygon_wkt`
 | `polygon` | WKT polygon string for the overlap-shrunk box |
 | `objectType` | Always `"tile"` |
 | `classification` | Argmax class name (prob_ prefix stripped) |
-| *(all numeric non-geometry columns)* | `prob_*`, H-plot, ncomp, CME columns when present. NaN → `"NaN"` |
+| *(all numeric non-geometry columns)* | `prob_*` and `ncomp` columns when present. NaN → `"NaN"` |
 
 ---
 
@@ -726,7 +510,7 @@ wsinsight run \
   --model breast-tumor-resnet34.tcga-brca
 ```
 
-### 7.2 Full Pipeline with All Analytics
+### 7.2 Full Pipeline with ncomp + Export
 
 ```bash
 wsinsight run \
@@ -734,10 +518,7 @@ wsinsight run \
   --results-dir results/ \
   --model pancancer-lymphocytes-inceptionv4.tcga \
   --batch-size 32 \
-  --hplot --hplot-base-types tumor --hplot-target-types lymphocyte \
-  --hplot-range-min -5 --hplot-range-max 5 \
   --ncomp \
-  --cme \
   --export-geojson --export-omecsv
 ```
 
@@ -750,10 +531,8 @@ wsinsight patch --wsi-dir slides/ --results-dir results/ --model breast-tumor-re
 # Step 2: Inference
 wsinsight infer --results-dir results/ --model breast-tumor-resnet34.tcga-brca --batch-size 32
 
-# Step 3: Analytics (independent of each other, except CME is cross-slide)
-wsinsight hplot --wsi-dir slides/ --results-dir results/ --hplot-base-types tumor --hplot-target-types lymphocyte
+# Step 3: Composition analytics (builds graphs/<slide>.h5 on first run)
 wsinsight ncomp --wsi-dir slides/ --results-dir results/
-wsinsight cme   --wsi-dir slides/ --results-dir results/
 
 # Step 4: Export
 wsinsight export --results-dir results/ --geojson --omecsv
@@ -769,26 +548,14 @@ wsinsight run \
   --batch-size 16 --num-workers 8
 ```
 
-### 7.5 CME with H-Optimus Features
+### 7.5 Multi-GPU Parallel Inference
 
-```bash
-wsinsight cme \
-  --wsi-dir slides/ \
-  --results-dir results/ \
-  --cme-hoptimus --cme-clusters 10
-```
-
-### 7.6 Multi-GPU Parallel Inference
-
-Split slide lists into per-GPU shards, run each with
+Split slide lists into per-GPU shards and run each with
 `CUDA_VISIBLE_DEVICES=<N>` pinning, sharing the same `--results-dir`.
-After all shards finish:
+`patch`, `infer`, `ncomp`, and `export` are all idempotent per-slide, so
+they can run concurrently across shards.
 
-```bash
-wsinsight hplot-finalize --results-dir results/
-```
-
-### 7.7 Reading Results Programmatically
+### 7.6 Reading Results Programmatically
 
 ```python
 import pandas as pd
@@ -797,12 +564,9 @@ import pandas as pd
 df = pd.read_csv("results/model-outputs-csv/SLIDE_001.csv")
 print(df[["minx", "miny", "prob_tumor"]].head())
 
-# Merged export (all analytics joined)
+# Merged export (model + ncomp joined per cell)
 df_export = pd.read_csv("results/export-csv/SLIDE_001.csv")
 print(df_export.columns.tolist())
-
-# H-plot cohort summary
-hplot = pd.read_csv("results/hplot-outputs.csv")
 ```
 
 ---
@@ -1102,16 +866,10 @@ extract each patient barcode, and merge into a single DataFrame.
 
 A reference end-to-end pattern (TCGA-BRCA + TCGA-CRC) lives at
 `experiments/biomarker-landscape.ipynb`. It uses only two WSInsight artefacts
-per slide — `model-outputs-csv/<slide>.csv` and `graphs/<slide>.h5` — and
-computes a shared 279-feature vector stratified into three region strata
-(`all` / `tumor` / `nontumor`):
-
-- `til_ratio__<stratum>` — fraction of inflammatory cells in the stratum (3 features)
-- `ncomp__<stratum>__<t>__nbr_<u>` — mean 1-hop Delaunay neighborhood composition of type *u* around center cells of type *t* in the stratum (3 × 36 = 108)
-- `triad__<stratum>__<a>_<b>_<c>` — fraction of Delaunay triads whose three vertices all fall in the stratum (3 × 56 = 168)
-
-The pipeline works independently of the `wsinsight ncomp` / `tcomp` CLI because
-it reads `graphs/<slide>.h5` directly:
+per slide — `model-outputs-csv/<slide>.csv` and `graphs/<slide>.h5` (both
+produced by the stable `infer` + `ncomp` pipeline) — and builds per-slide
+features stratified into three region strata (`all` / `tumor` / `nontumor`)
+from the cached Delaunay graph:
 
 ```python
 import h5py, numpy as np
@@ -1119,7 +877,7 @@ with h5py.File("results/graphs/SLIDE.h5", "r") as fh:
     simplices = fh["simplices"][()]           # (M, 3) int32
     centers   = fh["cell_centers"][()]        # (N, 2) int32
 
-# Prune simplices by µm edge length (25 µm default, matches ncomp/hplot).
+# Prune simplices by µm edge length (25 µm default, matches ncomp).
 EDGE_LIMIT_UM = 25.0
 SPACING_UM_PX = 0.25                          # 40x slides
 edge_limit_px = EDGE_LIMIT_UM / SPACING_UM_PX
@@ -1128,21 +886,28 @@ max_edge = np.linalg.norm(coords[:, [0, 1, 0]] - coords[:, [1, 2, 2]], axis=2).m
 simp_ok = simplices[max_edge <= edge_limit_px]
 ```
 
-Slide features are then averaged to the patient level (first-12-char barcode)
-and screened univariately against every available clinical score per cohort —
+Slide features are averaged to the patient level (first-12-char barcode) and
+screened univariately against every available clinical score per cohort —
 binary outcomes (receptor status, stage, MSI-H, 5-year OS event) via
 two-sided Mann–Whitney *U* / AUC, continuous outcomes (tumor purity, CYT,
 GZMA, PRF1, Leukocyte Fraction, Thorsson immune scores, age) via Spearman *ρ*,
 with Benjamini–Hochberg FDR correction per (cohort, score). Survival is
-handled with `lifelines` (KM + Cox HR on the top/bottom 10 % deciles).
+handled with `lifelines` (KM + Cox HR).
 
-The cohort-level artefacts produced
-(`biomarker_landscape_results/{slide_features_<cohort>.csv, biomarker_landscape_screen.csv, biomarker_landscape_best.csv, km_best_per_cohort.{png,svg}, …}`)
-demonstrate that WSInsight cell + graph outputs are a sufficient substrate for
-cohort-scale biomarker discovery with no cohort-specific feature engineering —
-adding a new cohort only requires a `COHORTS[...]` entry and a clinical-score
-assembly function that emits a long-form `(patient_barcode, score_name, score_type, value)`
-table.
+The notebook ships with a BRCA pretreatment filter
+(`history_of_neoadjuvant_treatment == "No"`, 1085/1099 patients) so
+morphology-derived biomarkers are not confounded by neoadjuvant therapy.
+Cohort artefacts land in `biomarker_landscape_results/`
+(`slide_features_<cohort>.csv`, `biomarker_landscape_screen.csv`,
+`biomarker_landscape_best.csv`, `km_best_per_cohort.{png,svg}`, …).
+Adding a new cohort only requires a `COHORTS[...]` entry and a clinical-score
+assembly function that emits a long-form
+`(patient_barcode, score_name, score_type, value)` table.
+
+> Any features in this notebook that go beyond what `ncomp` emits (e.g.
+> triad-level summaries computed from the raw `simplices` dataset) are
+> *user-side* derivations. They are not part of the stable WSInsight surface
+> and will not track schema changes in the experimental `tcomp` command.
 
 ---
 
@@ -1175,9 +940,8 @@ The path must be absolute (triple slash: `gdc-manifest:///absolute/path`).
 | `ModuleNotFoundError: osgeo`         | GDAL not installed via conda          | `conda install -c conda-forge gdal=3.11.3`                  |
 | CUDA out of memory                   | Batch size too large                  | Reduce `--batch-size`                                       |
 | Inference produces empty CSV         | Wrong model for slide magnification   | Match model suffix (`x20`/`x40`) to slide magnification     |
-| `--hplot` fails with missing types   | `--hplot-base-types` not set          | Always pass both `--hplot-base-types` and `--hplot-target-types` |
 | Stale graph cache                    | CSV changed after graph was built     | Automatic: cache detects via SHA-256 hash and rebuilds       |
-| CME fails across shards              | CME is cross-slide, not parallelizable| Run CME after merging all shard outputs into one results dir |
+| Experimental subcommand refuses to run | `WSINSIGHT_EXPERIMENTAL` not set    | Export `WSINSIGHT_EXPERIMENTAL=1` before invoking it         |
 
 ---
 
@@ -1195,13 +959,11 @@ Is WSInsight already installed / is Docker available?
 
 Has the user provided WSIs?
 ├─ Yes → Do they want a one-shot run?
-│        ├─ Yes → wsinsight run [--hplot] [--ncomp] [--cme] [--export-geojson]
-│        └─ No  → wsinsight patch → wsinsight infer → (analytics) → wsinsight export
+│        ├─ Yes → wsinsight run [--ncomp] [--export-geojson] [--export-omecsv]
+│        └─ No  → wsinsight patch → wsinsight infer → [ncomp] → wsinsight export
 ├─ No, but results-dir exists with model-outputs-csv/ → Skip patch+infer
-│        ├─ Need H-plot?  → wsinsight hplot (requires --hplot-base-types + --hplot-target-types)
-│        ├─ Need ncomp?   → wsinsight ncomp
-│        ├─ Need CME?     → wsinsight cme (runs across ALL slides; not parallelizable)
-│        └─ Need export?  → wsinsight export --geojson --omecsv
+│        ├─ Need per-cell neighborhood composition? → wsinsight ncomp
+│        └─ Need GeoJSON / OME-CSV?                 → wsinsight export --geojson --omecsv
 ├─ No slides, but user mentions TCGA / GDC / cancer cohort
 │        → Query GDC API for manifest (Section 8) → save .tsv
 │        → wsinsight run --wsi-dir "gdc-manifest:///path/to/manifest.tsv" ...
@@ -1213,33 +975,31 @@ Has the user provided WSIs?
 
 ### Key Constraints for Agents
 
-1. **Model is required** for `run`, `patch`, and `infer`.  Use `wsinfer-zoo ls`
+1. **Model is required** for `run`, `patch`, and `infer`. Use `wsinfer-zoo ls`
    to list available models, or ask the user.
-2. **`--hplot-base-types` and `--hplot-target-types`** are mandatory when
-   `--hplot` is enabled.  These are comma-separated cell type names that must
-   match the model's output classes (e.g. `tumor`, `lymphocyte`).
-3. **CME is cross-slide** — it trains a global DGI model and clusters
-   embeddings across all slides.  It cannot be run per-shard.  Run it only
-   after all inference shards have completed and outputs are in one directory.
-4. **`--overwrite`** is needed to recompute existing outputs.  Without it,
+2. **`--overwrite`** is needed to recompute existing outputs. Without it,
    completed slides are skipped (idempotent / resumable).
-5. **Environment variables** must be exported before the `wsinsight` command,
+3. **Environment variables** must be exported before the `wsinsight` command,
    not passed as CLI flags.
-6. **`constraints.txt`** should always be used with `pip install -c` to prevent
+4. **`constraints.txt`** should always be used with `pip install -c` to prevent
    dependency drift.
-7. **When the user mentions TCGA, GDC, or a cancer cohort** (e.g. "analyze
+5. **When the user mentions TCGA, GDC, or a cancer cohort** (e.g. "analyze
    TCGA-BRCA slides"), use the GDC API `curl` pattern from Section 8 to
    generate a manifest TSV, then pass it via
-   `--wsi-dir "gdc-manifest:///absolute/path/to/manifest.tsv"`.  Do not ask
+   `--wsi-dir "gdc-manifest:///absolute/path/to/manifest.tsv"`. Do not ask
    the user to download slides manually.
-8. **Prefer Docker when available** — it avoids all local dependency
-   installation.  Use `bash docker-run.sh /path/to/data` (or a manual
-   `docker run`) and run `wsinsight` commands inside the container.  The
+6. **Prefer Docker when available** — it avoids all local dependency
+   installation. Use `bash docker-run.sh /path/to/data` (or a manual
+   `docker run`) and run `wsinsight` commands inside the container. The
    image pre-sets `WSINSIGHT_ZOO_REGISTRY_PATH` and `KERAS_HOME`.
-9. **When the user needs clinical labels** (survival, PAM50, MSI, treatment),
-   refer to Section 9.  Use the GDC `/cases` API for demographics/staging,
+7. **When the user needs clinical labels** (survival, PAM50, MSI, treatment),
+   refer to Section 9. Use the GDC `/cases` API for demographics/staging,
    Liu et al. 2018 for curated survival endpoints, and cBioPortal for
-   molecular subtypes.  Join on the first 12 characters of the slide filename.
+   molecular subtypes. Join on the first 12 characters of the slide filename.
+8. **Do not recommend the experimental subcommands** (`hplot`,
+   `hplot-finalize`, `ecomp`, `tcomp`, `cme`) unless the user has explicitly
+   opted in via `WSINSIGHT_EXPERIMENTAL=1`. Their CLI surfaces and output
+   schemas are unstable.
 
 ---
 
@@ -1251,14 +1011,14 @@ After installation, an agent should verify:
 # 1. CLI loads without errors
 wsinsight --help
 
-# 2. All sub-commands are registered
+# 2. All stable sub-commands are registered
 wsinsight run --help
 wsinsight patch --help
 wsinsight infer --help
-wsinsight hplot --help
 wsinsight ncomp --help
-wsinsight cme --help
+wsinsight reg --help
 wsinsight export --help
+wsinsight describe --help
 
 # 3. Python imports work
 python -c "import wsinsight; print(wsinsight.__version__)"
