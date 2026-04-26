@@ -6,11 +6,14 @@ import json
 import math
 import os
 import re
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 from typing import Iterable, List
 
 import click
+import pandas as pd
 from platformdirs import user_cache_dir
+from tqdm import tqdm
 
 from ..insightlib.hplot_generation import hplot_generation, hplot_finalize
 from ..uri_path import URIPath, URIPathType
@@ -43,6 +46,51 @@ def _csv_to_list(_: click.Context, __: click.Parameter, value: str | list[str] |
 def _normalize_types(values: Iterable[object]) -> list[str]:
     """Normalize type labels to lowercase snake-case tokens."""
     return [str(value).strip().replace(" ", "_").lower() for value in values]
+
+
+def _read_prob_columns(csv_path: URIPath) -> set[str]:
+    """Read only the header of a model-output CSV and return its prob_* columns (lowercased, prefix stripped)."""
+    try:
+        with csv_path.open("r", encoding="utf-8") as fp:
+            header_df = pd.read_csv(fp, nrows=0)
+    except Exception:
+        return set()
+    return {
+        c.lower().removeprefix("prob_")
+        for c in header_df.columns
+        if c.lower().startswith("prob_")
+    }
+
+
+def _collect_available_types(model_output_dir: URIPath, num_workers: int) -> set[str]:
+    """Scan all model-output CSVs in parallel and return the union of available cell-type names."""
+    csv_paths = [p for p in model_output_dir.iterdir() if p.name.endswith(".csv")]
+    if not csv_paths:
+        return set()
+    available: set[str] = set()
+    with ThreadPoolExecutor(max_workers=max(1, num_workers)) as executor:
+        futures = [executor.submit(_read_prob_columns, p) for p in csv_paths]
+        for fut in tqdm(
+            as_completed(futures),
+            total=len(futures),
+            desc="Scanning available cell types",
+            unit="csv",
+            dynamic_ncols=True,
+        ):
+            available.update(fut.result())
+    return available
+
+
+def _validate_types(
+    requested: list[str], available: set[str], option_name: str
+) -> None:
+    """Raise ClickException if any requested type is missing from available; warn on partial mismatches handled per-slide."""
+    unknown = [t for t in requested if t not in available]
+    if unknown:
+        raise click.ClickException(
+            f"{option_name}: unknown cell type(s) {unknown}. "
+            f"Available cell types across model-outputs-csv: {sorted(available)}"
+        )
 
 
 def _assert_directory(path: URIPath, option_name: str) -> None:
@@ -194,6 +242,14 @@ def hplot(
 
     base_type_list = _normalize_types(hplot_base_types)
     target_type_list = _normalize_types(hplot_target_types)
+
+    available_types = _collect_available_types(model_output_dir, num_workers)
+    if not available_types:
+        raise click.ClickException(
+            f"No 'prob_*' columns found in any CSV under {model_output_dir}."
+        )
+    _validate_types(base_type_list, available_types, "--hplot-base-types")
+    _validate_types(target_type_list, available_types, "--hplot-target-types")
 
     click.secho("\nRunning H-Plot generation.\n", fg="green")
     failed_hplot_generation = hplot_generation(
