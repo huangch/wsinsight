@@ -519,14 +519,15 @@ tmux split-window -h -t wsinsight:0.6
 # [pane 4 | pane 5]   GPU 2 / GPU 6
 # [pane 6 | pane 7]   GPU 3 / GPU 7
 
-tmux send-keys -t wsinsight:0.0 "CUDA_VISIBLE_DEVICES=0 wsinsight run -b 20 -i datasets/slides_part_00.txt -z /path/to/zoo-model -o results/" Enter
-tmux send-keys -t wsinsight:0.1 "CUDA_VISIBLE_DEVICES=4 wsinsight run -b 20 -i datasets/slides_part_04.txt -z /path/to/zoo-model -o results/" Enter
-tmux send-keys -t wsinsight:0.2 "CUDA_VISIBLE_DEVICES=1 wsinsight run -b 20 -i datasets/slides_part_01.txt -z /path/to/zoo-model -o results/" Enter
-tmux send-keys -t wsinsight:0.3 "CUDA_VISIBLE_DEVICES=5 wsinsight run -b 20 -i datasets/slides_part_05.txt -z /path/to/zoo-model -o results/" Enter
-tmux send-keys -t wsinsight:0.4 "CUDA_VISIBLE_DEVICES=2 wsinsight run -b 20 -i datasets/slides_part_02.txt -z /path/to/zoo-model -o results/" Enter
-tmux send-keys -t wsinsight:0.5 "CUDA_VISIBLE_DEVICES=6 wsinsight run -b 20 -i datasets/slides_part_06.txt -z /path/to/zoo-model -o results/" Enter
-tmux send-keys -t wsinsight:0.6 "CUDA_VISIBLE_DEVICES=3 wsinsight run -b 20 -i datasets/slides_part_03.txt -z /path/to/zoo-model -o results/" Enter
-tmux send-keys -t wsinsight:0.7 "CUDA_VISIBLE_DEVICES=7 wsinsight run -b 20 -i datasets/slides_part_07.txt -z /path/to/zoo-model -o results/" Enter
+ZOO=/path/to/zoo-model
+OUT=results/
+BATCH=20
+
+for i in 0 1 2 3 4 5 6 7; do
+    part=$(printf "%02d" "$i")
+    tmux send-keys -t wsinsight:0.$i \
+        "CUDA_VISIBLE_DEVICES=$i wsinsight run -b $BATCH -i datasets/slides_part_${part}.txt -z $ZOO -o $OUT" Enter
+done
 
 tmux attach -t wsinsight
 ```
