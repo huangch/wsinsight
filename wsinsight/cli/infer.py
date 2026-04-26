@@ -100,6 +100,19 @@ def _get_timestamp() -> str:
     return dt.strftime("%c %Z")
 
 
+def _print_command_line_arguments(params: dict) -> None:
+    """Print Click parameters, abbreviating long sequences for readability."""
+    print("\nCommand line arguments")
+    print("----------------------")
+    for key, value in params.items():
+        if isinstance(value, (list, tuple)) and len(value) > 5:
+            preview = ", ".join(repr(v) for v in list(value)[:3])
+            print(f"{key} = [<{len(value)} items>: {preview}, ...]")
+        else:
+            print(f"{key} = {value}")
+    print("----------------------\n")
+
+
 def _print_system_info() -> None:
     """Print information about the system."""
     import torch
@@ -139,6 +152,8 @@ def _print_system_info() -> None:
         click.secho("GPU not available", bg="red", fg="black")
     cuda_visible_devices = os.environ.get("CUDA_VISIBLE_DEVICES", "NOT SET")
     print(f"CUDA_VISIBLE_DEVICES: {cuda_visible_devices}")
+    from .. import wsi as _wsi
+    print(f"WSI backend: {_wsi._BACKEND} (openslide={_wsi.HAS_OPENSLIDE}, tiffslide={_wsi.HAS_TIFFSLIDE})")
     if torch.version.cuda is None:
         click.secho("\n*******************************************", fg="yellow")
         click.secho("GPU WILL NOT BE USED", fg="yellow")
@@ -831,11 +846,7 @@ def infer(
 
     _print_system_info()
 
-    print("\nCommand line arguments")
-    print("----------------------")
-    for key, value in ctx.params.items():
-        print(f"{key} = {value}")
-    print("----------------------\n")
+    _print_command_line_arguments(ctx.params)
 
     slide_manifest: list[SlidePatchRecord] | None = None
 

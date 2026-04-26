@@ -5,6 +5,13 @@ from __future__ import annotations
 import multiprocessing as mp
 import os
 
+# Silence TensorFlow info / oneDNN notices emitted at first TF import (some
+# transitive deps pull TF in even though wsinsight itself uses PyTorch).
+# These vars must be set BEFORE any TF import happens, so they live above the
+# ``torch`` import too — torch's CUDA stack can otherwise pull in TF helpers.
+os.environ.setdefault("TF_CPP_MIN_LOG_LEVEL", "3")        # 3 = ERROR only
+os.environ.setdefault("TF_ENABLE_ONEDNN_OPTS", "0")
+
 import click
 import torch
 
