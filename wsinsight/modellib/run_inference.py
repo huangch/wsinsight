@@ -28,6 +28,7 @@ from typing import List
 logger = logging.getLogger(__name__)
 
 from .. import errors
+from ..cancel import critical_section, is_cancelled, raise_if_cancelled
 from ..wsi import _validate_wsi_directory
 # from ..wsi import get_avg_mpp
 # from ..wsi import get_wsi_cls
@@ -214,6 +215,7 @@ def run_inference(
             
     with tqdm.tqdm(total=len(patch_paths), desc="Images", position=0) as pbar:
         for _, patch_path in enumerate(patch_paths):
+            raise_if_cancelled()
             with h5py.File(patch_path, "r") as f:
                 use_hdf5_images = '/images' in f
                 g_slide = f["/slide"]
@@ -470,6 +472,8 @@ def run_inference(
                     try:
                         with tqdm.tqdm(total=len(loader), desc="Inference", position=1, leave=False) as qbar:
                             for batch_imgs, batch_coords in loader:
+                                if is_cancelled():
+                                    break
                                 assert batch_imgs.shape[0] == batch_coords.shape[0], "length mismatch"
                                 if mixed_precision:
                                     with torch.no_grad():
@@ -481,6 +485,7 @@ def run_inference(
                                 stitcher.accumulate_batch_torch(pred_dict, batch_coords.to(device))
                                 qbar.update(1)
                                 gc.collect()
+                        raise_if_cancelled()
                         with tqdm.tqdm(desc="Stitching", mininterval=0, miniters=1, smoothing=0, dynamic_ncols=True, position=1, leave=False) as qbar:
                             slide_coords, slide_probs, slide_polys = stitcher.finalize(
                                 pbar=qbar,
@@ -595,6 +600,8 @@ def run_inference(
                     try:
                         with tqdm.tqdm(total=len(loader), position=1, leave=False) as qbar:
                             for batch_imgs, batch_coords in loader:
+                                if is_cancelled():
+                                    break
                                 assert batch_imgs.shape[0] == batch_coords.shape[0], "length mismatch"
                                 with torch.no_grad():
                                     logits: torch.Tensor = model(
@@ -609,6 +616,7 @@ def run_inference(
                                 slide_coords.append(batch_coords.clone().numpy())
                                 slide_probs.append(probs.numpy())
                                 qbar.update(1)
+                        raise_if_cancelled()
                         _bs_lo = current_batch_size
                         if _bs_hi <= batch_size:
                             _next = (_bs_lo + _bs_hi) // 2
@@ -713,14 +721,16 @@ def run_inference(
                             f"Use --overwrite to replace."
                         )
                         with slide_csv.open("wb") as fh:
-                            slide_df.to_csv(fh, index=False)
+                            with critical_section(f"saving inference output for {wsi_path.stem}"):
+                                slide_df.to_csv(fh, index=False)
                         pbar.update(1)
                         continue
                 slide_df = register_objects_to_regions(slide_df, annot_df)
             
             
             with slide_csv.open("wb") as fh:     # local cache, auto-upload on close
-                slide_df.to_csv(fh, index=False)
+                with critical_section(f"saving inference output for {wsi_path.stem}"):
+                    slide_df.to_csv(fh, index=False)
             # print("-" * 40)
             pbar.update(1)
 

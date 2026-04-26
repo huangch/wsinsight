@@ -34,6 +34,7 @@ import pandas as pd
 from tqdm import tqdm
 
 from .. import errors
+from ..cancel import cancellable_as_completed, critical_section
 from ..wsi import _validate_wsi_directory, get_avg_mpp
 from ..uri_path import URIPath
 
@@ -207,8 +208,9 @@ def _worker(
 
         out_df = pd.DataFrame(data)
         tcomp_csv.parent.mkdir(parents=True, exist_ok=True)
-        with tcomp_csv.open("w", encoding="utf-8", newline="") as fp:
-            out_df.to_csv(fp, index=False)
+        with critical_section(f"saving tcomp output for {slide_id}"):
+            with tcomp_csv.open("w", encoding="utf-8", newline="") as fp:
+                out_df.to_csv(fp, index=False)
         _step("save outputs")
         inner.close()
         return slide_id, True
@@ -310,8 +312,9 @@ def _worker(
     out_df = pd.DataFrame(data)
 
     tcomp_csv.parent.mkdir(parents=True, exist_ok=True)
-    with tcomp_csv.open("w", encoding="utf-8", newline="") as fp:
-        out_df.to_csv(fp, index=False)
+    with critical_section(f"saving tcomp output for {slide_id}"):
+        with tcomp_csv.open("w", encoding="utf-8", newline="") as fp:
+            out_df.to_csv(fp, index=False)
     _step("save outputs")
 
     inner.close()
@@ -419,7 +422,7 @@ def tcomp_generation(
             unit="slide",
             dynamic_ncols=True,
         )
-        for f in as_completed(futures):
+        for f in cancellable_as_completed(futures, ex):
             slide_id, ok = f.result()
             if not ok:
                 failed_generation.append(slide_id)

@@ -29,6 +29,7 @@ from .patch import patch as patch_command
 from .tcomp import tcomp as tcomp_command
 from ..export_helpers import build_export_csvs
 from ..qupath import make_qupath_project
+from ..cancel import raise_if_cancelled
 from ..uri_path import URIPath, URIPathType
 from ..write_geojson import write_geojsons
 from ..write_omecsv import write_omecsvs
@@ -837,29 +838,36 @@ def run(
 
     # Stage 1: segmentation + patch extraction.
     ctx.invoke(patch_command, **_select_kwargs(params, _PATCH_PARAM_NAMES))
+    raise_if_cancelled()
 
     # Stage 2: inference.
     ctx.invoke(infer_command, **_select_kwargs(params, _INFER_PARAM_NAMES))
+    raise_if_cancelled()
 
     # Stage 3 (optional): H-Plot spatial analytics.
     if hplot:
         ctx.invoke(hplot_command, **_select_kwargs(params, _HPLOT_PARAM_NAMES))
+        raise_if_cancelled()
 
     # Stage 4 (optional): node-level (cell) composition analytics.
     if ncomp:
         ctx.invoke(ncomp_command, **_select_kwargs(params, _NCOMP_PARAM_NAMES))
+        raise_if_cancelled()
 
     # Stage 4b (optional): edge-level composition analytics.
     if ecomp:
         ctx.invoke(ecomp_command, **_select_kwargs(params, _ECOMP_PARAM_NAMES))
+        raise_if_cancelled()
 
     # Stage 4c (optional): triad-level composition analytics.
     if tcomp:
         ctx.invoke(tcomp_command, **_select_kwargs(params, _TCOMP_PARAM_NAMES))
+        raise_if_cancelled()
 
     # Stage 5 (optional): cellular microenvironment (CME) analysis.
     if cme:
         ctx.invoke(cme_command, **_select_kwargs(params, _CME_PARAM_NAMES))
+        raise_if_cancelled()
 
     # Stage 6 (optional): merged export to GeoJSON / OME-CSV.
     if export_geojson or export_omecsv:

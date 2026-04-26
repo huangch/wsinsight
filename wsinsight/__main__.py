@@ -8,6 +8,7 @@ import os
 import click
 import torch
 
+from .cancel import install_sigint_handler
 from .cli.cli import cli
 
 
@@ -19,9 +20,13 @@ def main() -> None:
     os.environ.setdefault("NUMEXPR_NUM_THREADS", "1")
     mp.set_start_method("spawn", force=True)
     torch.multiprocessing.set_sharing_strategy("file_system")
+    install_sigint_handler()
 
     try:
         cli()
+    except (click.Abort, KeyboardInterrupt):
+        click.secho("\nWSInsight: aborted by user.", fg="yellow", err=True)
+        raise SystemExit(130)
     except Exception as e:
         click.secho(f"WSInsight failed. Error message:\n{e}", fg="yellow")
 

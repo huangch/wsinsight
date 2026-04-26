@@ -713,6 +713,7 @@ WSInsight reads the following environment variables at startup. Set them in your
  `WSINSIGHT_EXPERIMENTAL`     | Set to `1` (or `true`/`yes`/`on`) to unhide experimental subcommands (`hplot`, `hplot-finalize`, `cme`, `ecomp`, `tcomp`) and the `--hplot` / `--cme` flags on `wsinsight run`. Without it, experimental commands are hidden from `--help` and refuse to run.  See [Experimental Features](#experimental-features). | `export WSINSIGHT_EXPERIMENTAL=1`
  `S3_STORAGE_OPTIONS`         | JSON object passed verbatim to `s3fs` / `fsspec` (e.g. AWS profile, endpoint URL). Required to read/write S3 URIs.                                                                  | `export S3_STORAGE_OPTIONS='{"profile":"saml"}'`
  `WSINSIGHT_REMOTE_CACHE_DIR` | Local directory where remote assets (S3 tiles, GDC downloads) are materialised. Defaults to `~/.cache/wsinsight`. Point it at a fast SSD for large cohorts.                         | `export WSINSIGHT_REMOTE_CACHE_DIR=/scratch/wsinsight-cache`
+ `WSINSIGHT_WSI_BACKEND`      | Force the whole-slide-image reader. Accepts `openslide` or `tiffslide`. Default: `openslide` when its bindings are importable (preferred for richer Aperio metadata), otherwise `tiffslide`. When neither backend can read MPP, WSInsight falls back to Aperio `AppMag` and assumes vendor-typical µm/px (40× → 0.25, 20× → 0.50, 10× → 1.00, 4× → 2.50) — a warning is logged so you can verify the slide's true resolution. | `export WSINSIGHT_WSI_BACKEND=openslide`
  `KERAS_HOME`                 | Override the Keras configuration/weights directory, useful when the default home directory is on a slow or quota-limited filesystem.                                                | `export KERAS_HOME=/workspace/wsinsight/keras`
 
 > [!TIP]
@@ -736,6 +737,14 @@ WSInsight reads the following environment variables at startup. Set them in your
 - Documentation lives in `docs/`; build locally with `make -C docs html`.
 - Build and push the Docker image with [`docker-build-push.sh`](docker-build-push.sh).
 - Pull and run the published image with [`docker-run.sh`](docker-run.sh).
+
+## Interrupting a run
+
+WSInsight installs a two-press Ctrl-C handler so long pipelines respond promptly while still protecting in-flight file writes.
+
+- **First Ctrl-C** — cancellation is requested. Any queued slides are dropped and inference batch loops exit at the next batch boundary; workers that are already running are allowed to finish so their per-slide CSV / JSON saves complete cleanly. The CLI exits with code `130`.
+- **Second Ctrl-C within 3 s** — escalates to an immediate hard exit. If a save is currently in progress, the message *"Save in progress, please wait…"* is shown and the hard exit is deferred until the write finishes (capped at 10 s).
+- Re-running `wsinsight run` with the same `--results-dir` resumes from where the previous run left off, since per-slide outputs that were committed before the interrupt are skipped.
 
 ## Support and Feedback
 

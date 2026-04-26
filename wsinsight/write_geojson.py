@@ -18,6 +18,7 @@ from concurrent.futures import ProcessPoolExecutor, as_completed
 from tqdm.auto import tqdm
 
 from .uri_path import URIPath
+from .cancel import cancellable_as_completed
 
 PathLike = Union[Path, URIPath]
 
@@ -500,7 +501,7 @@ def write_geojsons(
                              ) for args in csvs]
         
         # pbar = tqdm(total=len(futures)) if pbar is None else pbar
-        for f in as_completed(futures):
+        for f in cancellable_as_completed(futures, ex):
             # throttle_when_busy(target_util=0.9)
             f.result()
             if pbar:

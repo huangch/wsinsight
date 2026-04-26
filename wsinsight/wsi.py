@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import os
 from fractions import Fraction
 from pathlib import Path
 from typing import Protocol
@@ -18,7 +19,17 @@ from .uri_path import URIPath
 
 logger = logging.getLogger(__name__)
 
-_BACKEND: str = "tiffslide"
+# Vendor-typical mapping from Aperio AppMag (nominal objective magnification)
+# to microns-per-pixel. Used as a last-resort fallback when no MPP metadata
+# can be read. Values are approximate and assume Aperio/Leica scanners; a
+# warning is emitted whenever this fallback is hit so users can verify
+# against expected resolution.
+_MPP_FROM_APPMAG: dict[int, float] = {
+    40: 0.25,
+    20: 0.50,
+    10: 1.00,
+    4:  2.50,
+}
 
 _allowed_backends = {"openslide", "tiffslide"}
 
@@ -48,6 +59,18 @@ if not HAS_TIFFSLIDE and not HAS_OPENSLIDE:
     raise NoBackendException(
         "No backend is available. Please install openslide or tiffslide."
     )
+
+# Backend selection: an explicit ``WSINSIGHT_WSI_BACKEND`` env var wins;
+# otherwise prefer OpenSlide when its bindings are importable (richer
+# Aperio metadata, including ``aperio.AppMag`` used by the MPP fallback);
+# fall back to TiffSlide if OpenSlide isn't installed.
+_override = os.getenv("WSINSIGHT_WSI_BACKEND", "").strip().lower()
+if _override in _allowed_backends:
+    _BACKEND: str = _override
+elif HAS_OPENSLIDE:
+    _BACKEND = "openslide"
+else:
+    _BACKEND = "tiffslide"
 
 
 def set_backend(name: str) -> None:
@@ -262,6 +285,41 @@ def _get_mpp_tifffile(slide_path: str | Path) -> tuple[float, float]:
     raise CannotReadSpacing()
 
 
+def _get_appmag_openslide(slide_path: str | Path) -> float | None:
+    """Return Aperio nominal magnification via OpenSlide, or ``None``.
+
+    Reads ``aperio.AppMag`` (Aperio-specific) and falls back to OpenSlide's
+    generic ``openslide.objective-power`` property. All errors are swallowed
+    and reported as ``None`` so this can be used as a non-fatal fallback.
+    """
+    if not HAS_OPENSLIDE:
+        return None
+    try:
+        slide = openslide.OpenSlide(slide_path)
+        v = slide.properties.get("aperio.AppMag") or slide.properties.get(
+            openslide.PROPERTY_NAME_OBJECTIVE_POWER
+        )
+        return float(v) if v is not None else None
+    except Exception as err:
+        logger.debug(f"OpenSlide AppMag read failed for {slide_path}: {err}")
+        return None
+
+
+def _get_appmag_tiffslide(slide_path: str | Path) -> float | None:
+    """Return Aperio nominal magnification via TiffSlide, or ``None``."""
+    if not HAS_TIFFSLIDE:
+        return None
+    try:
+        slide = tiffslide.TiffSlide(slide_path)
+        v = slide.properties.get("aperio.AppMag") or slide.properties.get(
+            "tiffslide.objective-power"
+        )
+        return float(v) if v is not None else None
+    except Exception as err:
+        logger.debug(f"TiffSlide AppMag read failed for {slide_path}: {err}")
+        return None
+
+
 def get_avg_mpp(slide_path: Path | str) -> float:
     """Return the average MPP of a whole slide image.
 
@@ -298,6 +356,26 @@ def get_avg_mpp(slide_path: Path | str) -> float:
         return (mppx + mppy) / 2
     except CannotReadSpacing:
         pass
+
+    # Final fallback: infer MPP from Aperio nominal magnification (AppMag).
+    # Many TCGA SVS files have AppMag in their ImageDescription even when MPP
+    # tags are missing or unreadable. Vendor-typical values are used; a
+    # warning is logged so users can verify against the expected resolution.
+    appmag = _get_appmag_openslide(slide_path) or _get_appmag_tiffslide(slide_path)
+    if appmag is not None:
+        key = int(round(appmag))
+        if key in _MPP_FROM_APPMAG:
+            mpp = _MPP_FROM_APPMAG[key]
+            logger.warning(
+                "%s: MPP missing — falling back to AppMag=%g (assumed %.3f um/px). "
+                "Verify this matches your scanner.",
+                str(slide_path), appmag, mpp,
+            )
+            return mpp
+        logger.warning(
+            "%s: MPP missing and AppMag=%g not in fallback table %s.",
+            str(slide_path), appmag, sorted(_MPP_FROM_APPMAG),
+        )
 
     raise CannotReadSpacing(slide_path)
 

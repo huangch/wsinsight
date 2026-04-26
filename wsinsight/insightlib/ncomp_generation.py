@@ -29,6 +29,7 @@ import pandas as pd
 from tqdm import tqdm
 
 from .. import errors
+from ..cancel import cancellable_as_completed, critical_section, is_cancelled
 from ..wsi import _validate_wsi_directory, get_avg_mpp
 from ..uri_path import URIPath
 
@@ -179,8 +180,9 @@ def _worker(
 
     # --- Save ---------------------------------------------------------------
     ncomp_csv.parent.mkdir(parents=True, exist_ok=True)
-    with ncomp_csv.open("w", encoding="utf-8", newline="") as fp:
-        per_cell_df.to_csv(fp, index=False)
+    with critical_section(f"saving ncomp output for {slide_id}"):
+        with ncomp_csv.open("w", encoding="utf-8", newline="") as fp:
+            per_cell_df.to_csv(fp, index=False)
     _step("save outputs")
 
     inner.close()
@@ -308,7 +310,7 @@ def ncomp_generation(
             unit="slide",
             dynamic_ncols=True,
         )
-        for f in as_completed(futures):
+        for f in cancellable_as_completed(futures, ex):
             slide_id, ok = f.result()
             if not ok:
                 failed_generation.append(slide_id)

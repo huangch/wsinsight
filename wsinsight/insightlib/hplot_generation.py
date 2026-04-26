@@ -15,6 +15,7 @@ import pandas as pd
 from tqdm import tqdm
 
 from .. import errors
+from ..cancel import cancellable_as_completed, critical_section
 from ..wsi import _validate_wsi_directory, get_avg_mpp
 from ..uri_path import URIPath
 
@@ -177,26 +178,27 @@ def _worker(
     _step("layer distances")
 
     _drop_cols = ["is_base_region", "is_base_border", "distance_to_border"]
-    with cells_csv.open("w", encoding="utf-8", newline="") as fp:
-        nodes_df.drop(columns=[c for c in _drop_cols if c in nodes_df.columns]).to_csv(fp, index=False)
+    with critical_section(f"saving hplot outputs for {slide_id}"):
+        with cells_csv.open("w", encoding="utf-8", newline="") as fp:
+            nodes_df.drop(columns=[c for c in _drop_cols if c in nodes_df.columns]).to_csv(fp, index=False)
 
-    hplot_df = compute_hplot(nodes_df, edges_df)
-    _step("hplot curve")
+        hplot_df = compute_hplot(nodes_df, edges_df)
+        _step("hplot curve")
 
-    with hplot_csv.open("w", encoding="utf-8", newline="") as fp:
-        hplot_df.to_csv(fp, index=False)
+        with hplot_csv.open("w", encoding="utf-8", newline="") as fp:
+            hplot_df.to_csv(fp, index=False)
 
-    hmetric_dict = compute_hmetrics(
-        hplot_df=hplot_df,
-        range_min=range_min,
-        range_max=range_max,
-        hplot_samples_with_valid_range_only=samples_with_valid_range_only,
-    )
-    _step("hmetrics")
+        hmetric_dict = compute_hmetrics(
+            hplot_df=hplot_df,
+            range_min=range_min,
+            range_max=range_max,
+            hplot_samples_with_valid_range_only=samples_with_valid_range_only,
+        )
+        _step("hmetrics")
 
-    with hmetric_json.open("w", encoding="utf-8") as fp:
-        json.dump(hmetric_dict, fp, indent=2)
-    _step("save outputs")
+        with hmetric_json.open("w", encoding="utf-8") as fp:
+            json.dump(hmetric_dict, fp, indent=2)
+        _step("save outputs")
 
     inner.close()
     return slide_id, hplot_df, hmetric_dict
@@ -326,8 +328,9 @@ def hplot_finalize(output_dir: URIPath, overwrite: bool = False) -> None:
         merged_hplot = pd.concat(hplot_frames, ignore_index=True)
         merged_hplot.drop_duplicates(subset=["id", "layer"], keep="last", inplace=True)
         merged_hplot.sort_values(["id", "layer"], inplace=True, ignore_index=True)
-        with hplot_hplots_csv.open("w", encoding="utf-8", newline="") as fp:
-            merged_hplot.to_csv(fp, index=False)
+        with critical_section("saving aggregated hplot-outputs.csv"):
+            with hplot_hplots_csv.open("w", encoding="utf-8", newline="") as fp:
+                merged_hplot.to_csv(fp, index=False)
 
     _HMETRICS_COLS = [
         "id", "valid",
@@ -382,8 +385,9 @@ def hplot_finalize(output_dir: URIPath, overwrite: bool = False) -> None:
     if hmetrics_rows:
         merged_hmetrics = pd.DataFrame(hmetrics_rows, columns=_HMETRICS_COLS)
         merged_hmetrics.drop_duplicates(subset=["id"], keep="last", inplace=True)
-        with hplot_hmetrics_csv.open("w", encoding="utf-8", newline="") as fp:
-            merged_hmetrics.to_csv(fp, index=False)
+        with critical_section("saving aggregated hmetrics-outputs.csv"):
+            with hplot_hmetrics_csv.open("w", encoding="utf-8", newline="") as fp:
+                merged_hmetrics.to_csv(fp, index=False)
 
 
 def hplot_generation(
@@ -549,7 +553,7 @@ def hplot_generation(
             unit="slide",
             dynamic_ncols=True,
         )
-        for f in as_completed(futures):
+        for f in cancellable_as_completed(futures, ex):
             image_id, df, hm = f.result()
 
             if df is None or hm is None:
@@ -641,14 +645,16 @@ def hplot_generation(
         with hplot_hplots_csv.open("r", encoding="utf-8") as fp:
             hplot_df = upsert_by_key(pd.read_csv(fp), hplot_df, key="id")
 
-    with hplot_hplots_csv.open("w", encoding="utf-8", newline="") as fp:
-        hplot_df.to_csv(fp, index=False)
+    with critical_section("saving hplot-outputs.csv"):
+        with hplot_hplots_csv.open("w", encoding="utf-8", newline="") as fp:
+            hplot_df.to_csv(fp, index=False)
 
     if hplot_hmetrics_csv.exists():
         with hplot_hmetrics_csv.open("r", encoding="utf-8") as fp:
             hmetrics_df = upsert_by_key(pd.read_csv(fp), hmetrics_df, key="id")
 
-    with hplot_hmetrics_csv.open("w", encoding="utf-8", newline="") as fp:
-        hmetrics_df.to_csv(fp, index=False)
+    with critical_section("saving hmetrics-outputs.csv"):
+        with hplot_hmetrics_csv.open("w", encoding="utf-8", newline="") as fp:
+            hmetrics_df.to_csv(fp, index=False)
 
     return failed_generation

@@ -16,6 +16,7 @@ import pandas as pd
 from tqdm.auto import tqdm
 
 from .uri_path import URIPath
+from .cancel import cancellable_as_completed
 
 PathLike = Union[Path, URIPath]
 
@@ -319,7 +320,7 @@ def write_omecsvs(
             )
             for csv in csvs
         ]
-        for fut in as_completed(futures):
+        for fut in cancellable_as_completed(futures, ex):
             fut.result()
             pbar.update(1)
 

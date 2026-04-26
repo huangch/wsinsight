@@ -38,6 +38,7 @@ from .insight_helpers import create_adjacency_list_fast  # adjacency builder
 from .graph_cache import get_or_build_delaunay
 from ..uri_path import URIPath
 from ..wsi import _validate_wsi_directory, get_avg_mpp
+from ..cancel import critical_section, raise_if_cancelled
 from ..insightlib.vorononi_cme_region_helper import merge_same_label_by_shared_edges_iterative, remap_edges_to_valid_indices
 from ..num_worker_optimizer import pick_workers_safe, throttle_when_busy
            
@@ -1285,6 +1286,7 @@ def cme_generation(
 
     if cme_cellular:
         for i, (wsi_path, model_output_csv) in tqdm(enumerate(zip(slide_paths, model_output_paths)), total=len(slide_paths)):
+            raise_if_cancelled()
             cme_csv_name = Path(wsi_path).with_suffix(".csv").name
             cell_csv = cme_cells_output_dir / cme_csv_name
             cme_csv = cme_cmes_output_dir / cme_csv_name
@@ -1305,7 +1307,8 @@ def cme_generation(
             label_one_hot = np.eye(cme_clustering_k, dtype=np.float32)[labels_list[i]]
             cme_detection_df.loc[slides[i]["kept_idx"], cme_cols] = label_one_hot
             
-            cme_detection_df.to_csv(cell_csv, index=False)
+            with critical_section(f"saving cme cell output for {wsi_path.stem}"):
+                cme_detection_df.to_csv(cell_csv, index=False)
             
             # valid_mask = np.zeros(len(cme_detection_df), dtype=bool)
             # valid_mask[np.asarray(slides[i]["kept_idx"], dtype=int)] = True
@@ -1324,6 +1327,7 @@ def cme_generation(
    
     if cme_annotation:
         for i, (wsi_path, model_output_csv) in tqdm(enumerate(zip(slide_paths, model_output_paths)), total=len(slide_paths)):
+            raise_if_cancelled()
             cme_csv_name = Path(wsi_path).with_suffix(".csv").name
             cell_csv = cme_cells_output_dir / cme_csv_name
             cme_csv = cme_cmes_output_dir / cme_csv_name
@@ -1342,7 +1346,8 @@ def cme_generation(
                                                                              mpp=mpp,
                                                                              max_radius_um=max_cell_radius_um)
             
-            cme_annotation_df.to_csv(cme_csv, index=False)
+            with critical_section(f"saving cme annotation output for {wsi_path.stem}"):
+                cme_annotation_df.to_csv(cme_csv, index=False)
             
         
         # print("-" * 40)
