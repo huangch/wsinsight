@@ -1,0 +1,31 @@
+# Regression test cases.
+#
+# Each [[case]] entry points at a slide on disk and (optionally) records the
+# scalar metadata you expect from it. Tests skip cleanly when `path` is missing,
+# so this file can be committed and shared across machines.
+#
+# To use your own paths without editing this file:
+#   export WSINSIGHT_REGRESSION_CASES=/path/to/your/cases.toml
+#
+# Per-slide golden outputs (patch coords HDF5, inference CSV/GeoJSON) live next
+# to this file under `fixtures/<slide_id>/`. Regenerate them with:
+#   python scripts/regenerate_regression_baselines.py
+#
+# `slide_id` must be a filesystem-safe identifier; it is the fixture folder name.
+
+# --- Example: a known-good 40x TCGA-STAD slide ---------------------------------
+# [[case]]
+# slide_id = "TCGA-D7-6818"
+# path     = "/workspace/tcga-stad/dataset/.../TCGA-D7-6818-01Z-00-DX1.svs"
+# expected_appmag = 40.0
+# expected_mpp    = 0.2520
+# # tolerance for floating-point metadata comparisons
+# mpp_atol = 0.01
+
+# --- Example: a slide that should hit the AppMag fallback -----------------------
+# [[case]]
+# slide_id = "TCGA-CG-5727"
+# path     = "/workspace/tcga-stad/dataset/.../TCGA-CG-5727-01Z-00-DX1.svs"
+# expected_appmag = 40.0
+# expected_mpp    = 0.25  # via AppMag fallback table
+# expects_appmag_fallback = true
