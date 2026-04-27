@@ -44,6 +44,47 @@ from .models import get_pretrained_torch_module
 EPSILON = 1e-8
 I_0 = 255
 
+
+def _advance_batch_search(
+    current: int, lo: int, hi: int, max_bs: int, *, oom: bool
+) -> tuple[int, int, int]:
+    """Update the OOM binary-search state and propose the next batch size.
+
+    Maintains brackets ``(lo, hi)`` where:
+      - ``lo`` is the largest batch size confirmed to fit (``0`` = none yet)
+      - ``hi`` is the smallest batch size confirmed to OOM
+        (``max_bs + 1`` = no ceiling seen yet)
+
+    On OOM (``oom=True``) we tighten ``hi`` *and* invalidate any stale ``lo``
+    by lowering it to ``min(lo, current - 1)``. Without that invalidation, a
+    sequence like ``lo=20, hi=21, current=20`` followed by an OOM at 20 would
+    deadlock at ``(20+20)//2 == 20`` forever.
+
+    On success (``oom=False``) we raise ``lo`` to ``current``, then either
+    bisect upward (if a ceiling is known) or exponentially probe up to
+    ``max_bs`` (if not).
+
+    Returns
+    -------
+    next_current, lo, hi : int
+        Proposed batch size for the next attempt and the updated brackets.
+        ``next_current`` is always in ``[1, max_bs]``.
+    """
+    if oom:
+        hi = current
+        lo = min(lo, current - 1)
+        next_current = max(1, (lo + hi) // 2)
+    else:
+        lo = current
+        if hi <= max_bs:
+            cand = (lo + hi) // 2
+            next_current = cand if cand > lo else lo
+        else:
+            next_current = min(lo * 2, max_bs) if lo > 0 else max_bs
+        next_current = max(1, min(next_current, max_bs))
+    return next_current, lo, hi
+
+
 def run_inference(
     wsi_dir: URIPath | None,
     slide_paths: List[URIPath] | None,
@@ -493,12 +534,9 @@ def run_inference(
                             )
                             qbar.close()
                         gc.collect()
-                        _bs_lo = current_batch_size
-                        if _bs_hi <= batch_size:
-                            _next = (_bs_lo + _bs_hi) // 2
-                            current_batch_size = _next if _next > _bs_lo else _bs_lo
-                        else:
-                            current_batch_size = min(_bs_lo * 2, batch_size)
+                        current_batch_size, _bs_lo, _bs_hi = _advance_batch_search(
+                            current_batch_size, _bs_lo, _bs_hi, batch_size, oom=False
+                        )
                         break
                     except (torch.cuda.OutOfMemoryError, RuntimeError) as _oom_err:
                         if isinstance(_oom_err, RuntimeError) and "out of memory" not in str(_oom_err).lower():
@@ -510,8 +548,9 @@ def run_inference(
                             failed_inference.append(wsi_path.stem)
                             _oom_skip = True
                             break
-                        _bs_hi = current_batch_size
-                        current_batch_size = max(1, (_bs_lo + _bs_hi) // 2)
+                        current_batch_size, _bs_lo, _bs_hi = _advance_batch_search(
+                            current_batch_size, _bs_lo, _bs_hi, batch_size, oom=True
+                        )
                         tqdm.tqdm.write(f"[OOM] batch_size → {current_batch_size} (lo={_bs_lo} hi={_bs_hi}) — retrying {wsi_path.stem}")
                         loader = torch.utils.data.DataLoader(
                             dset,
@@ -617,12 +656,9 @@ def run_inference(
                                 slide_probs.append(probs.numpy())
                                 qbar.update(1)
                         raise_if_cancelled()
-                        _bs_lo = current_batch_size
-                        if _bs_hi <= batch_size:
-                            _next = (_bs_lo + _bs_hi) // 2
-                            current_batch_size = _next if _next > _bs_lo else _bs_lo
-                        else:
-                            current_batch_size = min(_bs_lo * 2, batch_size)
+                        current_batch_size, _bs_lo, _bs_hi = _advance_batch_search(
+                            current_batch_size, _bs_lo, _bs_hi, batch_size, oom=False
+                        )
                         break
                     except (torch.cuda.OutOfMemoryError, RuntimeError) as _oom_err:
                         if isinstance(_oom_err, RuntimeError) and "out of memory" not in str(_oom_err).lower():
@@ -634,8 +670,9 @@ def run_inference(
                             failed_inference.append(wsi_path.stem)
                             _oom_skip = True
                             break
-                        _bs_hi = current_batch_size
-                        current_batch_size = max(1, (_bs_lo + _bs_hi) // 2)
+                        current_batch_size, _bs_lo, _bs_hi = _advance_batch_search(
+                            current_batch_size, _bs_lo, _bs_hi, batch_size, oom=True
+                        )
                         tqdm.tqdm.write(f"[OOM] batch_size → {current_batch_size} (lo={_bs_lo} hi={_bs_hi}) — retrying {wsi_path.stem}")
                         loader = torch.utils.data.DataLoader(
                             dset,
