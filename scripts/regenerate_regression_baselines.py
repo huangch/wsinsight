@@ -23,49 +23,94 @@ By default cases are read from ``tests/regression/cases.toml`` (override via
 from __future__ import annotations
 
 import argparse
+import os
 import shutil
 import subprocess
 import sys
+from dataclasses import dataclass
 from pathlib import Path
 
-# Make ``tests`` importable as a package.
-ROOT = Path(__file__).resolve().parents[1]
-sys.path.insert(0, str(ROOT))
-
-from tests.regression.conftest import (  # noqa: E402
-    FIXTURES_DIR, RegressionCase, load_cases,
-)
+try:
+    import tomllib  # Python 3.11+
+except ModuleNotFoundError:  # pragma: no cover
+    import tomli as tomllib  # type: ignore[no-redef]
 
 
-def _run_patch(case: RegressionCase, workdir: Path, zoo_model: str) -> Path:
-    out = workdir / case.slide_id / "patch"
-    out.mkdir(parents=True, exist_ok=True)
+REPO_ROOT = Path(__file__).resolve().parents[1]
+REGRESSION_DIR = REPO_ROOT / "tests" / "regression"
+DEFAULT_CASES_FILE = REGRESSION_DIR / "cases.toml"
+FIXTURES_DIR = REGRESSION_DIR / "fixtures"
+
+
+def _resolve_path(p: str) -> Path:
+    pp = Path(p)
+    return pp if pp.is_absolute() else (REPO_ROOT / pp)
+
+
+@dataclass(frozen=True)
+class RegressionCase:
+    slide_id: str
+    path: Path
+
+    @property
+    def fixture_dir(self) -> Path:
+        return FIXTURES_DIR / self.slide_id
+
+    @property
+    def exists(self) -> bool:
+        return self.path.is_file()
+
+
+def load_cases() -> list[RegressionCase]:
+    cases_file = Path(
+        os.environ.get("WSINSIGHT_REGRESSION_CASES", str(DEFAULT_CASES_FILE))
+    )
+    if not cases_file.is_file():
+        return []
+    with cases_file.open("rb") as f:
+        data = tomllib.load(f)
+    return [
+        RegressionCase(slide_id=e["slide_id"], path=_resolve_path(e["path"]))
+        for e in data.get("case", [])
+    ]
+
+
+def _stage_slides(cases: list[RegressionCase], staging: Path) -> Path:
+    """Symlink case slides into a single directory for ``-i, --wsi-dir``."""
+    if staging.exists():
+        shutil.rmtree(staging)
+    staging.mkdir(parents=True)
+    for c in cases:
+        (staging / c.path.name).symlink_to(c.path)
+    return staging
+
+
+def _run_patch(staging: Path, results_dir: Path, zoo_model: str) -> None:
+    if results_dir.exists():
+        shutil.rmtree(results_dir)
+    results_dir.mkdir(parents=True)
     cmd = [
         sys.executable, "-m", "wsinsight", "patch",
-        "-i", str(case.path),
-        "-o", str(out),
+        "-i", str(staging),
+        "-o", str(results_dir),
         "-z", zoo_model,
-        "--overwrite",
     ]
-    print(f"\n[+] {case.slide_id}: {' '.join(cmd)}")
+    print(f"\n[+] patch: {' '.join(cmd)}")
     subprocess.run(cmd, check=True)
-    return out
 
 
-def _run_infer(case: RegressionCase, patch_dir: Path, zoo_model: str) -> Path:
+def _run_infer(results_dir: Path, zoo_model: str) -> None:
     cmd = [
         sys.executable, "-m", "wsinsight", "infer",
-        "-i", str(case.path),
-        "-o", str(patch_dir),
+        "-o", str(results_dir),
         "-z", zoo_model,
     ]
-    print(f"\n[+] {case.slide_id}: {' '.join(cmd)}")
+    print(f"\n[+] infer: {' '.join(cmd)}")
     subprocess.run(cmd, check=True)
-    return patch_dir
 
 
-def _copy_patch_golden(case: RegressionCase, patch_dir: Path) -> None:
-    src_dir = patch_dir / "patches"
+def _copy_patch_golden(case: RegressionCase, results_dir: Path) -> None:
+    src_dir = results_dir / "patches"
     hits = list(src_dir.glob(f"{case.path.stem}*.h5"))
     if not hits:
         print(f"  ! No .h5 produced for {case.slide_id}; skipping patch golden.")
@@ -105,31 +150,34 @@ def main() -> int:
     args = parser.parse_args()
 
     if args.cases:
-        import os
         os.environ["WSINSIGHT_REGRESSION_CASES"] = args.cases
 
     cases = load_cases()
     if args.only:
         wanted = set(args.only.split(","))
         cases = [c for c in cases if c.slide_id in wanted]
+    cases = [c for c in cases if c.exists]
     if not cases:
-        print("No cases to regenerate.", file=sys.stderr)
+        print("No cases to regenerate (none exist on disk).", file=sys.stderr)
         return 1
 
     workdir = Path(args.workdir)
     workdir.mkdir(parents=True, exist_ok=True)
+    staging = workdir / "slides"
+    results_dir = workdir / "results"
     print(f"Workdir: {workdir}")
     print(f"Fixtures dir: {FIXTURES_DIR}")
+    print(f"Cases: {[c.slide_id for c in cases]}")
 
-    for case in cases:
-        if not case.exists:
-            print(f"\n[skip] {case.slide_id}: file not found -> {case.path}")
-            continue
-        patch_dir = _run_patch(case, workdir, args.zoo_model)
-        _copy_patch_golden(case, patch_dir)
-        if not args.skip_infer:
-            results_dir = _run_infer(case, patch_dir, args.zoo_model)
-            _copy_infer_golden(case, results_dir)
+    _stage_slides(cases, staging)
+    _run_patch(staging, results_dir, args.zoo_model)
+    for c in cases:
+        _copy_patch_golden(c, results_dir)
+
+    if not args.skip_infer:
+        _run_infer(results_dir, args.zoo_model)
+        for c in cases:
+            _copy_infer_golden(c, results_dir)
 
     print("\nDone. Review the diff under tests/regression/fixtures/ and commit.")
     return 0

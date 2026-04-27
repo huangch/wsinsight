@@ -21,8 +21,14 @@ import pytest
 
 
 REGRESSION_DIR = Path(__file__).parent
+REPO_ROOT = REGRESSION_DIR.parents[1]
 DEFAULT_CASES_FILE = REGRESSION_DIR / "cases.toml"
 FIXTURES_DIR = REGRESSION_DIR / "fixtures"
+
+
+def _resolve_path(p: str | Path) -> Path:
+    p = Path(p)
+    return p if p.is_absolute() else (REPO_ROOT / p)
 
 
 @dataclass(frozen=True)
@@ -63,7 +69,7 @@ def load_cases() -> list[RegressionCase]:
         extra = {k: v for k, v in entry.items() if k not in known}
         cases.append(RegressionCase(
             slide_id=entry["slide_id"],
-            path=Path(entry["path"]),
+            path=_resolve_path(entry["path"]),
             expected_appmag=entry.get("expected_appmag"),
             expected_mpp=entry.get("expected_mpp"),
             mpp_atol=entry.get("mpp_atol", 0.01),

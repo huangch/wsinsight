@@ -51,3 +51,11 @@ Thumbs.db
 
 # Environment variables
 .env
+
+# Regression suite: large inference goldens are kept out of git; regenerate
+# with scripts/regenerate_regression_baselines.py or stash on shared storage.
+tests/regression/fixtures/*/inference.csv
+# Regression test slides (large binaries; keep on disk, not in git)
+tests/cases/*.svs
+tests/cases/*.tiff
+tests/cases/*.tif
