@@ -77,8 +77,12 @@ def _worker(
         desc=desc,
         position=pbar_position,
         leave=False,
-        unit="step",
         dynamic_ncols=True,
+        # Steps are heterogeneous (load CSV is ms; k-hop neighbors is
+        # seconds-to-minutes), so the default rate/ETA fields would lie.
+        # Show only what we actually know: percent, fraction, elapsed,
+        # current step name (set via set_postfix_str).
+        bar_format="{desc}: {percentage:3.0f}%|{bar}| {n}/{total} [{elapsed} {postfix}]",
     )
 
     def _step(name: str) -> None:
