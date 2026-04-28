@@ -156,3 +156,25 @@ def test_install_sigint_handler_idempotent():
     finally:
         signal.signal(signal.SIGINT, original)
         cancel._handler_installed = False
+
+
+def test_console_script_entry_point_runs_main_not_cli_directly():
+    """Regression: the ``wsinsight`` console script must dispatch through
+    ``wsinsight.__main__:main`` (which installs the SIGINT handler), not
+    jump directly into the Click ``cli`` callable. If this points at the
+    raw Click group, Ctrl-C falls back to Python's default handler and
+    the two-press cancellation flow never runs.
+    """
+    import importlib.metadata as md
+
+    raw = md.entry_points()
+    if hasattr(raw, "select"):  # Python 3.10+
+        eps = list(raw.select(group="console_scripts"))
+    else:  # Python 3.9
+        eps = list(raw.get("console_scripts", []))
+    eps = [e for e in eps if e.name == "wsinsight"]
+    assert len(eps) == 1, f"expected exactly one wsinsight console script, got {eps}"
+    assert eps[0].value == "wsinsight.__main__:main", (
+        f"wsinsight console-script must be wsinsight.__main__:main "
+        f"so install_sigint_handler() runs; got {eps[0].value!r}"
+    )

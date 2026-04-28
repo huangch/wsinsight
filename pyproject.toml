@@ -102,7 +102,7 @@ Repository = "https://github.com/huangch/wsinsight"
 BugTracker = "https://github.com/huangch/wsinsight/issues"
 
 [project.scripts]
-wsinsight = "wsinsight.cli.cli:cli"
+wsinsight = "wsinsight.__main__:main"
 
 [tool.setuptools.packages.find]
 include = ["wsinsight*"]
