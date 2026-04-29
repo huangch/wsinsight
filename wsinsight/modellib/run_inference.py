@@ -85,6 +85,19 @@ def _advance_batch_search(
     return next_current, lo, hi
 
 
+def _is_bs_converged(current: int, lo: int, hi: int) -> bool:
+    """Return True when the OOM bisection has tightly bracketed the ceiling.
+
+    "Converged" means we have both a confirmed-safe value (``lo``) and a
+    confirmed-OOM value (``hi``) one step apart, and we are running at the
+    safe value. Any OOM observed in this state is unexpected — most likely
+    caused by allocator fragmentation or a transient external memory
+    pressure event — and is handled with an in-place ``empty_cache`` retry
+    before falling back to a bisection reset.
+    """
+    return lo > 0 and hi == lo + 1 and current == lo
+
+
 def run_inference(
     wsi_dir: URIPath | None,
     slide_paths: List[URIPath] | None,
@@ -498,6 +511,12 @@ def run_inference(
 
             elif object_based and object_detection=="end2end":
                 _oom_skip = False
+                # Counts OOMs at the *current* batch size for *this slide*.
+                # The first OOM at a converged batch size is treated as a
+                # likely fragmentation event and retried in place after
+                # `empty_cache()`. Only the second one triggers a bisection
+                # reset.
+                _oom_retries_at_current = 0
                 while True:
                     stitcher = TileRemapStitcher(
                         n_classes=len(model_info.config.class_names),
@@ -548,10 +567,34 @@ def run_inference(
                             failed_inference.append(wsi_path.stem)
                             _oom_skip = True
                             break
-                        current_batch_size, _bs_lo, _bs_hi = _advance_batch_search(
-                            current_batch_size, _bs_lo, _bs_hi, batch_size, oom=True
-                        )
-                        tqdm.tqdm.write(f"[OOM] batch_size → {current_batch_size} (lo={_bs_lo} hi={_bs_hi}) — retrying {wsi_path.stem}")
+                        if _is_bs_converged(current_batch_size, _bs_lo, _bs_hi) and _oom_retries_at_current == 0:
+                            # Likely fragmentation. Retry in place at the same
+                            # batch size after the cache flush above.
+                            _oom_retries_at_current = 1
+                            tqdm.tqdm.write(
+                                f"[OOM] empty_cache retry at bs={current_batch_size} — retrying {wsi_path.stem}"
+                            )
+                        elif _is_bs_converged(current_batch_size, _bs_lo, _bs_hi):
+                            # Second OOM at the converged value: fragmentation
+                            # was not the culprit. Reset the bracket so the
+                            # next attempt jumps to ~current/2 instead of
+                            # ratcheting down by 1, then re-bisect upward.
+                            _old_bs = current_batch_size
+                            _bs_hi = current_batch_size
+                            _bs_lo = 0
+                            current_batch_size = max(1, _bs_hi // 2)
+                            _oom_retries_at_current = 0
+                            tqdm.tqdm.write(
+                                f"[OOM] bisection reset (lo=0 hi={_old_bs}) → bs={current_batch_size} — retrying {wsi_path.stem}"
+                            )
+                        else:
+                            current_batch_size, _bs_lo, _bs_hi = _advance_batch_search(
+                                current_batch_size, _bs_lo, _bs_hi, batch_size, oom=True
+                            )
+                            _oom_retries_at_current = 0
+                            tqdm.tqdm.write(
+                                f"[OOM] batch_size → {current_batch_size} (lo={_bs_lo} hi={_bs_hi}) — retrying {wsi_path.stem}"
+                            )
                         loader = torch.utils.data.DataLoader(
                             dset,
                             batch_size=current_batch_size,
@@ -633,6 +676,10 @@ def run_inference(
                 
             else:
                 _oom_skip = False
+                # See end2end branch above for rationale: first OOM at a
+                # converged batch size is treated as fragmentation and retried
+                # in place; second OOM triggers a bisection reset.
+                _oom_retries_at_current = 0
                 while True:
                     slide_coords = []
                     slide_probs = []
@@ -670,10 +717,28 @@ def run_inference(
                             failed_inference.append(wsi_path.stem)
                             _oom_skip = True
                             break
-                        current_batch_size, _bs_lo, _bs_hi = _advance_batch_search(
-                            current_batch_size, _bs_lo, _bs_hi, batch_size, oom=True
-                        )
-                        tqdm.tqdm.write(f"[OOM] batch_size → {current_batch_size} (lo={_bs_lo} hi={_bs_hi}) — retrying {wsi_path.stem}")
+                        if _is_bs_converged(current_batch_size, _bs_lo, _bs_hi) and _oom_retries_at_current == 0:
+                            _oom_retries_at_current = 1
+                            tqdm.tqdm.write(
+                                f"[OOM] empty_cache retry at bs={current_batch_size} — retrying {wsi_path.stem}"
+                            )
+                        elif _is_bs_converged(current_batch_size, _bs_lo, _bs_hi):
+                            _old_bs = current_batch_size
+                            _bs_hi = current_batch_size
+                            _bs_lo = 0
+                            current_batch_size = max(1, _bs_hi // 2)
+                            _oom_retries_at_current = 0
+                            tqdm.tqdm.write(
+                                f"[OOM] bisection reset (lo=0 hi={_old_bs}) → bs={current_batch_size} — retrying {wsi_path.stem}"
+                            )
+                        else:
+                            current_batch_size, _bs_lo, _bs_hi = _advance_batch_search(
+                                current_batch_size, _bs_lo, _bs_hi, batch_size, oom=True
+                            )
+                            _oom_retries_at_current = 0
+                            tqdm.tqdm.write(
+                                f"[OOM] batch_size → {current_batch_size} (lo={_bs_lo} hi={_bs_hi}) — retrying {wsi_path.stem}"
+                            )
                         loader = torch.utils.data.DataLoader(
                             dset,
                             batch_size=current_batch_size,
