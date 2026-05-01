@@ -827,7 +827,7 @@ def run_inference(
                                 slide_df.to_csv(fh, index=False)
                         pbar.update(1)
                         continue
-                slide_df = register_objects_to_regions(slide_df, annot_df)
+                slide_df, _ = register_objects_to_regions(slide_df, annot_df)
             
             
             with slide_csv.open("wb") as fh:     # local cache, auto-upload on close
