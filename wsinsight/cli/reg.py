@@ -25,6 +25,7 @@ from ..uri_path import URIPath, URIPathType
 from ..wsi import CannotReadSpacing, get_avg_mpp
 from ..write_geojson import write_geojsons
 from ..write_omecsv import write_omecsvs
+from ._meta import write_runtime_metadata
 
 
 def _storage_kwargs() -> dict[str, object]:
@@ -425,3 +426,9 @@ def reg(
                 prefix=grp,
                 num_workers=export_workers,
             )
+
+    write_runtime_metadata(
+        results_dir,
+        "reg",
+        params=click.get_current_context().params,
+    )

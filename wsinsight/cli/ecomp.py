@@ -16,6 +16,7 @@ from platformdirs import user_cache_dir
 
 from ..insightlib.ecomp_generation import ecomp_generation, _gpu_available
 from ..uri_path import URIPath, URIPathType
+from ._meta import write_runtime_metadata
 
 
 def _assert_directory(path: URIPath, option_name: str) -> None:
@@ -165,3 +166,9 @@ def ecomp(
         click.secho("\n".join(failed), fg="yellow")
     else:
         click.secho("\necomp completed successfully.\n", fg="green")
+
+    write_runtime_metadata(
+        results_dir,
+        "ecomp",
+        params=click.get_current_context().params,
+    )

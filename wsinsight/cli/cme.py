@@ -18,6 +18,7 @@ from platformdirs import user_cache_dir
 from ..insightlib.cme_generation import cme_generation
 from ..uri_path import URIPath, URIPathType
 from ..write_geojson import write_geojsons
+from ._meta import write_runtime_metadata
 
 
 # ---------------------------------------------------------------------------
@@ -226,5 +227,11 @@ def cme(
                 set_classification=True,
                 annotation_shape="polygon",
             )
+
+    write_runtime_metadata(
+        results_dir,
+        "cme",
+        params=click.get_current_context().params,
+    )
 
     click.secho("\nCME analysis completed.\n", fg="green")

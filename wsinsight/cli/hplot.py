@@ -17,6 +17,7 @@ from tqdm import tqdm
 
 from ..insightlib.hplot_generation import hplot_generation, hplot_finalize
 from ..uri_path import URIPath, URIPathType
+from ._meta import write_runtime_metadata
 
 
 def _coerce_number(token: str) -> int | float | str:
@@ -276,6 +277,12 @@ def hplot(
         )
         click.secho("\n".join(failed_hplot_generation), fg="yellow")
 
+    write_runtime_metadata(
+        results_dir,
+        "hplot",
+        params=click.get_current_context().params,
+    )
+
     click.secho("\nWSInsight tasks are all finished.\n", fg="green")
 
 
@@ -311,4 +318,11 @@ def hplot_finalize_cmd(
 
     click.secho("\nFinalizing H-Plot outputs.\n", fg="green")
     hplot_finalize(output_dir=results_dir, overwrite=overwrite)
+
+    write_runtime_metadata(
+        results_dir,
+        "hplot-finalize",
+        params=click.get_current_context().params,
+    )
+
     click.secho("\nH-Plot finalization complete.\n", fg="green")

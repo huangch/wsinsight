@@ -21,6 +21,7 @@ from platformdirs import user_cache_dir
 
 from ..insightlib.ncomp_generation import ncomp_generation
 from ..uri_path import URIPath, URIPathType
+from ._meta import write_runtime_metadata
 
 
 # ---------------------------------------------------------------------------
@@ -193,3 +194,9 @@ def ncomp(
         click.secho("\n".join(failed), fg="yellow")
     else:
         click.secho("\nncomp completed successfully.\n", fg="green")
+
+    write_runtime_metadata(
+        results_dir,
+        "ncomp",
+        params=click.get_current_context().params,
+    )

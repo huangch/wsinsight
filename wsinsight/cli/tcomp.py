@@ -17,6 +17,7 @@ from platformdirs import user_cache_dir
 
 from ..insightlib.tcomp_generation import tcomp_generation
 from ..uri_path import URIPath, URIPathType
+from ._meta import write_runtime_metadata
 
 
 def _assert_directory(path: URIPath, option_name: str) -> None:
@@ -165,3 +166,9 @@ def tcomp(
         click.secho("\n".join(failed), fg="yellow")
     else:
         click.secho("\ntcomp completed successfully.\n", fg="green")
+
+    write_runtime_metadata(
+        results_dir,
+        "tcomp",
+        params=click.get_current_context().params,
+    )
