@@ -679,8 +679,25 @@ class URIPath:
                 h.update(chunk)
         return h.hexdigest().lower() == str(expect).lower()
 
-    @staticmethod
-    def _load_manifest_table(manifest_path: str) -> pd.DataFrame:
+    # Class-level cache so iterating a manifest does not re-parse the TSV
+    # for every entry. Keyed by (abs path, mtime_ns, size) so an out-of-band
+    # edit invalidates the cached frame automatically.
+    _MANIFEST_CACHE: Dict[Tuple[str, int, int], pd.DataFrame] = {}
+    _MANIFEST_CACHE_MAX = 8
+
+    @classmethod
+    def _load_manifest_table(cls, manifest_path: str) -> pd.DataFrame:
+        try:
+            st = os.stat(manifest_path)
+            cache_key = (os.path.abspath(manifest_path), st.st_mtime_ns, st.st_size)
+        except OSError:
+            cache_key = None
+
+        if cache_key is not None:
+            cached = cls._MANIFEST_CACHE.get(cache_key)
+            if cached is not None:
+                return cached
+
         ext = manifest_path.lower()
         if ext.endswith(".csv"):
             df = pd.read_csv(manifest_path)
@@ -697,6 +714,12 @@ class URIPath:
         out = pd.DataFrame({"id": df[id_col].astype(str), "filename": df[fn_col].astype(str)})
         if "md5" in cols:
             out["md5"] = df[cols["md5"]].astype(str)
+
+        if cache_key is not None:
+            # Tiny LRU: drop oldest entry when full to bound memory.
+            if len(cls._MANIFEST_CACHE) >= cls._MANIFEST_CACHE_MAX:
+                cls._MANIFEST_CACHE.pop(next(iter(cls._MANIFEST_CACHE)))
+            cls._MANIFEST_CACHE[cache_key] = out
         return out
 
     # Convenience

@@ -166,3 +166,44 @@ def test_coerce_image_list_rejects_plain_text_file(tmp_path: Path):
 def test_uri_path_rejects_non_pathlike():
     with pytest.raises(TypeError, match="uri must be"):
         URIPath(12345)
+
+
+# --------------------------------------------------------------------------
+# GDC manifest table cache
+# --------------------------------------------------------------------------
+
+def test_manifest_cache_hits_on_repeated_load(tmp_path: Path, monkeypatch):
+    mf = tmp_path / "manifest.tsv"
+    mf.write_text("id\tfilename\nu1\ta.svs\nu2\tb.svs\n")
+    URIPath._MANIFEST_CACHE.clear()
+
+    calls = {"n": 0}
+    real_read_csv = __import__("pandas").read_csv
+
+    def counting_read_csv(*args, **kwargs):
+        calls["n"] += 1
+        return real_read_csv(*args, **kwargs)
+
+    monkeypatch.setattr("wsinsight.uri_path.pd.read_csv", counting_read_csv)
+
+    URIPath._load_manifest_table(str(mf))
+    URIPath._load_manifest_table(str(mf))
+    URIPath._load_manifest_table(str(mf))
+    assert calls["n"] == 1, "manifest should be parsed once and cached"
+
+
+def test_manifest_cache_invalidates_on_mtime_change(tmp_path: Path):
+    import time as _time
+    mf = tmp_path / "manifest.tsv"
+    mf.write_text("id\tfilename\nu1\ta.svs\n")
+    URIPath._MANIFEST_CACHE.clear()
+
+    df1 = URIPath._load_manifest_table(str(mf))
+    assert list(df1["filename"]) == ["a.svs"]
+
+    # Force a different mtime/size by rewriting.
+    _time.sleep(0.01)
+    mf.write_text("id\tfilename\nu2\tb.svs\n")
+    df2 = URIPath._load_manifest_table(str(mf))
+    assert list(df2["filename"]) == ["b.svs"]
+
