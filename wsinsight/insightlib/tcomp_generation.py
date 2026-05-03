@@ -47,13 +47,14 @@ _logger = logging.getLogger(__name__)
 _WORKER_STEPS = [
     "load CSV",
     "cell centers",
-    "triangulation",
-    "triad geometry",
+    "triangulate",
+    "triad geom.",
     "dual graph",
-    "k-hop neighbors",
-    "triad composition",
+    "k-hop nbrs",
+    "triad comp.",
     "save outputs",
 ]
+_STEP_LABEL_W = 12  # pad postfix so tqdm bar geometry stays stable across steps
 
 
 def _triad_type_vocab(all_types: list[str]) -> list[str]:
@@ -97,7 +98,7 @@ def _worker(
     )
 
     def _step(name: str) -> None:
-        inner.set_postfix_str(name)
+        inner.set_postfix_str(f"{name:<{_STEP_LABEL_W}}")
         inner.update(1)
 
     # --- MPP resolution -----------------------------------------------------
@@ -141,7 +142,7 @@ def _worker(
         from .insight_helpers import _delaunay_full
         simplices_all, _src, _dst, _lengths = _delaunay_full(centers)
         simplices_all = simplices_all.astype(np.int64)
-    _step("triangulation")
+    _step("triangulate")
 
     # --- Triad geometry -----------------------------------------------------
     if simplices_all.shape[0] == 0:
@@ -168,12 +169,12 @@ def _worker(
 
     geom = {k: v[max_edge_mask] for k, v in geom_all.items()}
     T = simplices_sorted.shape[0]
-    _step("triad geometry")
+    _step("triad geom.")
 
     # --- Fast path: skip dual graph + k-hop entirely -----------------------
     if no_neighborhood:
         _step("dual graph")       # advance pbar — skipped
-        _step("k-hop neighbors")  # advance pbar — skipped
+        _step("k-hop nbrs")       # advance pbar — skipped
 
         cell_type_array = nodes_df["cell_type"].to_numpy()
         ct_triples = cell_type_array[simplices_sorted]
@@ -208,7 +209,7 @@ def _worker(
             region_probs = nodes_df[region_cols].to_numpy(dtype=np.float32)
             centroid_region_idx = region_probs[simplices_sorted].sum(axis=1).argmax(axis=1)
             data["centroid_region"] = np.array(region_labels, dtype=object)[centroid_region_idx]
-        _step("triad composition")
+        _step("triad comp.")
 
         out_df = pd.DataFrame(data)
         tcomp_csv.parent.mkdir(parents=True, exist_ok=True)
@@ -225,7 +226,7 @@ def _worker(
 
     # --- k-hop on dual graph (as sparse matrix for vectorised aggregation) -
     A_k = k_hop_adjacency_matrix(D, tcomp_k)
-    _step("k-hop neighbors")
+    _step("k-hop nbrs")
 
     # --- Per-triad features ------------------------------------------------
     cell_type_array = nodes_df["cell_type"].to_numpy()
@@ -283,7 +284,7 @@ def _worker(
         nhood_mean_max_edge = np.where(
             nhood_size > 0, sum_max_edge / nhood_size, np.nan
         )
-    _step("triad composition")
+    _step("triad comp.")
 
     # --- Build output DataFrame --------------------------------------------
     denom = np.where(nhood_size > 0, nhood_size, np.nan)

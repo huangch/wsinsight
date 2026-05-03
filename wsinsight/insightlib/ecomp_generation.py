@@ -55,12 +55,13 @@ def _gpu_available() -> bool:
 _WORKER_STEPS = [
     "load CSV",
     "cell centers",
-    "triangulation",
+    "triangulate",
     "line graph",
-    "k-hop neighbors",
-    "edge composition",
+    "k-hop nbrs",
+    "edge comp.",
     "save outputs",
 ]
+_STEP_LABEL_W = 12  # pad postfix so tqdm bar geometry stays stable across steps
 
 
 def _edge_type_vocab(all_types: list[str]) -> list[str]:
@@ -105,7 +106,7 @@ def _worker(
     )
 
     def _step(name: str) -> None:
-        inner.set_postfix_str(name)
+        inner.set_postfix_str(f"{name:<{_STEP_LABEL_W}}")
         inner.update(1)
 
     # --- MPP resolution (µm → px) -------------------------------------------
@@ -171,12 +172,12 @@ def _worker(
         with ecomp_csv.open("w", encoding="utf-8", newline="") as fp:
             fp.write("edge_id\n")
         return slide_id, True
-    _step("triangulation")
+    _step("triangulate")
 
     # --- Fast path: skip line graph + k-hop entirely -----------------------
     if no_neighborhood:
         _step("line graph")       # advance pbar — skipped
-        _step("k-hop neighbors")  # advance pbar — skipped
+        _step("k-hop nbrs")       # advance pbar — skipped
 
         cell_type_array = nodes_df["cell_type"].to_numpy()
         all_types = sorted(c.removeprefix("prob_") for c in prob_columns)
@@ -219,7 +220,7 @@ def _worker(
                 (region_probs[edge_src] + region_probs[edge_dst]).argmax(axis=1)
             )
             data["center_region"] = np.array(region_labels, dtype=object)[edge_region_idx]
-        _step("edge composition")
+        _step("edge comp.")
 
         out_df = pd.DataFrame(data)
         ecomp_csv.parent.mkdir(parents=True, exist_ok=True)
@@ -244,13 +245,13 @@ def _worker(
         _step("line graph")
 
         A_k_gpu = k_hop_adjacency_matrix_gpu(L_gpu, ecomp_k)
-        _step("k-hop neighbors")
+        _step("k-hop nbrs")
     else:
         L = build_line_graph(edges, num_vertices=N)
         _step("line graph")
 
         A_k = k_hop_adjacency_matrix(L, ecomp_k)
-        _step("k-hop neighbors")
+        _step("k-hop nbrs")
 
     # --- Per-edge features --------------------------------------------------
     cell_type_array = nodes_df["cell_type"].to_numpy()
@@ -340,7 +341,7 @@ def _worker(
 
     nhood_mean_len_um = mean_len
     nhood_std_len_um = std_len
-    _step("edge composition")
+    _step("edge comp.")
 
     # --- Build output DataFrame --------------------------------------------
     denom = np.where(nhood_size > 0, nhood_size, np.nan)

@@ -45,11 +45,12 @@ _logger = logging.getLogger(__name__)
 _WORKER_STEPS = [
     "load CSV",
     "cell centers",
-    "triangulation",
-    "k-hop neighbors",
-    "nhood composition",
+    "triangulate",
+    "k-hop nbrs",
+    "nhood comp.",
     "save outputs",
 ]
+_STEP_LABEL_W = 12  # pad postfix so tqdm bar geometry stays stable across steps
 
 
 def _worker(
@@ -86,7 +87,7 @@ def _worker(
     )
 
     def _step(name: str) -> None:
-        inner.set_postfix_str(name)
+        inner.set_postfix_str(f"{name:<{_STEP_LABEL_W}}")
         inner.update(1)
 
     # --- MPP resolution (µm → px) -------------------------------------------
@@ -125,14 +126,14 @@ def _worker(
         edges_df = get_or_build_delaunay(graph_cache_dir, slide_id, centers, mpp, max_neighbor_distance_px)
     else:
         edges_df = delaunay_triangulation(centers, max_neighbor_distance_px)
-    _step("triangulation")
+    _step("triangulate")
 
     if "source" not in edges_df.columns or "target" not in edges_df.columns:
         inner.close()
         return slide_id, None
 
     _neighbor_lists, _A, Mk = k_hop_neighbors(len(nodes_df), edges_df, ncomp_k)
-    _step("k-hop neighbors")
+    _step("k-hop nbrs")
 
     # --- Vectorised neighborhood aggregation via sparse @ one-hot -----------
     # Mk has self-loops on its diagonal; subtract them to exclude self from the
@@ -164,7 +165,7 @@ def _worker(
 
     counts_mat = (A_k @ onehot).toarray().astype(np.float64)
     ncomp_sizes_arr = counts_mat.sum(axis=1)
-    _step("nhood composition")
+    _step("nhood comp.")
 
     # --- Build per-cell DataFrame -------------------------------------------
     denom = np.where(ncomp_sizes_arr > 0, ncomp_sizes_arr, np.nan)

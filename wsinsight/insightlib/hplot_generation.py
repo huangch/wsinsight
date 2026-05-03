@@ -33,15 +33,16 @@ from .graph_cache import get_or_build_delaunay
 _WORKER_STEPS = [
     "load CSV",
     "cell centers",
-    "triangulation",
-    "k-hop neighbors",
-    "tumor regions",
+    "triangulate",
+    "k-hop nbrs",
+    "tumor regs",
     "border cells",
-    "layer distances",
+    "layer dists",
     "hplot curve",
     "hmetrics",
     "save outputs",
 ]
+_STEP_LABEL_W = 12  # pad postfix so tqdm bar geometry stays stable across steps
 
 
 def _worker(
@@ -93,7 +94,7 @@ def _worker(
     )
 
     def _step(name: str) -> None:
-        inner.set_postfix_str(name)
+        inner.set_postfix_str(f"{name:<{_STEP_LABEL_W}}")
         inner.update(1)
 
     mpp = None
@@ -161,25 +162,25 @@ def _worker(
         edges_df = get_or_build_delaunay(graph_cache_dir, slide_id, centers, mpp, max_neighbor_distance_px)
     else:
         edges_df = delaunay_triangulation(centers, max_neighbor_distance_px)
-    _step("triangulation")
+    _step("triangulate")
 
     if "source" not in edges_df.columns or "target" not in edges_df.columns:
         inner.close()
         return slide_id, None, None
 
     k_neighbors_results, A_sparse, Mk_sparse = k_hop_neighbors(len(nodes_df), edges_df, hplot_k)
-    _step("k-hop neighbors")
+    _step("k-hop nbrs")
 
     nodes_df = identify_region_by_cell_function_enrichment(
         k_neighbors_results, nodes_df, hplot_N, hplot_R, Mk_sparse=Mk_sparse
     )
-    _step("tumor regions")
+    _step("tumor regs")
 
     nodes_df = identify_border_cells(nodes_df, {}, A_sparse=A_sparse)
     _step("border cells")
 
     nodes_df = calculate_distance_to_border(nodes_df, {}, A_sparse=A_sparse)
-    _step("layer distances")
+    _step("layer dists")
 
     _drop_cols = ["is_base_region", "is_base_border", "distance_to_border"]
     with critical_section(f"saving hplot outputs for {slide_id}"):
