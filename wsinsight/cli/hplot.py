@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import json
 import math
 import os
 import re
@@ -12,12 +11,17 @@ from typing import Iterable, List
 
 import click
 import pandas as pd
-from platformdirs import user_cache_dir
 from tqdm import tqdm
 
 from ..insightlib.hplot_generation import hplot_generation, hplot_finalize
 from ..uri_path import URIPath, URIPathType
 from ._meta import write_runtime_metadata
+from ._paths import (
+    default_storage_kwargs,
+    ensure_input_directory,
+)
+
+_STORAGE_KWARGS = default_storage_kwargs()
 
 
 def _coerce_number(token: str) -> int | float | str:
@@ -92,34 +96,6 @@ def _validate_types(
             f"{option_name}: unknown cell type(s) {unknown}. "
             f"Available cell types across model-outputs-csv: {sorted(available)}"
         )
-
-
-def _assert_directory(path: URIPath, option_name: str) -> None:
-    """Ensure the provided `URIPath` exists and points to a directory."""
-    if not path.exists():
-        raise click.ClickException(f"{option_name} directory not found: {path}")
-    if not path.is_dir():
-        raise click.ClickException(f"{option_name} must be a directory")
-
-
-def _storage_kwargs() -> dict[str, object]:
-    cache_dir = os.getenv("WSINSIGHT_REMOTE_CACHE_DIR")
-    if cache_dir is None:
-        cache_dir = Path(user_cache_dir(appname="wsinsight", appauthor=False))
-    storage: dict[str, object] = {"cache_dir": cache_dir}
-    s3_options = os.getenv("S3_STORAGE_OPTIONS")
-    if s3_options:
-        try:
-            parsed = json.loads(s3_options)
-        except json.JSONDecodeError as exc:  # pragma: no cover - env misconfiguration
-            raise RuntimeError("S3_STORAGE_OPTIONS must contain valid JSON.") from exc
-        if not isinstance(parsed, dict):
-            raise RuntimeError("S3_STORAGE_OPTIONS must be a JSON object.")
-        storage.update(parsed)
-    return storage
-
-
-_STORAGE_KWARGS = _storage_kwargs()
 
 
 @click.command()
@@ -225,8 +201,8 @@ def hplot(
     """Run H-Plot analysis on inference outputs held inside ``results_dir``."""
 
     wsi_dir = wsi_dir.coerce_image_list()
-    _assert_directory(wsi_dir, "--wsi-dir")
-    _assert_directory(results_dir, "--results-dir")
+    ensure_input_directory(wsi_dir, "--wsi-dir")
+    ensure_input_directory(results_dir, "--results-dir")
 
     slide_paths = sorted([p for p in wsi_dir.iterdir() if wsi_dir.scheme == "image-list" or p.is_file()])
     if not slide_paths:
@@ -314,7 +290,7 @@ def hplot_finalize_cmd(
     assembles the final aggregated CSVs from all of them.
     """
 
-    _assert_directory(results_dir, "--results-dir")
+    ensure_input_directory(results_dir, "--results-dir")
 
     click.secho("\nFinalizing H-Plot outputs.\n", fg="green")
     hplot_finalize(output_dir=results_dir, overwrite=overwrite)

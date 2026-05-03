@@ -45,6 +45,7 @@ class URIPath:
         cache_dir: Optional[str] = None,
         token: Optional[str] = None,        # GDC only (optional for open-access)
         token_path: Optional[str] = None,   # GDC only (optional)
+        auto_cleanup: bool = False,         # delete cached file when this object is GC'd
         _skip_validation: bool = False,     # internal: skip credential check for child paths
         **storage_options: Any,             # fsspec options (e.g., profile="saml", client_kwargs={...})
     ) -> None:
@@ -56,6 +57,7 @@ class URIPath:
             self._materialized_path: Optional[str] = uri._materialized_path
             self._gdc_token = token if token is not None else getattr(uri, "_gdc_token", None)
             self._gdc_token_path = token_path if token_path is not None else getattr(uri, "_gdc_token_path", None)
+            self._auto_cleanup: bool = auto_cleanup or getattr(uri, "_auto_cleanup", False)
         else:
             try:
                 self.uri = os.fspath(uri)
@@ -66,6 +68,7 @@ class URIPath:
             self._materialized_path = None
             self._gdc_token = token
             self._gdc_token_path = token_path
+            self._auto_cleanup = auto_cleanup
 
         parsed = urlparse(self.uri)
         self.scheme = parsed.scheme or "file"
@@ -97,6 +100,21 @@ class URIPath:
         if not _skip_validation:
             self._validate_credentials()
 
+    # ------------------------ Internal cloning -----------------
+    def _child(self, uri: str, **overrides: Any) -> "URIPath":
+        """Construct a related URIPath that inherits cache_dir, storage_options,\n        GDC token state and the auto_cleanup flag from this instance."""
+        kwargs: Dict[str, Any] = {
+            "cache_dir": self._cache_dir,
+            "auto_cleanup": getattr(self, "_auto_cleanup", False),
+            "_skip_validation": True,
+        }
+        if self.scheme == "gdc-manifest" or getattr(self, "_gdc_token", None) or getattr(self, "_gdc_token_path", None):
+            kwargs["token"] = self._gdc_token
+            kwargs["token_path"] = self._gdc_token_path
+        kwargs.update(self.storage_options)
+        kwargs.update(overrides)
+        return URIPath(uri, **kwargs)
+
     # ------------------------ Coercion helpers -----------------
     def coerce_image_list(self) -> "URIPath":
         """Validate the ``--wsi-dir`` value.
@@ -127,15 +145,11 @@ class URIPath:
         other_str = os.fspath(other)
         if self.scheme == "gdc-manifest":
             base = self.uri.rstrip("/")
-            return URIPath(f"{base}/{other_str}",
-                           cache_dir=self._cache_dir,
-                           token=self._gdc_token, token_path=self._gdc_token_path,
-                           _skip_validation=True,
-                           **self.storage_options)
+            return self._child(f"{base}/{other_str}")
         if self.is_local:
-            return URIPath(str(Path(self._path) / other_str), cache_dir=self._cache_dir, _skip_validation=True, **self.storage_options)
+            return self._child(str(Path(self._path) / other_str))
         base = self.uri.rstrip("/")
-        return URIPath(f"{base}/{other_str}", cache_dir=self._cache_dir, _skip_validation=True, **self.storage_options)
+        return self._child(f"{base}/{other_str}")
 
     def mkdir(
         self,
@@ -187,18 +201,15 @@ class URIPath:
             base = f"gdc-manifest://{self._gdc_manifest_path}"
             if parent_rel:
                 base = f"{base}/{parent_rel}/"
-            return URIPath(base, cache_dir=self._cache_dir,
-                           token=self._gdc_token, token_path=self._gdc_token_path,
-                           _skip_validation=True,
-                           **self.storage_options)
+            return self._child(base)
         if self.is_local:
-            return URIPath(str(Path(self._path).parent), cache_dir=self._cache_dir, _skip_validation=True, **self.storage_options)
+            return self._child(str(Path(self._path).parent))
         if self.scheme == "s3":
             if "/" in self.key:
                 parent_key = "/".join(self.key.split("/")[:-1])
-                return URIPath(f"s3://{self.bucket}/{parent_key}/", cache_dir=self._cache_dir, _skip_validation=True, **self.storage_options)
-            return URIPath(f"s3://{self.bucket}", cache_dir=self._cache_dir, _skip_validation=True, **self.storage_options)
-        return URIPath(self.uri.rsplit("/", 1)[0], cache_dir=self._cache_dir, _skip_validation=True, **self.storage_options)
+                return self._child(f"s3://{self.bucket}/{parent_key}/")
+            return self._child(f"s3://{self.bucket}")
+        return self._child(self.uri.rsplit("/", 1)[0])
 
     @property
     def parts(self) -> Tuple[str, ...]:
@@ -289,16 +300,30 @@ class URIPath:
                 with open(os.path.expanduser(token_path), "r") as fp:
                     token = fp.read().strip()
 
-            tmp = tempfile.NamedTemporaryFile(delete=False, suffix=os.path.splitext(filename)[1] or ""); tmp.close()
+            # Stage the download next to the final destination so os.replace is atomic
+            # (tempfile.NamedTemporaryFile defaults to /tmp, which is often a different FS).
+            tmp = tempfile.NamedTemporaryFile(
+                delete=False,
+                dir=os.path.dirname(dest) or None,
+                prefix=".uripath-",
+                suffix=os.path.splitext(filename)[1] or "",
+            ); tmp.close()
+            success = False
             try:
                 self._gdc_download_requests(uuid, tmp.name, token=token)
                 if md5 is not None and not self._md5_ok(tmp.name, md5):
                     raise IOError("MD5 checksum mismatch after download")
-                try: os.replace(tmp.name, dest)
-                except Exception: shutil.copyfile(tmp.name, dest)
+                os.replace(tmp.name, dest)
+                success = True
             finally:
-                try: os.remove(tmp.name)
-                except OSError: pass
+                if not success:
+                    # Clean up tmp and any half-written destination from a prior crash.
+                    for stale in (tmp.name, dest):
+                        try:
+                            if stale and os.path.exists(stale):
+                                os.remove(stale)
+                        except OSError:
+                            pass
 
             self._materialized_path = dest
             self._register_finalizer(dest)
@@ -356,7 +381,7 @@ class URIPath:
         for child in it:
             if files_only and child.is_dir():
                 continue
-            yield URIPath(str(child), cache_dir=self._cache_dir, _skip_validation=True, **self.storage_options)
+            yield self._child(str(child))
 
     # ------------------------ Scheme helpers: GDC-MANIFEST ------------------------
     def _exists_gdc_manifest(self) -> bool:
@@ -379,11 +404,7 @@ class URIPath:
             return
         df = self._load_manifest_table(self._gdc_manifest_path)
         for fn in df["filename"].tolist():
-            yield URIPath(f"gdc-manifest://{self._gdc_manifest_path}/{fn}",
-                          cache_dir=self._cache_dir,
-                          token=self._gdc_token, token_path=self._gdc_token_path,
-                          _skip_validation=True,
-                          **self.storage_options)
+            yield self._child(f"gdc-manifest://{self._gdc_manifest_path}/{fn}")
 
     # ------------------------ Scheme helpers: IMAGE-LIST ------------------------
     def _exists_image_list(self) -> bool:
@@ -392,11 +413,12 @@ class URIPath:
     def _iterdir_image_list(self) -> Iterator["URIPath"]:
         if not os.path.isfile(self._image_list_path):
             return
-        with open(self._image_list_path, encoding="utf-8") as fh:
-            for line in fh:
-                line = line.strip()
-                if line and not line.startswith("#"):
-                    yield URIPath(line, cache_dir=self._cache_dir, _skip_validation=True, **self.storage_options)
+        with open(self._image_list_path, encoding="utf-8-sig") as fh:
+            for raw in fh:
+                line = raw.strip()
+                if not line or line.startswith("#"):
+                    continue
+                yield self._child(line)
 
     # ------------------------ Scheme helpers: REMOTE (fsspec, e.g., S3) ------------------------
     def _exists_remote(self, **overrides: Any) -> bool:
@@ -463,15 +485,13 @@ class URIPath:
         base = fs_path if fs_path.endswith("/") else fs_path + "/"
         if recursive:
             for name in fs.find(base):
-                yield URIPath(f"{self.scheme}://{name}",
-                              cache_dir=self._cache_dir, _skip_validation=True, **self.storage_options)
+                yield self._child(f"{self.scheme}://{name}")
         else:
             try:
                 for entry in fs.ls(base, detail=True):
                     if files_only and entry.get("type") == "directory":
                         continue
-                    yield URIPath(f"{self.scheme}://{entry['name']}",
-                                  cache_dir=self._cache_dir, _skip_validation=True, **self.storage_options)
+                    yield self._child(f"{self.scheme}://{entry['name']}")
             except FileNotFoundError:
                 return
 
@@ -544,14 +564,26 @@ class URIPath:
             return dest
 
         fs, fs_path = self._fs_and_path(**overrides)
-        tmp = tempfile.NamedTemporaryFile(delete=False, suffix=os.path.splitext(self.name)[1] or ""); tmp.close()
+        # Stage the download next to dest so os.replace is atomic across the same FS.
+        tmp = tempfile.NamedTemporaryFile(
+            delete=False,
+            dir=os.path.dirname(dest) or None,
+            prefix=".uripath-",
+            suffix=os.path.splitext(self.name)[1] or "",
+        ); tmp.close()
+        success = False
         try:
             fs.get(fs_path, tmp.name)
-            try: os.replace(tmp.name, dest)
-            except Exception: shutil.copyfile(tmp.name, dest)
+            os.replace(tmp.name, dest)
+            success = True
         finally:
-            try: os.remove(tmp.name)
-            except OSError: pass
+            if not success:
+                for stale in (tmp.name, dest):
+                    try:
+                        if stale and os.path.exists(stale):
+                            os.remove(stale)
+                    except OSError:
+                        pass
         self._materialized_path = dest
         self._register_finalizer(dest)
         return dest
@@ -603,13 +635,25 @@ class URIPath:
     def _normalize_storage_opts(opts: Dict[str, Any]) -> Dict[str, Any]:
         out = dict(opts)
         for k in ("client_kwargs", "config_kwargs", "s3_additional_kwargs"):
-            if k in out and isinstance(out[k], str):
+            if k not in out:
+                continue
+            value = out[k]
+            if isinstance(value, str):
                 try:
-                    out[k] = json.loads(out[k])
-                except Exception:
-                    out.pop(k, None)
-            if k in out and not isinstance(out[k], dict):
-                out.pop(k, None)
+                    parsed = json.loads(value)
+                except json.JSONDecodeError as exc:
+                    raise ValueError(
+                        f"storage option {k!r} is not valid JSON: {exc.msg}"
+                    ) from exc
+                if not isinstance(parsed, dict):
+                    raise ValueError(
+                        f"storage option {k!r} must decode to a JSON object, got {type(parsed).__name__}"
+                    )
+                out[k] = parsed
+            elif not isinstance(value, dict):
+                raise TypeError(
+                    f"storage option {k!r} must be a dict or JSON string, got {type(value).__name__}"
+                )
         return out
 
     @staticmethod
@@ -730,18 +774,12 @@ class URIPath:
             new_name = (stem + suffix) if suffix else stem  # '' removes suffix
             base = f"gdc-manifest://{self._gdc_manifest_path}"
             new_uri = f"{base}/{new_name}"
-            return URIPath(
-                new_uri,
-                cache_dir=self._cache_dir,
-                token=self._gdc_token, token_path=self._gdc_token_path,
-                _skip_validation=True,
-                **self.storage_options
-            )
+            return self._child(new_uri)
 
         # ----- local -----
         if self.is_local:
             new_local = str(self._path.with_suffix(suffix))
-            return URIPath(new_local, cache_dir=self._cache_dir, _skip_validation=True, **self.storage_options)
+            return self._child(new_local)
 
         # ----- generic remote (e.g., s3) -----
         # Replace suffix only in the last path segment
@@ -758,7 +796,7 @@ class URIPath:
             # handle URIs that may not have bucket semantics
             prefix = self.uri.rstrip("/").rsplit("/", 1)[0]
             new_uri = f"{prefix}/{new_last}"
-        return URIPath(new_uri, cache_dir=self._cache_dir, _skip_validation=True, **self.storage_options)
+        return self._child(new_uri)
 
     def with_name(self, new_name):
         """
@@ -795,15 +833,18 @@ class URIPath:
                 parsed.params, parsed.query, parsed.fragment
             ))
 
-        return URIPath(new_uri, cache_dir=self._cache_dir, _skip_validation=True, **self.storage_options)
+        return self._child(new_uri)
 
     # ------------------------ Auto-cache cleanup helpers (inside class) ------------------------
     def _register_finalizer(self, path: Optional[str]) -> None:
         """
         Register a best-effort deletion of the given cached file when this object
-        is garbage-collected. Idempotent: re-registers if needed.
+        is garbage-collected. No-op unless ``auto_cleanup=True`` was passed in
+        ``__init__``; otherwise the cache is shared across URIPath instances and
+        deleting it on GC would race with other readers of the same hash-keyed
+        path. Idempotent: re-registers if needed.
         """
-        if not path:
+        if not path or not getattr(self, "_auto_cleanup", False):
             return
         # If there was a previous finalizer, replace it (keeps latest cache file)
         if getattr(self, "_finalizer", None):
@@ -827,6 +868,8 @@ class URIPath:
         """
         Manually delete the materialized cache file (if any), immediately.
         Safe to call multiple times; does not change public usage anywhere else.
+        Honors ``auto_cleanup`` semantics implicitly because callers asking for
+        ``close()`` are expressing the same intent.
         """
         p = getattr(self, "_materialized_path", None)
         if p and not self.is_local and os.path.exists(p):
@@ -844,7 +887,11 @@ class URIPath:
             self._finalizer = None
 
     def __del__(self):
-        # Fallback if user never called close(); best effort
+        # Only fire the finalizer when the user opted into ephemeral caching.
+        # Without this guard, GC of one URIPath would wipe the shared on-disk
+        # cache used by another URIPath pointing at the same URI.
+        if not getattr(self, "_auto_cleanup", False):
+            return
         try:
             if getattr(self, "_finalizer", None) and self._finalizer.alive:
                 self._finalizer()
@@ -867,17 +914,25 @@ class URIPathType(click.ParamType):
         self.exists = exists
         self.storage_options = dict(storage_options)
     def convert(self, value, param, ctx):
-        obj = URIPath(value, **self.storage_options)
+        if isinstance(value, URIPath):
+            obj = value
+        else:
+            try:
+                obj = URIPath(value, **self.storage_options)
+            except (ValueError, TypeError, RuntimeError) as exc:
+                self.fail(f"Invalid path {value!r}: {exc}", param, ctx)
 
         if self.exists:
-            # Pull storage_options (e.g., {"profile":"saml"}) from Click ctx, if present
-            # so = (ctx.params.get("storage_options") or
-            #       ctx.obj.get("storage_options") if ctx and ctx.obj else {})  # optional
             try:
-                if not obj.exists():
-                    self.fail(f"Path not found: {value}", param, ctx)
-            except Exception as e:
-                self.fail(f"Failed to validate existence for {value}: {e}", param, ctx)
+                found = obj.exists()
+            except Exception as exc:
+                self.fail(
+                    f"Could not check whether {value!r} exists ({type(exc).__name__}: {exc})",
+                    param,
+                    ctx,
+                )
+            if not found:
+                self.fail(f"Path not found: {value}", param, ctx)
         return obj
 
 

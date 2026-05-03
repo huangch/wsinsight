@@ -8,43 +8,20 @@ triad's local neighborhood, alongside per-triad geometric features.
 
 from __future__ import annotations
 
-import json
 import os
 from pathlib import Path
 
 import click
-from platformdirs import user_cache_dir
 
 from ..insightlib.tcomp_generation import tcomp_generation
 from ..uri_path import URIPath, URIPathType
 from ._meta import write_runtime_metadata
+from ._paths import (
+    default_storage_kwargs,
+    ensure_input_directory,
+)
 
-
-def _assert_directory(path: URIPath, option_name: str) -> None:
-    if not path.exists():
-        raise click.ClickException(f"{option_name} directory not found: {path}")
-    if not path.is_dir():
-        raise click.ClickException(f"{option_name} must be a directory")
-
-
-def _storage_kwargs() -> dict[str, object]:
-    cache_dir = os.getenv("WSINSIGHT_REMOTE_CACHE_DIR")
-    if cache_dir is None:
-        cache_dir = Path(user_cache_dir(appname="wsinsight", appauthor=False))
-    storage: dict[str, object] = {"cache_dir": cache_dir}
-    s3_options = os.getenv("S3_STORAGE_OPTIONS")
-    if s3_options:
-        try:
-            parsed = json.loads(s3_options)
-        except json.JSONDecodeError as exc:
-            raise RuntimeError("S3_STORAGE_OPTIONS must contain valid JSON.") from exc
-        if not isinstance(parsed, dict):
-            raise RuntimeError("S3_STORAGE_OPTIONS must be a JSON object.")
-        storage.update(parsed)
-    return storage
-
-
-_STORAGE_KWARGS = _storage_kwargs()
+_STORAGE_KWARGS = default_storage_kwargs()
 
 
 @click.command()
@@ -132,8 +109,8 @@ def tcomp(
     """
 
     wsi_dir = wsi_dir.coerce_image_list()
-    _assert_directory(wsi_dir, "--wsi-dir")
-    _assert_directory(results_dir, "--results-dir")
+    ensure_input_directory(wsi_dir, "--wsi-dir")
+    ensure_input_directory(results_dir, "--results-dir")
 
     slide_paths = sorted([p for p in wsi_dir.iterdir() if wsi_dir.scheme == "image-list" or p.is_file()])
     if not slide_paths:

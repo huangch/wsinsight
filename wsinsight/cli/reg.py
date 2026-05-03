@@ -2,14 +2,12 @@
 
 from __future__ import annotations
 
-import json
 import os
 from pathlib import Path
 
 import click
 import pandas as pd
 import tqdm
-from platformdirs import user_cache_dir
 
 from ..insightlib.region_registration import (
     register_objects_to_objects,
@@ -26,34 +24,12 @@ from ..wsi import CannotReadSpacing, get_avg_mpp
 from ..write_geojson import write_geojsons
 from ..write_omecsv import write_omecsvs
 from ._meta import write_runtime_metadata
+from ._paths import (
+    default_storage_kwargs,
+    ensure_input_directory,
+)
 
-
-def _storage_kwargs() -> dict[str, object]:
-    cache_dir = os.getenv("WSINSIGHT_REMOTE_CACHE_DIR")
-    if cache_dir is None:
-        cache_dir = Path(user_cache_dir(appname="wsinsight", appauthor=False))
-    storage: dict[str, object] = {"cache_dir": cache_dir}
-    s3_options = os.getenv("S3_STORAGE_OPTIONS")
-    if s3_options:
-        try:
-            parsed = json.loads(s3_options)
-        except json.JSONDecodeError as exc:
-            raise RuntimeError("S3_STORAGE_OPTIONS must contain valid JSON.") from exc
-        if not isinstance(parsed, dict):
-            raise RuntimeError("S3_STORAGE_OPTIONS must be a JSON object.")
-        storage.update(parsed)
-    return storage
-
-
-_STORAGE_KWARGS = _storage_kwargs()
-
-
-def _assert_directory(path: URIPath, option_name: str) -> None:
-    """Ensure the provided `URIPath` exists and points to a directory."""
-    if not path.exists():
-        raise click.ClickException(f"{option_name} directory not found: {path}")
-    if not path.is_dir():
-        raise click.ClickException(f"{option_name} must be a directory")
+_STORAGE_KWARGS = default_storage_kwargs()
 
 
 @click.command()
@@ -238,7 +214,7 @@ def reg(
 
     if wsi_dir is not None:
         wsi_dir = wsi_dir.coerce_image_list()
-        _assert_directory(wsi_dir, "--wsi-dir")
+        ensure_input_directory(wsi_dir, "--wsi-dir")
         wsi_paths = [p for p in wsi_dir.iterdir()
                      if wsi_dir.scheme == "image-list" or p.is_file()]
         wsi_by_stem: dict[str, URIPath] | None = {p.stem: p for p in wsi_paths}

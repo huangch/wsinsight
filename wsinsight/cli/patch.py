@@ -17,7 +17,6 @@ import sys
 from datetime import datetime
 from pathlib import Path
 from typing import Any
-from platformdirs import user_cache_dir
 import click
 import math
 import pandas as pd
@@ -34,6 +33,9 @@ from ..modellib.models import resolve_zoo_registry_path
 from ..patchlib import segment_and_patch_directory_of_slides
 from ..uri_path import URIPathType, URIPath
 from ..wsi import _validate_wsi_directory
+from ._paths import default_storage_kwargs, ensure_output_directory
+
+_STORAGE_KWARGS = default_storage_kwargs()
 
 
 def _num_cpus() -> int:
@@ -255,24 +257,7 @@ def _optional_uri_paths(ctx: click.Context, param: click.Option, value):
 @click.option(
     "-i",
     "--wsi-dir",
-    type=(
-        URIPathType(
-            exists=True, 
-            cache_dir=
-                os.getenv("WSINSIGHT_REMOTE_CACHE_DIR", default=None)
-                if os.getenv("WSINSIGHT_REMOTE_CACHE_DIR") is not None
-                else Path(user_cache_dir(appname="wsinsight", appauthor=False)),
-            **json.loads(os.getenv("S3_STORAGE_OPTIONS", default=None)),
-        )
-        if os.getenv("S3_STORAGE_OPTIONS", default=None) is not None
-        else URIPathType(
-            exists=True,
-            cache_dir=
-                os.getenv("WSINSIGHT_REMOTE_CACHE_DIR", default=None)
-                if os.getenv("WSINSIGHT_REMOTE_CACHE_DIR") is not None
-                else Path(user_cache_dir(appname="wsinsight", appauthor=False)),
-        )
-    ),
+    type=URIPathType(exists=True, **_STORAGE_KWARGS),
     required=True,
     help="Directory containing whole slide images. This directory can *only* contain"
     " whole slide images.",
@@ -280,24 +265,7 @@ def _optional_uri_paths(ctx: click.Context, param: click.Option, value):
 @click.option(
     "--slide-path",
     "slide_paths",
-    type=(
-        URIPathType(
-            exists=True,
-            cache_dir=
-                os.getenv("WSINSIGHT_REMOTE_CACHE_DIR", default=None)
-                if os.getenv("WSINSIGHT_REMOTE_CACHE_DIR", default=None) is not None
-                else Path(user_cache_dir(appname="wsinsight", appauthor=False)),
-            **json.loads(os.getenv("S3_STORAGE_OPTIONS", default=None)),
-        )
-        if os.getenv("S3_STORAGE_OPTIONS", default=None) is not None
-        else URIPathType(
-            exists=True,
-            cache_dir=
-                os.getenv("WSINSIGHT_REMOTE_CACHE_DIR", default=None)
-                if os.getenv("WSINSIGHT_REMOTE_CACHE_DIR", default=None) is not None
-                else Path(user_cache_dir(appname="wsinsight", appauthor=False)),
-        )
-    ),
+    type=URIPathType(exists=True, **_STORAGE_KWARGS),
     multiple=True,
     default=None,
     callback=_optional_uri_paths,
@@ -307,24 +275,7 @@ def _optional_uri_paths(ctx: click.Context, param: click.Option, value):
 @click.option(
     "-o",
     "--results-dir", 
-    type=(
-        URIPathType(
-            exists=False, 
-            cache_dir=
-                os.getenv("WSINSIGHT_REMOTE_CACHE_DIR", default=None)
-                if os.getenv("WSINSIGHT_REMOTE_CACHE_DIR") is not None
-                else Path(user_cache_dir(appname="wsinsight", appauthor=False)),
-            **json.loads(os.getenv("S3_STORAGE_OPTIONS", default=None)),
-        )
-        if os.getenv("S3_STORAGE_OPTIONS", default=None) is not None
-        else URIPathType(
-            exists=False,
-            cache_dir=
-                os.getenv("WSINSIGHT_REMOTE_CACHE_DIR", default=None)
-                if os.getenv("WSINSIGHT_REMOTE_CACHE_DIR") is not None
-                else Path(user_cache_dir(appname="wsinsight", appauthor=False)),
-        )
-    ),
+    type=URIPathType(exists=False, **_STORAGE_KWARGS),
     required=True,
     help="Directory to store results. If directory exists, will skip"
     " whole slides for which outputs exist.",
@@ -332,47 +283,13 @@ def _optional_uri_paths(ctx: click.Context, param: click.Option, value):
 @click.option(
     "-r",
     "--region-inference-dir",
-    type=(
-        URIPathType(
-            exists=True, 
-            cache_dir=
-                os.getenv("WSINSIGHT_REMOTE_CACHE_DIR", default=None)
-                if os.getenv("WSINSIGHT_REMOTE_CACHE_DIR") is not None
-                else Path(user_cache_dir(appname="wsinsight", appauthor=False)),
-            **json.loads(os.getenv("S3_STORAGE_OPTIONS", default=None)),
-        )
-        if os.getenv("S3_STORAGE_OPTIONS", default=None) is not None
-        else URIPathType(
-            exists=True,
-            cache_dir=
-                os.getenv("WSINSIGHT_REMOTE_CACHE_DIR", default=None)
-                if os.getenv("WSINSIGHT_REMOTE_CACHE_DIR") is not None
-                else Path(user_cache_dir(appname="wsinsight", appauthor=False)),
-        )
-    ),
+    type=URIPathType(exists=True, **_STORAGE_KWARGS),
     default=None,
     help="Results directory from a prior region-level (patch-based) wsinsight run containing a model-outputs-csv/ folder. Requires --object-based: each detected object is matched to its enclosing region and the region's class probabilities are added as region_prob_* columns in the output.",
 )
 @click.option(
     "--qupath-measurement-detection-dir",
-    type=(
-        URIPathType(
-            exists=True, 
-            cache_dir=
-                os.getenv("WSINSIGHT_REMOTE_CACHE_DIR", default=None)
-                if os.getenv("WSINSIGHT_REMOTE_CACHE_DIR") is not None
-                else Path(user_cache_dir(appname="wsinsight", appauthor=False)),
-            **json.loads(os.getenv("S3_STORAGE_OPTIONS", default=None)),
-        )
-        if os.getenv("S3_STORAGE_OPTIONS", default=None) is not None
-        else URIPathType(
-            exists=True,
-            cache_dir=
-                os.getenv("WSINSIGHT_REMOTE_CACHE_DIR", default=None)
-                if os.getenv("WSINSIGHT_REMOTE_CACHE_DIR") is not None
-                else Path(user_cache_dir(appname="wsinsight", appauthor=False)),
-        )
-    ),
+    type=URIPathType(exists=True, **_STORAGE_KWARGS),
     default=None,
     help="Directory of QuPath TSV detection-measurement exports (one <slide>.txt per slide"
     " containing 'Centroid X µm', 'Centroid Y µm', classification columns). Patches are"
@@ -381,48 +298,14 @@ def _optional_uri_paths(ctx: click.Context, param: click.Option, value):
 )
 @click.option(
     "--qupath-geojson-detection-dir",
-    type=(
-        URIPathType(
-            exists=True, 
-            cache_dir=
-                os.getenv("WSINSIGHT_REMOTE_CACHE_DIR", default=None)
-                if os.getenv("WSINSIGHT_REMOTE_CACHE_DIR") is not None
-                else Path(user_cache_dir(appname="wsinsight", appauthor=False)),
-            **json.loads(os.getenv("S3_STORAGE_OPTIONS", default=None)),
-        )
-        if os.getenv("S3_STORAGE_OPTIONS", default=None) is not None
-        else URIPathType(
-            exists=True,
-            cache_dir=
-                os.getenv("WSINSIGHT_REMOTE_CACHE_DIR", default=None)
-                if os.getenv("WSINSIGHT_REMOTE_CACHE_DIR") is not None
-                else Path(user_cache_dir(appname="wsinsight", appauthor=False)),
-        )
-    ),
+    type=URIPathType(exists=True, **_STORAGE_KWARGS),
     default=None,
     help="Directory containing geojson files generated by QuPath."
     " The detection in the geojson files will be used.",
 )
 @click.option(
     "--qupath-geojson-annotation-dir",
-    type=(
-        URIPathType(
-            exists=True, 
-            cache_dir=
-                os.getenv("WSINSIGHT_REMOTE_CACHE_DIR", default=None)
-                if os.getenv("WSINSIGHT_REMOTE_CACHE_DIR") is not None
-                else Path(user_cache_dir(appname="wsinsight", appauthor=False)),
-            **json.loads(os.getenv("S3_STORAGE_OPTIONS", default=None)),
-        )
-        if os.getenv("S3_STORAGE_OPTIONS", default=None) is not None
-        else URIPathType(
-            exists=True,
-            cache_dir=
-                os.getenv("WSINSIGHT_REMOTE_CACHE_DIR", default=None)
-                if os.getenv("WSINSIGHT_REMOTE_CACHE_DIR") is not None
-                else Path(user_cache_dir(appname="wsinsight", appauthor=False)),
-        )
-    ),
+    type=URIPathType(exists=True, **_STORAGE_KWARGS),
     default=None,
     help="Directory containing geojson files generated by QuPath."
     " The annotation in the geojson files will be used.",
@@ -503,24 +386,7 @@ def _optional_uri_paths(ctx: click.Context, param: click.Option, value):
 # Options for segmentation.
 @click.option(
     "--histoqc-dir",
-    type=(
-        URIPathType(
-            exists=True, 
-            cache_dir=
-                os.getenv("WSINSIGHT_REMOTE_CACHE_DIR", default=None)
-                if os.getenv("WSINSIGHT_REMOTE_CACHE_DIR") is not None
-                else Path(user_cache_dir(appname="wsinsight", appauthor=False)),
-            **json.loads(os.getenv("S3_STORAGE_OPTIONS", default=None)),
-        )
-        if os.getenv("S3_STORAGE_OPTIONS", default=None) is not None
-        else URIPathType(
-            exists=True,
-            cache_dir=
-                os.getenv("WSINSIGHT_REMOTE_CACHE_DIR", default=None)
-                if os.getenv("WSINSIGHT_REMOTE_CACHE_DIR") is not None
-                else Path(user_cache_dir(appname="wsinsight", appauthor=False)),
-        )
-    ),
+    type=URIPathType(exists=True, **_STORAGE_KWARGS),
     help="Directory containing histoqc outcomes.",
 )
 @click.option(
@@ -764,9 +630,8 @@ def patch(
         
         if not wsi_paths:
             raise errors.WholeSlideImagesNotFound(wsi_dir)
-        
-        if not results_dir.exists():
-            raise errors.ResultsDirectoryNotFound(results_dir)
+
+        ensure_output_directory(results_dir, "--results-dir")
 
         _validate_wsi_directory(wsi_dir)
         

@@ -2,37 +2,18 @@
 
 from __future__ import annotations
 
-import json
 import os
 from pathlib import Path
 
 import click
-from platformdirs import user_cache_dir
 
 from ..export_helpers import build_export_csvs
 from ..uri_path import URIPath, URIPathType
 from ..write_geojson import write_geojsons
 from ..write_omecsv import write_omecsvs
+from ._paths import default_storage_kwargs
 
-
-def _storage_kwargs() -> dict[str, object]:
-    cache_dir = os.getenv("WSINSIGHT_REMOTE_CACHE_DIR")
-    if cache_dir is None:
-        cache_dir = Path(user_cache_dir(appname="wsinsight", appauthor=False))
-    storage: dict[str, object] = {"cache_dir": cache_dir}
-    s3_options = os.getenv("S3_STORAGE_OPTIONS")
-    if s3_options:
-        try:
-            parsed = json.loads(s3_options)
-        except json.JSONDecodeError as exc:
-            raise RuntimeError("S3_STORAGE_OPTIONS must contain valid JSON.") from exc
-        if not isinstance(parsed, dict):
-            raise RuntimeError("S3_STORAGE_OPTIONS must be a JSON object.")
-        storage.update(parsed)
-    return storage
-
-
-_STORAGE_KWARGS = _storage_kwargs()
+_STORAGE_KWARGS = default_storage_kwargs()
 
 
 def _to_local_path(p: URIPath | Path) -> Path:
