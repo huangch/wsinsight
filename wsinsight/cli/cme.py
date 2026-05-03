@@ -20,7 +20,6 @@ from ._meta import write_runtime_metadata
 from ._paths import (
     default_storage_kwargs,
     ensure_input_directory,
-    ensure_output_directory,
 )
 
 _STORAGE_KWARGS = default_storage_kwargs()

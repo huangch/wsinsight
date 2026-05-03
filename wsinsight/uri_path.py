@@ -317,13 +317,14 @@ class URIPath:
                 success = True
             finally:
                 if not success:
-                    # Clean up tmp and any half-written destination from a prior crash.
-                    for stale in (tmp.name, dest):
-                        try:
-                            if stale and os.path.exists(stale):
-                                os.remove(stale)
-                        except OSError:
-                            pass
+                    # Only clean up the temp file. ``dest`` is either untouched
+                    # (os.replace runs only after a successful download+md5) or
+                    # has been written by a concurrent process that won the race.
+                    try:
+                        if os.path.exists(tmp.name):
+                            os.remove(tmp.name)
+                    except OSError:
+                        pass
 
             self._materialized_path = dest
             self._register_finalizer(dest)
@@ -578,12 +579,13 @@ class URIPath:
             success = True
         finally:
             if not success:
-                for stale in (tmp.name, dest):
-                    try:
-                        if stale and os.path.exists(stale):
-                            os.remove(stale)
-                    except OSError:
-                        pass
+                # Same rationale as the GDC path: never delete ``dest`` here, a
+                # concurrent process may have legitimately written it.
+                try:
+                    if os.path.exists(tmp.name):
+                        os.remove(tmp.name)
+                except OSError:
+                    pass
         self._materialized_path = dest
         self._register_finalizer(dest)
         return dest
