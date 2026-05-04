@@ -1,6 +1,6 @@
 # ![WSInsight logo](docs/_static/logo48.png) WSInsight: Cloud-Native Single-Cell Pathology Inference on Whole Slide Images
 
-WSInsight is a fork of WSInfer that delivers end-to-end pathology inference for giga-pixel whole slide images. It scales from laptops to cloud clusters, orchestrates patch extraction/classification, cell detection/classification, model inference, and downstream analytics, and produces artifacts that can be explored in QuPath, GeoJSON-aware viewers, OMERO+, or bespoke notebooks.
+WSInsight is a whole-slide pathology toolkit for giga-pixel H&E images. It started as a fork of WSInfer and has since grown into an end-to-end pipeline that covers tissue segmentation, patch/object inference (region- and cell-level), and downstream spatial analytics — all driven by a single CLI and reproducible across laptops, workstations, and cloud clusters. Outputs are first-class artifacts for QuPath, GeoJSON-aware viewers, OMERO+, and notebooks.
 
 > [!IMPORTANT]
 > WSInsight is a research tool. It is not cleared for clinical workflows or patient-facing decisions.
@@ -9,11 +9,12 @@ WSInsight is a fork of WSInfer that delivers end-to-end pathology inference for 
 
 ## Highlights
 
-- GPU-accelerated inference for registered models from the WSInfer Model Zoo or custom TorchScript weights
-- Automated tissue segmentation, patch extraction, and batched inference with resumable runs
-- First-class support for QuPath projects, GeoJSON/OME-CSV exports, and remote slides (S3, GDC manifests)
-- Transparent URI handling lets you read WSIs from local disks, S3 buckets, or GDC manifests and write inference outputs back to either local paths or S3 using the same CLI options
-- Built for reproducibility: metadata capture, deterministic configuration, and container-friendly execution
+- **Two model families.** WSInfer-compatible region/patch classifiers from the WSInfer Model Zoo *and* WSInsight-native cell-level Vision Transformers (CellViT-256, CellViT-SAM-H, CellViT-Virchow, HoverNet-PanNuke) for single-cell detection and classification.
+- **End-to-end CLI.** `wsinsight run` chains tissue segmentation → patch extraction → inference → downstream analytics in one resumable command; every stage is also available as a standalone subcommand (`patch`, `infer`, `reg`, `hplot`, `ncomp`, `ecomp`, `tcomp`, `cme`, `export`).
+- **Spatial analytics.** Built-in neighborhood / edge / triad composition (`ncomp` / `ecomp` / `tcomp`) on Delaunay cell graphs, H-Plot layer-wise composition curves, and unsupervised cellular-microenvironment discovery (`cme`).
+- **QuPath integration.** A companion extension ([`qupath-extension-wsinsight`](https://github.com/huangch/qupath-extension-wsinsight)) drives every CLI subcommand from a generated form, so adding a CLI option propagates to the GUI without Java changes.
+- **Transparent URIs.** Read WSIs from local disks, S3 buckets, or GDC manifests and write outputs to local paths or S3 using the same flags. GeoJSON / OME-CSV exports interoperate with QuPath, OMERO, and standard pathology viewers.
+- **Reproducible runs.** Per-run metadata capture, deterministic configuration, container-friendly execution, and an idempotent `patch → infer` split for caching expensive stages.
 
 ## Visual Overview
 
