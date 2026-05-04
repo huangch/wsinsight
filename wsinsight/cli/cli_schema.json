@@ -650,19 +650,9 @@
         },
         {
           "choices": [
-            "10xGenomics-BRCA-CellViT-SAM-H-x40",
-            "CellViT-256-x20",
-            "CellViT-256-x40",
-            "CellViT-256-x40-AMP",
-            "CellViT-SAM-H-x20",
-            "CellViT-SAM-H-x40",
-            "CellViT-SAM-H-x40-AMP",
-            "CellViT-Virchow-x40-AMP",
             "breast-tumor-resnet34.tcga-brca",
             "colorectal-resnet34.penn",
             "colorectal-tiatoolbox-resnet50.kather100k",
-            "hne_cell_classification",
-            "hovernet_fast_pannuke",
             "lung-tumor-resnet34.tcga-luad",
             "lymphnodes-tiatoolbox-resnet50.patchcamelyon",
             "pancancer-lymphocytes-inceptionv4.tcga",
@@ -1066,19 +1056,9 @@
         },
         {
           "choices": [
-            "10xGenomics-BRCA-CellViT-SAM-H-x40",
-            "CellViT-256-x20",
-            "CellViT-256-x40",
-            "CellViT-256-x40-AMP",
-            "CellViT-SAM-H-x20",
-            "CellViT-SAM-H-x40",
-            "CellViT-SAM-H-x40-AMP",
-            "CellViT-Virchow-x40-AMP",
             "breast-tumor-resnet34.tcga-brca",
             "colorectal-resnet34.penn",
             "colorectal-tiatoolbox-resnet50.kather100k",
-            "hne_cell_classification",
-            "hovernet_fast_pannuke",
             "lung-tumor-resnet34.tcga-luad",
             "lymphnodes-tiatoolbox-resnet50.patchcamelyon",
             "pancancer-lymphocytes-inceptionv4.tcga",
@@ -1298,7 +1278,7 @@
       ]
     },
     "reg": {
-      "help": "Register object-prediction CSVs to region-prediction results.\n\n    Reads CSVs in RESULTS_DIR/model-outputs-csv/, looks up the matching region\n    CSV in REGION_INFERENCE_DIR/model-outputs-csv/, spatially assigns each\n    object to its enclosing region, and writes the updated CSV back in-place\n    with added region_prob_* columns.\n\n    When --wsi-dir is supplied the slide list is derived from the image\n    filenames in that directory (image files are not opened), mirroring the\n    behaviour of run/infer/hplot and enabling consistent sharding.  Without\n    --wsi-dir every CSV found in RESULTS_DIR/model-outputs-csv/ is processed.\n\n    Slides missing from REGION_INFERENCE_DIR are skipped with a warning.\n    If a region_prob_* column with the same name already exists it is\n    overwritten; columns from a different region model are preserved.\n\n    With --geojson or --omecsv, the registered object CSVs are exported using\n    only the object-level prob_* columns.",
+      "help": "Register a primary object-CSV against a secondary inference.\n\n    The secondary inference may be a region-level run (``-r``) or another\n    object-level run (``-c``); exactly one must be supplied.  Region matching\n    uses point-in-bbox containment; object matching uses nearest-neighbour\n    KD-tree lookup within ``--radius-um``.  Matched secondary class\n    probabilities are appended in-place to the primary CSVs under\n    ``region_<tag>_prob_*`` or ``object_<tag>_prob_*`` columns.\n\n    With ``--geojson`` or ``--omecsv``, all probability prefix groups present\n    in the registered CSVs are exported, one subfolder per group.",
       "name": "reg",
       "params": [
         {
@@ -1335,20 +1315,73 @@
             "-r",
             "--region-inference-dir"
           ],
-          "help": "Results directory from a prior region-level (patch-based) wsinsight run containing a model-outputs-csv/ folder.  Each detected object is matched to its enclosing region and the region's class probabilities are added as region_prob_* columns in the object CSVs.",
+          "help": "Results directory from a prior region-level (patch-based) wsinsight run containing a model-outputs-csv/ folder.  Each detected object is matched to its enclosing region and the region's class probabilities are added as region_<tag>_prob_* columns in the object CSVs.  Mutually exclusive with -c.",
           "is_flag": false,
           "kind": "string",
           "multiple": false,
           "name": "region_inference_dir",
           "param_type": "option",
-          "required": true
+          "required": false
+        },
+        {
+          "default": null,
+          "flags": [
+            "-c",
+            "--object-inference-dir"
+          ],
+          "help": "Results directory from a prior object-level (cell-based) wsinsight run containing a model-outputs-csv/ folder.  Each primary object is matched to its nearest secondary object within --radius-um and that object's class probabilities are added as object_<tag>_prob_* columns in the primary CSVs.  Mutually exclusive with -r.",
+          "is_flag": false,
+          "kind": "string",
+          "multiple": false,
+          "name": "object_inference_dir",
+          "param_type": "option",
+          "required": false
+        },
+        {
+          "default": "",
+          "flags": [
+            "--tag"
+          ],
+          "help": "Optional namespace inserted between the kind and 'prob' in the output column names: -r --tag X writes region_X_prob_*; -c --tag X writes object_X_prob_*.  Must match [a-z0-9_]+.  When omitted, the bare default (region_prob_* / object_prob_*) is used; if the bare default already exists, the smallest free integer suffix is auto-picked (region_1_prob_*, object_2_prob_*, ...) unless --overwrite is given.",
+          "is_flag": false,
+          "kind": "string",
+          "multiple": false,
+          "name": "tag",
+          "param_type": "option",
+          "required": false
+        },
+        {
+          "default": 5.0,
+          "flags": [
+            "--radius-um"
+          ],
+          "help": "Maximum object-to-object match radius in micrometres.  Only consulted when -c is set.",
+          "is_flag": false,
+          "kind": "float",
+          "multiple": false,
+          "name": "radius_um",
+          "param_type": "option",
+          "required": false
+        },
+        {
+          "default": 0.25,
+          "flags": [
+            "--spacing-um-px"
+          ],
+          "help": "Slide pixel size in micrometres-per-pixel, used to convert --radius-um into pixel space.  Only consulted when -c is set.  When -i/--wsi-dir is supplied, this value is treated as a fallback: each slide's MPP is read from the WSI metadata (OpenSlide / TiffSlide / tifffile / Aperio AppMag table) and used in preference; --spacing-um-px is only used for slides whose MPP cannot be read.",
+          "is_flag": false,
+          "kind": "float",
+          "multiple": false,
+          "name": "spacing_um_px",
+          "param_type": "option",
+          "required": false
         },
         {
           "default": false,
           "flags": [
             "--geojson"
           ],
-          "help": "Export registered object CSVs to GeoJSON files.  Object-level probabilities (prob_*) are written to model-outputs-geojson/.",
+          "help": "Export registered object CSVs to GeoJSON files.  One subfolder is written per discovered probability prefix (prob, region_*_prob, object_*_prob) under model-outputs-geojson/.",
           "is_flag": true,
           "kind": "bool",
           "multiple": false,
@@ -1361,7 +1394,7 @@
           "flags": [
             "--omecsv"
           ],
-          "help": "Export registered object CSVs to OME-CSV files.  Object-level probabilities (prob_*) are written to model-outputs-omecsv/.",
+          "help": "Export registered object CSVs to OME-CSV files.  One subfolder is written per discovered probability prefix under model-outputs-omecsv/.",
           "is_flag": true,
           "kind": "bool",
           "multiple": false,
@@ -1387,7 +1420,7 @@
           "flags": [
             "--overwrite"
           ],
-          "help": "Overwrite existing region_* columns in object CSVs.  Without this flag, any slide whose object CSV already contains region_* columns derived from the same region model is skipped with a warning.",
+          "help": "Overwrite existing columns under the resolved prefix.  Without this flag, slides whose CSV already contains the resolved prefix are skipped with a warning (for explicit --tag) or auto-bumped to the next free integer suffix (for empty --tag).",
           "is_flag": true,
           "kind": "bool",
           "multiple": false,
@@ -1536,19 +1569,9 @@
         },
         {
           "choices": [
-            "10xGenomics-BRCA-CellViT-SAM-H-x40",
-            "CellViT-256-x20",
-            "CellViT-256-x40",
-            "CellViT-256-x40-AMP",
-            "CellViT-SAM-H-x20",
-            "CellViT-SAM-H-x40",
-            "CellViT-SAM-H-x40-AMP",
-            "CellViT-Virchow-x40-AMP",
             "breast-tumor-resnet34.tcga-brca",
             "colorectal-resnet34.penn",
             "colorectal-tiatoolbox-resnet50.kather100k",
-            "hne_cell_classification",
-            "hovernet_fast_pannuke",
             "lung-tumor-resnet34.tcga-luad",
             "lymphnodes-tiatoolbox-resnet50.patchcamelyon",
             "pancancer-lymphocytes-inceptionv4.tcga",
