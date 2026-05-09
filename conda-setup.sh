@@ -43,7 +43,7 @@ pip install -c constraints.txt "numpy<2" \
 # the rest + your package (use --no-build-isolation to speed up resolve)
 pip install -c constraints.txt --no-build-isolation -e .
 
-# install CellViT training dependencies (required for pan-tissue model training):
+# install CellViT training dependencies (required for model-development training):
 #   - cupy-cuda12x<14 : pre-built binary wheel; pinned <14 because cupy 14.x
 #                       requires numpy>=2 which conflicts with our numpy<2 pin.
 #                       Replace with cupy-cuda11x if running on CUDA 11.
