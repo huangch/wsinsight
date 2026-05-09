@@ -1029,3 +1029,60 @@ python -c "import torch; print('CUDA:', torch.cuda.is_available())"
 # 5. numpy is below 2.0
 python -c "import numpy; print('numpy:', numpy.__version__)"
 ```
+
+---
+
+## 14. MCP server (FastMCP)
+
+WSInsight ships an optional [Model Context Protocol](https://modelcontextprotocol.io/)
+server that exposes the same CLI surface to MCP-compatible clients
+(Claude Desktop, VS Code Copilot, custom agents).
+
+```bash
+pip install 'wsinsight[mcp]'
+wsinsight-mcp                       # stdio (default)
+wsinsight-mcp --http 127.0.0.1:8765 # streamable HTTP, localhost-only
+```
+
+Auto-registered tools:
+
+- **Long-running** (return `job_id`, poll `job_status` / `job_logs`,
+  stop with `cancel_job`): `run`, `patch`, `infer`, `ncomp`.
+- **Short-running** (block, return exit code + log tail): `export`, `reg`.
+- **Meta**: `job_status`, `job_logs`, `cancel_job`, `list_jobs`.
+- **Resources**: `wsinsight://schema`, `wsinsight://models`,
+  `wsinsight://results/{results_dir}/layout`.
+- **Prompt**: `reproduce_tcga_crc`.
+
+Each tool's input schema mirrors the CLI parameter names, types, and
+defaults verbatim (the CLI JSON schema in `wsinsight/cli/cli_schema.json`
+is the single source of truth). One `cancel_job` call sends `SIGINT`
+(engaging the existing two-press cooperative-cancel handler in
+`wsinsight/cancel.py`); a second call escalates to `SIGTERM`.
+
+Concurrency defaults to the number of visible GPUs (parsed from
+`CUDA_VISIBLE_DEVICES`, else `torch.cuda.device_count()`, else 1) and
+each running job is pinned to one GPU via `CUDA_VISIBLE_DEVICES` in the
+child process's environment. Override with `--max-concurrent N`.
+
+Full docs: [`wsinsight/mcp/README.md`](wsinsight/mcp/README.md).
+
+### Claude Desktop config snippet
+
+```json
+{
+  "mcpServers": {
+    "wsinsight": { "command": "wsinsight-mcp", "args": [] }
+  }
+}
+```
+
+### VS Code Copilot MCP config snippet
+
+```json
+{
+  "servers": {
+    "wsinsight": { "type": "stdio", "command": "wsinsight-mcp" }
+  }
+}
+```

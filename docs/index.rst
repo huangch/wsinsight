@@ -47,6 +47,7 @@ can be explored in QuPath, GeoJSON-aware viewers, OMERO+, or bespoke notebooks.
   Installing <installing>
   User Guide <user_guide>
   CLI <cli>
+  MCP server <mcp>
 
 Quick start
 -----------

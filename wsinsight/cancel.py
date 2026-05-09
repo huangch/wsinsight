@@ -53,6 +53,27 @@ def is_cancelled() -> bool:
     return _cancel_event.is_set()
 
 
+def request_cancel() -> None:
+    """Request cancellation programmatically (without raising SIGINT).
+
+    Equivalent to a single Ctrl-C press: cooperating loops observe the
+    flag via :func:`is_cancelled` / :func:`raise_if_cancelled` and unwind
+    gracefully. Safe to call from any thread. Idempotent.
+    """
+    _cancel_event.set()
+
+
+def clear_cancel() -> None:
+    """Clear the cancellation flag.
+
+    Intended for long-lived hosts (e.g. the MCP server) that may run
+    multiple sequential jobs in the same process and need to reset
+    state between them. Not safe to call while a cancellable loop is
+    actively unwinding.
+    """
+    _cancel_event.clear()
+
+
 def raise_if_cancelled() -> None:
     """Raise :class:`KeyboardInterrupt` if cancellation has been requested.
 
@@ -217,6 +238,8 @@ def cancellable_as_completed(
 __all__ = [
     "install_sigint_handler",
     "is_cancelled",
+    "request_cancel",
+    "clear_cancel",
     "raise_if_cancelled",
     "critical_section",
     "cancellable_as_completed",

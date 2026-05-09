@@ -259,6 +259,20 @@ without repeating inference. All commands share global options such as
 `--log-level`. Use `wsinsight <command> --help` for the full option list,
 including QuPath integration flags and segmentation controls.
 
+## AI agents (MCP)
+
+WSInsight ships an optional [Model Context Protocol](https://modelcontextprotocol.io/)
+server that exposes the same CLI surface to MCP-aware clients
+(Claude Desktop, the VS Code Copilot MCP integration, custom agents).
+Install with `pip install 'wsinsight[mcp]'` and run `wsinsight-mcp`
+(stdio by default; `--http 127.0.0.1:8765` for Streamable HTTP).
+Each stable subcommand becomes an MCP tool whose input schema mirrors
+its CLI parameters; long-running tools (`run`, `patch`, `infer`, `ncomp`)
+return a `job_id` and are polled via `job_status` / `job_logs` /
+`cancel_job`. See [`wsinsight/mcp/README.md`](wsinsight/mcp/README.md)
+for client config snippets, the full tool list, and concurrency / GPU
+pinning details.
+
 ## Results Layout
 
 ```text

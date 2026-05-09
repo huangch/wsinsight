@@ -94,6 +94,9 @@ docs = [
   "sphinx-click",
   "sphinx-copybutton",
 ]
+mcp = [
+  "fastmcp>=2.0",
+]
 
 [project.urls]
 Homepage = "https://wsinsight.readthedocs.io"
@@ -103,6 +106,7 @@ BugTracker = "https://github.com/huangch/wsinsight/issues"
 
 [project.scripts]
 wsinsight = "wsinsight.__main__:main"
+wsinsight-mcp = "wsinsight.mcp.__main__:main"
 
 [tool.setuptools.packages.find]
 include = ["wsinsight*"]
