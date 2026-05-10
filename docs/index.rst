@@ -91,6 +91,9 @@ Highlights
   using the same CLI options
 - Built for reproducibility: metadata capture, deterministic configuration, and
   container-friendly execution
+- Optional Model Context Protocol (MCP) server (``wsinsight-mcp``) that exposes
+  every stable subcommand to MCP-aware AI agents (Claude Desktop, the VS Code
+  Copilot MCP integration, etc.); see :ref:`mcp-server`
 
 Visual overview
 ---------------
@@ -217,6 +220,8 @@ Cell-level model comparison
      - `Ref1 <https://link.springer.com/chapter/10.1007/978-3-030-00934-2_30>`_,
        `Ref2 <https://openaccess.thecvf.com/content_cvpr_2016/html/He_Deep_Residual_Learning_CVPR_2016_paper.html>`_
 
+.. _available-models:
+
 Available WSInsight native model weights
 ----------------------------------------
 
@@ -294,8 +299,8 @@ WSInfer-compatible models: ::
   and the original WSInfer paper.
 
   Huang, C.-H., Awosika, O. E., & Fernandez, D. (2025).
-  WSInsight as a cloud-native pipeline for single-cell pathology inference on whole-slide images. 
-  bioRxiv. https://doi.org/10.64898/2025.12.07.692260
+  WSInsight: a cloud-native, agent-callable platform for single-cell whole-slide
+  pathology. *npj Precision Oncology*. https://doi.org/10.1038/s41698-025-00841-9
           
   Kaczmarzyk, J.R., O'Callaghan, A., Inglis, F. et al. Open and reusable deep
   learning for pathology with WSInfer and QuPath. *npj Precis. Onc.* **8**, 9

@@ -778,8 +778,8 @@ BibTeX:
 
 ```bibtex
 @article{wsinsight2025,
-  title   = {Integrative whole slide image and spatial transcriptomics analysis with QuST and QuPath},
-  author  = {Huang, Chao-Hui and others},
+  title   = {WSInsight: a cloud-native, agent-callable platform for single-cell whole-slide pathology},
+  author  = {Huang, Chao-Hui and Awosika, Oluwamayowa E. and Fernandez, Diane},
   journal = {npj Precision Oncology},
   year    = {2025},
   doi     = {10.1038/s41698-025-00841-9},

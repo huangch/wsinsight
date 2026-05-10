@@ -3,7 +3,7 @@
 Installing and getting started
 ==============================
 
-WSInsight supports Python 3.10+ and has been tested on Linux, macOS, and Windows. Two
+WSInsight requires Python 3.11+ and has been tested on Linux, macOS, and Windows. Two
 installation paths are maintained:
 
 * a **reproducible conda workflow** that mirrors the automation used by the core team; and
@@ -105,8 +105,11 @@ If you already maintain project environments, follow these steps.
 
        git clone https://github.com/huangch/wsinsight.git
        cd wsinsight
-       python -m pip install --editable .[dev]
+       python -m pip install --editable .
        pre-commit install
+
+   Optional extras: ``.[docs]`` for the Sphinx documentation toolchain and
+   ``.[mcp]`` for the Model Context Protocol server (see :ref:`mcp-server`).
 
 Supported slide backends
 ------------------------
@@ -120,14 +123,18 @@ with :func:`wsinsight.wsi.set_backend`.
 Containers
 ----------
 
-Prebuilt images live at https://hub.docker.com/u/huangch/wsinsight/ and work with Docker,
-Apptainer, or Singularity.
+Prebuilt GPU-enabled images live at https://hub.docker.com/r/huangchtw/wsinsight and work
+with Docker, Apptainer, or Singularity.
 
 .. code-block:: bash
 
-   docker pull huangch/wsinsight
-   apptainer pull docker://huangch/wsinsight
-   singularity pull docker://huangch/wsinsight
+   docker pull huangchtw/wsinsight:latest
+   apptainer pull docker://huangchtw/wsinsight:latest
+   singularity pull docker://huangchtw/wsinsight:latest
+
+The repository ships a ``docker-run.sh`` helper that mounts a data directory as
+``/workspace`` and pre-activates the ``wsinsight`` conda environment inside the
+container. See the README for usage.
 
 Getting started
 ---------------

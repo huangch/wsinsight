@@ -11,9 +11,11 @@ For the examples below we assume your slides sit in :code:`slides/`.
 
 .. admonition:: Citation
 
-   If you use WSInsight in research, please cite both the WSInsight and WSInfer papers
-   (bioRxiv, 2025; https://doi.org/10.1101/2025.692260),
-   (npj Precision Oncology, 2024; https://doi.org/10.1038/s41698-024-00499-9).
+   If you use WSInsight in research, please cite the WSInsight manuscript
+   (Huang et al., *npj Precision Oncology*, 2025;
+   https://doi.org/10.1038/s41698-025-00841-9) and the original WSInfer paper
+   (Kaczmarzyk et al., *npj Precision Oncology* 8:9, 2024;
+   https://doi.org/10.1038/s41698-024-00499-9).
 
 
 Overview
@@ -46,47 +48,69 @@ WSInsight provides a CLI. Use :code:`--help` to explore available options:
    wsinsight --help
    wsinsight run --help
 
-Nine CLI entry points are available:
+The CLI exposes six stable subcommands by default and five additional
+experimental subcommands that are gated by ``WSINSIGHT_EXPERIMENTAL=1`` (see
+:ref:`Command reference <cli>` for the full schema).
 
 .. note::
 
-   **Experimental commands.** The spatial-analytics commands ``hplot``,
-   ``hplot-finalize``, ``ncomp``, ``ecomp``, and ``tcomp`` (together with
-   their ``hplot-outputs.csv`` / ``hmetrics-outputs.csv`` /
-   ``ncomp-outputs-csv/`` / ``ecomp-outputs-csv/`` / ``tcomp-outputs-csv/``
-   outputs) are research features under active development.  CLI flags,
-   output layouts, and column schemas may change without notice.
+   **Experimental commands.** ``hplot``, ``hplot-finalize``, ``ncomp``,
+   ``ecomp``, ``tcomp``, and ``cme`` (together with their
+   ``hplot-outputs.csv`` / ``hmetrics-outputs.csv`` /
+   ``ncomp-outputs-csv/`` / ``ecomp-outputs-csv/`` / ``tcomp-outputs-csv/`` /
+   ``cme-outputs-*/`` outputs) are research features under active
+   development.  CLI flags, output layouts, and column schemas may change
+   without notice.  All but ``ncomp`` are hidden from ``wsinsight --help``
+   and refuse to run unless ``WSINSIGHT_EXPERIMENTAL=1`` is set.
+
+Stable commands
+~~~~~~~~~~~~~~~
 
 ============================  ================================================================
 Command                       Purpose
 ============================  ================================================================
 ``wsinsight run``             One-shot workflow: tissue segmentation, patch extraction, model
                               inference, and optional spatial analytics and exports.
-                              Orchestrates ``patch`` → ``infer`` → ``hplot`` → ``ncomp``
-                              → ``cme`` → ``export``.  Pass ``--hplot`` / ``--ncomp`` /
-                              ``--cme`` to enable spatial analytics and
-                              ``--export-geojson`` / ``--export-omecsv`` to write
-                              GeoJSON / OME-CSV files at the end of the run.
+                              Orchestrates ``patch`` → ``infer`` → ``ncomp``
+                              → ``export``.  Pass ``--ncomp`` to enable
+                              neighborhood composition and ``--export-geojson`` /
+                              ``--export-omecsv`` to write GeoJSON / OME-CSV files at
+                              the end of the run.  Experimental ``--hplot`` /
+                              ``--cme`` flags require ``WSINSIGHT_EXPERIMENTAL=1``.
 ``wsinsight patch``           Generate tissue masks + patch caches inside ``--results-dir``.
-``wsinsight infer``           Reuse cached patches to run models and emit GeoJSON/OME exports.
-                              Supports inline region registration via
+``wsinsight infer``           Reuse cached patches to run models and emit per-cell CSV
+                              outputs.  Supports inline region registration via
                               ``--region-inference-dir`` and ``--overwrite``.
-``wsinsight reg``             Post-hoc object-to-region registration on already-completed runs.
-                              Enriches object CSVs with ``region_prob_*`` columns.
-``wsinsight hplot``           Standalone H-plot analysis on existing object-based inference
-                              outputs.
-``wsinsight hplot-finalize``  Aggregate per-slide H-plot intermediates into a cohort-level
-                              summary.
+``wsinsight reg``             Post-hoc object-to-region registration on already-completed
+                              runs.  Enriches object CSVs with ``region_prob_*`` columns.
 ``wsinsight ncomp``           Standalone neighborhood composition analysis on existing
                               inference outputs.  For each target cell, builds a Delaunay
                               graph, collects k-hop neighbors, and records per-cell type
                               counts and proportions.
+``wsinsight export``          Merge all per-cell analytics (inference, ncomp, and — when
+                              enabled — H-plot / CME) into ``export-csv/`` and write
+                              GeoJSON and/or OME-CSV files.  Can be run after inference
+                              without repeating the pipeline.
+============================  ================================================================
+
+Experimental commands
+~~~~~~~~~~~~~~~~~~~~~
+
+============================  ================================================================
+Command                       Purpose
+============================  ================================================================
+``wsinsight hplot``           Standalone H-plot analysis on existing object-based inference
+                              outputs.
+``wsinsight hplot-finalize``  Aggregate per-slide H-plot intermediates into a cohort-level
+                              summary.
+``wsinsight ecomp``           Edge-level composition analysis on Delaunay edges (line graph).
+``wsinsight tcomp``           Triad-level composition analysis on Delaunay triangles
+                              (dual graph) with per-triad geometry (area, perimeter,
+                              regularity).
 ``wsinsight cme``             Cellular microenvironment (CME) analysis across a cohort of
                               slides.  Trains a global DGI encoder, clusters embeddings,
                               and writes per-cell CME labels and annotation regions.
-``wsinsight export``          Merge all per-cell analytics (inference, H-plot, ncomp, CME)
-                              into ``export-csv/`` and write GeoJSON and/or OME-CSV files.
-                              Can be run after inference without repeating the pipeline.
+                              Cross-slide — cannot be parallelised across GPU shards.
 ============================  ================================================================
 
 Pick ``run`` for one-shot processing. Switch to the explicit ``patch`` → ``infer`` flow
