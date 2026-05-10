@@ -56,3 +56,6 @@ paquo
 
 # Model zoo
 wsinfer-zoo>=0.6.2
+
+# MCP server (wsinsight-mcp entry point)
+fastmcp>=2.0

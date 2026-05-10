@@ -99,7 +99,7 @@ RUN pip install --retries 10 -c constraints.txt \
 # Install H-plot and WSInsight packages
 # ------------------------------------
 # RUN pip install --upgrade "numpy<2" -e ./hplot
-RUN pip install -c constraints.txt "numpy<2" -e .
+RUN pip install -c constraints.txt "numpy<2" -e ".[mcp]"
 
 # ------------------------------------
 # Sanity check (runs at build time)
