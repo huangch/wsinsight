@@ -220,31 +220,60 @@ wsinsight run \
   --results-dir <RESULTS_DIR> \
   --model <MODEL_NAME> \
   [--batch-size 32] \
-  [--num-workers 4] \
+  [--num-workers 8] \
   [--ncomp] \
   [--export-geojson] [--export-omecsv]
 ```
 
-**Key options:**
+**Stable options:**
 
-| Option                   | Type      | Description                                              |
-| ------------------------ | --------- | -------------------------------------------------------- |
-| `--wsi-dir / -i`         | path/URI  | Directory of WSI files (local, S3, GDC manifest)         |
-| `--results-dir / -o`     | path/URI  | Output directory                                         |
-| `--model / -m`           | string    | Registered model name (e.g. `breast-tumor-resnet34.tcga-brca`) |
-| `--config / -c`          | path      | Custom model config JSON                                 |
-| `--model-path / -p`      | path      | Custom TorchScript weights                               |
-| `--zoo-model-dir / -z`   | path      | Folder with `config.json` + `torchscript_model.pt`       |
-| `--batch-size / -b`      | int       | Inference batch size (default 32)                        |
-| `--num-workers / -n`     | int       | Dataloader workers (auto)                                |
-| `--ncomp`                | flag      | Enable node-level (cell) composition analytics           |
-| `--export-geojson`       | flag      | Write GeoJSON export files                               |
-| `--export-omecsv`        | flag      | Write OME-CSV export files                               |
-| `--overwrite`            | flag      | Recompute existing outputs                               |
+| Option                          | Type      | Description                                                                                  |
+| ------------------------------- | --------- | -------------------------------------------------------------------------------------------- |
+| `--wsi-dir / -i`                | path/URI  | Directory of WSIs (local, S3, `gdc-manifest://`, `image-list://`). Required.                 |
+| `--results-dir / -o`            | path/URI  | Output directory (auto-created, including new S3 prefixes). Required.                        |
+| `--model / -m`                  | string    | Registered model name (mutually exclusive with `--config`/`--model-path`/`--zoo-model-dir`). |
+| `--config / -c`                 | path      | Custom model config JSON (use with `--model-path`).                                          |
+| `--model-path / -p`             | path      | Custom TorchScript weights (use with `--config`).                                            |
+| `--zoo-model-dir / -z`          | path      | Folder with `config.json` + `torchscript_model.pt`.                                          |
+| `--batch-size / -b`             | int       | Inference batch size (default 32).                                                           |
+| `--num-workers / -n`            | int       | Dataloader workers (default 8; `0` = single-threaded).                                       |
+| `--cache-image-patches`         | flag      | Save extracted RGB patches into `patches/<slide>.h5` under `/images`.                        |
+| `--qupath`                      | flag      | Build a QuPath project containing the inference results.                                     |
+| `--region-inference-dir / -r`   | path/URI  | Prior region (patch-based) results dir; adds `region_prob_*` columns to per-cell outputs.    |
+| `--qupath-measurement-detection-dir` | path | Per-slide QuPath TSV detection-measurement exports → pseudo-model.                          |
+| `--qupath-geojson-detection-dir`| path      | QuPath GeoJSON detections → pseudo-model.                                                    |
+| `--qupath-geojson-annotation-dir`| path     | QuPath GeoJSON annotations seed region labels.                                               |
+| `--qupath-detection-patch-size` | int       | Pseudo-model patch size for detections (default 56).                                         |
+| `--qupath-annotation-patch-size`| int       | Pseudo-model patch size for annotations (default 224).                                       |
+| `--qupath-spacing-um-px`        | float     | Pseudo-model spacing (default 0.5).                                                          |
+| `--qupath-name-as-class`        | flag      | Use the QuPath `name` field as class instead of `Classification`.                            |
+| `--histoqc-dir`                 | path      | Directory of HistoQC outcomes (replaces tissue segmentation).                                |
+| `--seg-thumbsize`               | str       | Thumbnail size for tissue segmentation (default `[2048,2048]`).                              |
+| `--seg-median-filter-size`      | int       | Median filter kernel (odd, default 7).                                                       |
+| `--seg-binary-threshold`        | int       | Binarisation threshold (default 7).                                                          |
+| `--seg-closing-kernel-size`     | int       | Binary-closing kernel (default 6).                                                           |
+| `--seg-min-object-size-um2`     | float     | Min retained tissue object area in µm² (default 40000).                                      |
+| `--seg-min-hole-size-um2`       | float     | Min retained hole area in µm² (default 36100).                                               |
+| `--patch-overlap-ratio`         | float     | Patch overlap ratio (default 0.0 = non-overlapping).                                         |
+| `--patch-size-um`               | float     | Patch side length in µm (default 0 → use model default).                                     |
+| `--patch-size-px`               | float     | Patch side length in px (default 0 → use model default).                                     |
+| `--ncomp`                       | flag      | Run node-level cell composition after inference.                                             |
+| `--ncomp-max-neighbor-distance` | float     | Max Delaunay edge length (µm) for ncomp (default 25.0).                                      |
+| `--ncomp-k`                     | int       | k-hop radius for ncomp (default 2).                                                          |
+| `--export-geojson`              | flag      | After analytics merge per-cell tables → `export-geojson/`.                                   |
+| `--export-omecsv`               | flag      | Same, → `export-omecsv/`.                                                                    |
+| `--overwrite`                   | flag      | Recompute existing outputs across every stage.                                               |
 
-> `run` also accepts `--hplot`, `--ecomp`, `--tcomp`, and `--cme` flags that
-> chain the matching experimental subcommands. These are disabled unless
-> `WSINSIGHT_EXPERIMENTAL=1` is set and are outside the scope of this skill.
+**Experimental run flags** (require `WSINSIGHT_EXPERIMENTAL=1`):
+`--hplot` (+ `--hplot-max-neighbor-distance`, `--hplot-base-types`,
+`--hplot-target-types`, `--hplot-k`, `--hplot-n`, `--hplot-r`,
+`--hplot-range-min`, `--hplot-range-max`, `--hplot-samples-with-valid-range-only`),
+`--ecomp` (+ `--ecomp-max-edge`, `--ecomp-k`),
+`--tcomp` (+ `--tcomp-max-edge`, `--tcomp-k`),
+`--cme`   (+ `--cme-hoptimus`, `--cme-clusters`).
+
+These flags are accepted by `run` only when the corresponding subcommand is
+enabled; they remain undocumented and unstable.
 
 ### 4.4 `wsinsight patch` — Tissue Segmentation & Patch Extraction
 
@@ -255,7 +284,10 @@ wsinsight patch \
   --model <MODEL_NAME>
 ```
 
-Creates `masks/` and `patches/` under `--results-dir`.
+Creates `masks/` and `patches/` under `--results-dir`. Honors all
+`--seg-*`, `--patch-*`, `--qupath-*`, `--histoqc-dir`, `--region-inference-dir`,
+and `--cache-image-patches` options listed in §4.3 (the `patch` and `infer`
+stages share the same surface as `run`). Writes `patch_metadata_<ts>.json`.
 
 ### 4.5 `wsinsight infer` — Model Inference
 
@@ -263,10 +295,13 @@ Creates `masks/` and `patches/` under `--results-dir`.
 wsinsight infer \
   --results-dir <RESULTS_DIR> \
   --model <MODEL_NAME> \
-  [--batch-size 32] [--num-workers 4] [--overwrite]
+  [--batch-size 32] [--num-workers 4] [--stitch-workers 8] [--overwrite]
 ```
 
-Reads from `patches/`, writes to `model-outputs-csv/`.
+Reads from `patches/`, writes to `model-outputs-csv/` plus
+`infer_metadata_<ts>.json`. Accepts the same `--region-inference-dir`,
+`--qupath-*`, and `--patch-*` options as `run`. `--stitch-workers` controls
+the TileFuse thread pool used to assemble object-based detections.
 
 ### 4.6 `wsinsight ncomp` — Node-level (Cell) Composition
 
@@ -277,13 +312,14 @@ Builds (or reuses) a Delaunay cell graph per slide under
 wsinsight ncomp \
   --wsi-dir <WSI_DIR> \
   --results-dir <RESULTS_DIR> \
-  [--ncomp-k 2] [--ncomp-max-neighbor-distance 25.0] [--overwrite]
+  [--ncomp-k 2] [--ncomp-max-neighbor-distance 25.0] \
+  [--num-workers 8] [--overwrite]
 ```
 
-Defaults: 25 µm edge filter, 2-hop neighborhood radius. Outputs go to
-`ncomp-outputs-csv/<slide>.csv`. The `graphs/<slide>.h5` cache is keyed by a
-SHA-256 hash of the cell-center coordinates, so `ncomp` reruns are idempotent
-and safe to resume.
+Defaults: 25 µm edge filter, 2-hop neighborhood radius, 8 concurrent slides.
+Outputs go to `ncomp-outputs-csv/<slide>.csv`. The `graphs/<slide>.h5` cache
+is keyed by a SHA-256 hash of the cell-center coordinates, so `ncomp` reruns
+are idempotent and safe to resume.
 
 ### 4.7 `wsinsight export` — Merge & Export
 
@@ -291,17 +327,42 @@ and safe to resume.
 wsinsight export \
   --results-dir <RESULTS_DIR> \
   --geojson --omecsv \
-  [--export-workers 8] [--overwrite]
+  [--object-type detection] [--patch-overlap-ratio 0.0] \
+  [--export-workers 4] [--overwrite]
 ```
 
-### 4.8 `wsinsight reg` — Region Registration
+Left-joins per-cell analytics under `RESULTS_DIR` (`model-outputs-csv/`,
+`hplot-outputs-csv/cells/`, `ncomp-outputs-csv/`) into `export-csv/`, then
+serialises to `export-geojson/` and/or `export-omecsv/`. Edge-level
+(`ecomp-outputs-csv/`) and triad-level (`tcomp-outputs-csv/`) products use
+different primary keys and are **not** merged — consume them directly.
+`--object-type` is one of `tile`, `detection` (default), or `annotation` and
+is embedded into each exported feature for QuPath. `--patch-overlap-ratio`
+must match the value used at inference time to recover the correct
+shrunk-tile geometry.
+
+### 4.8 `wsinsight reg` — Post-hoc Object Registration
+
+Post-hoc registration of an existing object-level (cell) inference against a
+region-level (patch) inference and/or against another object-level inference:
 
 ```bash
 wsinsight reg \
-  --results-dir <RESULTS_DIR> \
-  --region-inference-dir <REGION_DIR> \
-  [--geojson] [--omecsv] [--overwrite]
+  --results-dir <CELL_RESULTS> \
+  [--region-inference-dir <REGION_RESULTS>] \
+  [--object-inference-dir <OTHER_CELL_RESULTS>] \
+  [--tag <NAMESPACE>] \
+  [--radius-um 5.0] [--spacing-um-px 0.25] \
+  [--geojson] [--omecsv] [--export-workers 4] [--overwrite]
 ```
+
+For each cell, region matching adds `region_prob_*` columns from the patch
+inference; object-to-object matching pairs cells across two object runs
+within `--radius-um` (using `--spacing-um-px` to convert). `--tag` namespaces
+the added columns (`<kind>_<tag>_prob_*`). `--wsi-dir / -i`, when supplied,
+restricts the run to slides whose stem appears under that directory.
+GeoJSON / OME-CSV exports for the registered tables land in dedicated
+subfolders.
 
 ### 4.9 `wsinsight describe` — Machine-readable CLI Schema
 
@@ -327,15 +388,35 @@ Models can be specified in four mutually exclusive ways:
 | Zoo directory          | `--zoo-model-dir`          | Folder with `config.json` + `torchscript_model.pt`       |
 | List registered models | `wsinfer-zoo ls`           | Discover available model names                           |
 
-### Available WSInsight-native Models
+### Available Models in the Bundled WSInsight Zoo
+
+Resolved automatically from `wsinsight/zoo/wsinsight-zoo-registry.json` via
+`WSINSIGHT_ZOO_REGISTRY_PATH` (legacy `WSINFER_ZOO_REGISTRY_PATH` is still
+respected with a deprecation warning).
+
+**WSInsight-native (cell-level / object-based)**
 
 - `CellViT-256-x20`, `CellViT-256-x40`, `CellViT-256-x40-AMP`
 - `CellViT-SAM-H-x20`, `CellViT-SAM-H-x40`, `CellViT-SAM-H-x40-AMP`
 - `CellViT-Virchow-x40-AMP`
+- `10xGenomics-BRCA-CellViT-SAM-H-x40`,
+  `10xGenomics-CRC-CellViT-SAM-H-x40`
 - `hovernet_fast_pannuke`
+- `hne_cell_classification`
 
-Plus all models from `wsinfer-zoo ls` (e.g. `breast-tumor-resnet34.tcga-brca`,
-`pancancer-lymphocytes-inceptionv4.tcga`).
+**WSInfer Zoo (region / patch-level), pre-registered for convenience**
+
+- `breast-tumor-resnet34.tcga-brca`
+- `lung-tumor-resnet34.tcga-luad`
+- `pancreas-tumor-preactresnet34.tcga-paad`
+- `prostate-tumor-resnet34.tcga-prad`
+- `pancancer-lymphocytes-inceptionv4.tcga`
+- `lymphnodes-tiatoolbox-resnet50.patchcamelyon`
+- `colorectal-tiatoolbox-resnet50.kather100k`
+- `colorectal-resnet34.penn`
+
+Any additional WSInfer Zoo model can be added by extending the registry JSON
+or by passing `--config` + `--model-path` (or `--zoo-model-dir`).
 
 ---
 
@@ -352,25 +433,28 @@ After a full pipeline run, `--results-dir` contains:
 ├── model-outputs-csv/
 │   └── <slide>.csv                 Per-cell inference results
 ├── model-outputs-geojson/
-│   └── <slide>.geojson             Region-registered GeoJSON
+│   └── <slide>.geojson             Inference GeoJSON (when produced by run)
 ├── model-outputs-omecsv/
-│   └── <slide>.ome.csv.gz          Region-registered OME-CSV
+│   └── <slide>.ome.csv.gz          Inference OME-CSV (when produced by run)
 ├── ncomp-outputs-csv/
 │   └── <slide>.csv                 Per-cell composition (node-level)
 ├── graphs/
-│   └── <slide>.h5                  Delaunay cache (produced by ncomp)
+│   └── <slide>.h5                  Delaunay cache (produced by ncomp/ecomp/tcomp/cme)
 ├── export-csv/
-│   └── <slide>.csv                 Merged per-cell CSV (model + ncomp)
+│   └── <slide>.csv                 Merged per-cell CSV (model + ncomp [+ hplot])
 ├── export-geojson/
 │   └── <slide>.geojson             GeoJSON export
 ├── export-omecsv/
 │   └── <slide>.ome.csv.gz          OME-CSV export
-└── run_metadata_*.json             Configuration & runtime info
+├── patch_metadata_<ts>.json        Patch-stage configuration & runtime info
+└── infer_metadata_<ts>.json        Inference-stage configuration & runtime info
 ```
 
-> Experimental subcommands (`hplot`, `ecomp`, `tcomp`, `cme`) add their own
-> `*-outputs-csv/` / `*-outputs-geojson/` subdirectories when enabled. They
-> are not documented here.
+> Experimental subcommands add their own subdirectories alongside the stable
+> ones: `hplot-outputs-csv/{cells,...}/`, `ecomp-outputs-csv/<slide>.csv`,
+> `tcomp-outputs-csv/<slide>.csv`, `cme-outputs-csv/{cells,cmes}/<slide>.csv`,
+> and matching `*-outputs-geojson/` folders. Schemas for these are
+> intentionally not pinned here.
 
 ### 6.1 `patches/<slide>.h5` — Patch Coordinates (HDF5)
 
@@ -1044,7 +1128,7 @@ wsinsight-mcp                       # stdio (default)
 wsinsight-mcp --http 127.0.0.1:8765 # streamable HTTP, localhost-only
 ```
 
-Auto-registered tools:
+Auto-registered tools (stable surface):
 
 - **Long-running** (return `job_id`, poll `job_status` / `job_logs`,
   stop with `cancel_job`): `run`, `patch`, `infer`, `ncomp`.
@@ -1053,6 +1137,12 @@ Auto-registered tools:
 - **Resources**: `wsinsight://schema`, `wsinsight://models`,
   `wsinsight://results/{results_dir}/layout`.
 - **Prompt**: `reproduce_tcga_crc`.
+
+With `wsinsight-mcp --experimental` the server additionally exposes
+`hplot`, `ecomp`, `tcomp`, `cme` (long-running) and `hplot-finalize`
+(short-running). Child processes inherit `WSINSIGHT_EXPERIMENTAL=1`
+automatically. The set of long-running commands lives in
+`wsinsight/mcp/schema.py::LONG_RUNNING_COMMANDS`.
 
 Each tool's input schema mirrors the CLI parameter names, types, and
 defaults verbatim (the CLI JSON schema in `wsinsight/cli/cli_schema.json`
