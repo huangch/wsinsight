@@ -85,7 +85,7 @@
       "hf_repo_id": "huangch/10xGenomics-BRCA-CellViT-SAM-H-x40",
       "hf_revision": "main"
     },
-    "10xGenomics-BRCA-CellViT-SAM-H-x40": {
+    "10xGenomics-CRC-CellViT-SAM-H-x40": {
       "description": "10xGenomics-CRC-CellViT-SAM-H-x40",
       "hf_repo_id": "huangch/10xGenomics-CRC-CellViT-SAM-H-x40",
       "hf_revision": "main"

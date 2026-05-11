@@ -3,6 +3,11 @@
 IMAGE_ID=huangchtw/wsinsight:latest
 docker pull ${IMAGE_ID}
 
+# Named volume that persists the Hugging Face model cache between runs.
+# First invocation triggers an auto-download of any model referenced from the
+# WSInsight zoo registry; subsequent runs reuse the cached weights.
+HF_CACHE_VOLUME=wsinsight-hf-cache
+
 DATA_DIR="${1}"
 GPU_ID="${2}"
 
@@ -28,10 +33,10 @@ fi
 
 if [ $# -gt 0 ]; then
     # Direct command mode: run the provided command and exit
-    echo docker run --rm -it --gpus "${GPU_FLAG}" --shm-size=32g --init -v "${DATA_DIR}":/workspace ${IMAGE_ID} bash -lc "$*"
-    docker run --rm -it --gpus "${GPU_FLAG}" --shm-size=32g --init -v "${DATA_DIR}":/workspace ${IMAGE_ID} bash -lc "$*"
+    echo docker run --rm -it --gpus "${GPU_FLAG}" --shm-size=32g --init -v "${DATA_DIR}":/workspace -v "${HF_CACHE_VOLUME}":/app/hf-cache ${IMAGE_ID} bash -lc "$*"
+    docker run --rm -it --gpus "${GPU_FLAG}" --shm-size=32g --init -v "${DATA_DIR}":/workspace -v "${HF_CACHE_VOLUME}":/app/hf-cache ${IMAGE_ID} bash -lc "$*"
 else
     # Interactive mode: drop into a shell
-    echo docker run --rm -it --gpus "${GPU_FLAG}" --shm-size=32g --init -v "${DATA_DIR}":/workspace ${IMAGE_ID}
-    docker run --rm -it --gpus "${GPU_FLAG}" --shm-size=32g --init -v "${DATA_DIR}":/workspace ${IMAGE_ID}
+    echo docker run --rm -it --gpus "${GPU_FLAG}" --shm-size=32g --init -v "${DATA_DIR}":/workspace -v "${HF_CACHE_VOLUME}":/app/hf-cache ${IMAGE_ID}
+    docker run --rm -it --gpus "${GPU_FLAG}" --shm-size=32g --init -v "${DATA_DIR}":/workspace -v "${HF_CACHE_VOLUME}":/app/hf-cache ${IMAGE_ID}
 fi

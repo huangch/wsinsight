@@ -102,6 +102,15 @@ RUN pip install --retries 10 -c constraints.txt \
 RUN pip install -c constraints.txt "numpy<2" -e ".[mcp]"
 
 # ------------------------------------
+# Hugging Face hub cache (first-run model auto-download)
+# Model weights are NOT baked into the image; the wsinfer-zoo client
+# fetches them on first use via the registry (no user input required for
+# public repos). HF_HOME is placed under /app so a named volume can be
+# mounted there to persist the cache across container runs.
+# ------------------------------------
+RUN pip install --retries 10 -c constraints.txt "huggingface_hub[hf_transfer]"
+
+# ------------------------------------
 # Sanity check (runs at build time)
 # ------------------------------------
 RUN python - <<'PY'
@@ -123,7 +132,9 @@ RUN groupadd -g ${GID} ${USERNAME} && \
     # ensure new user's ~/.bashrc inherits conda setup
     bash -lc 'echo ". /opt/conda/etc/profile.d/conda.sh" >> /home/'"${USERNAME}"'/.bashrc' && \
     bash -lc 'echo "conda activate wsinsight" >> /home/'"${USERNAME}"'/.bashrc' && \
-    chown -R ${UID}:${GID} /home/${USERNAME}
+    chown -R ${UID}:${GID} /home/${USERNAME} && \
+    mkdir -p /app/hf-cache && \
+    chown -R ${UID}:${GID} /app/hf-cache /app/zoo /app/keras
 WORKDIR /workspace
 RUN chown -R ${UID}:${GID} /workspace
 USER ${USERNAME}
@@ -133,6 +144,11 @@ USER ${USERNAME}
 # ------------------------------------
 ENV WSINSIGHT_ZOO_REGISTRY_PATH=/app/zoo/wsinsight-zoo-registry.json
 ENV KERAS_HOME=/app/keras
+# Persistent Hugging Face cache for first-run model auto-download.
+# Mount a named volume on /app/hf-cache (see docker-run.sh) to keep weights
+# across container restarts.
+ENV HF_HOME=/app/hf-cache \
+    HF_HUB_ENABLE_HF_TRANSFER=1
 
 # ------------------------------------
 # Default interactive shell

@@ -193,6 +193,28 @@ Inside the container the conda `wsinsight` environment is pre-activated.  When
 no command is given after the GPU argument you land in an interactive shell;
 when a command is provided it runs and the container exits.
 
+#### First-run model auto-download (no manual setup)
+
+Model weights are **not** baked into the image. The first time a registered
+model name is requested, WSInsight transparently downloads the corresponding
+TorchScript weights from Hugging Face Hub (using `huggingface_hub` with the
+`hf_transfer` accelerator) via the registry entry's `hf_repo_id`/`hf_revision`
+fields. No login or user input is needed for the public WSInsight model
+repositories.
+
+The cache lives at `/app/hf-cache` inside the container. `docker-run.sh`
+mounts a named Docker volume (`wsinsight-hf-cache`) on that path so the
+downloaded weights persist across container restarts — subsequent invocations
+reuse the cache and skip re-downloading. To inspect or remove the cache:
+
+```bash
+docker volume inspect wsinsight-hf-cache
+docker volume rm     wsinsight-hf-cache      # force a fresh download next run
+```
+
+If you invoke `docker run` directly (without `docker-run.sh`), add
+`-v wsinsight-hf-cache:/app/hf-cache` to keep the same behaviour.
+
 Alternatively, run a one-shot command without an interactive shell:
 
 ```bash
@@ -201,12 +223,13 @@ docker run --rm -it \
   --user $(id -u):$(id -g) \
   -v /path/to/slides:/slides \
   -v /path/to/results:/results \
+  -v wsinsight-hf-cache:/app/hf-cache \
   huangchtw/wsinsight:latest \
   bash -lc 'wsinsight run --wsi-dir /slides --results-dir /results --model breast-tumor-resnet34.tcga-brca'
 ```
 
 > [!TIP]
-> `--shm-size=32g` is recommended for multi-worker dataloaders.  The image bakes in `WSINSIGHT_ZOO_REGISTRY_PATH` and `KERAS_HOME` so no environment setup is needed.
+> `--shm-size=32g` is recommended for multi-worker dataloaders.  The image bakes in `WSINSIGHT_ZOO_REGISTRY_PATH`, `KERAS_HOME`, and `HF_HOME=/app/hf-cache` so no environment setup is needed.
 
 ### Option B: Manual installation
 

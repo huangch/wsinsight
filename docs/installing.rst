@@ -136,6 +136,23 @@ The repository ships a ``docker-run.sh`` helper that mounts a data directory as
 ``/workspace`` and pre-activates the ``wsinsight`` conda environment inside the
 container. See the README for usage.
 
+First-run model auto-download
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Model weights are **not** shipped inside the image. On the first call that
+resolves a registered model name, WSInsight downloads the corresponding
+TorchScript bundle from Hugging Face Hub through ``huggingface_hub`` (with the
+``hf_transfer`` accelerator), using the ``hf_repo_id`` and ``hf_revision``
+fields recorded in the bundled zoo registry. No login or interactive input is
+required for the public WSInsight model repositories.
+
+The cache lives at ``/app/hf-cache`` inside the container (``HF_HOME`` is set
+at image build time). ``docker-run.sh`` mounts a named Docker volume
+(``wsinsight-hf-cache``) on that path so downloaded weights persist across
+container restarts; subsequent invocations reuse the cache. If you invoke
+``docker run`` directly, add ``-v wsinsight-hf-cache:/app/hf-cache`` to keep
+the same behaviour.
+
 Getting started
 ---------------
 
