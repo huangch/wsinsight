@@ -60,6 +60,7 @@ dependencies = [
 
   # Storage / cloud
   "s3fs",
+  "gcsfs",
   "boto3",
   "platformdirs",
 

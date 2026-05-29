@@ -36,21 +36,28 @@ def default_storage_kwargs() -> dict[str, object]:
       (e.g. ``{"profile": "saml", "client_kwargs": {"endpoint_url": "..."}}``).
       Malformed JSON or a non-object payload raises ``RuntimeError`` instead of
       being silently dropped.
+    - ``GS_STORAGE_OPTIONS``: JSON object of fsspec/gcsfs storage options for
+      Google Cloud Storage (``gs://``). Auth defaults to Application Default
+      Credentials (``GOOGLE_APPLICATION_CREDENTIALS``); use this to override,
+      e.g. ``{"token": "/path/to/service-account.json"}``. Same validation as
+      ``S3_STORAGE_OPTIONS``.
     """
     cache_dir = os.getenv("WSINSIGHT_REMOTE_CACHE_DIR")
     if cache_dir is None:
         cache_dir = Path(user_cache_dir(appname="wsinsight", appauthor=False))
     storage: dict[str, object] = {"cache_dir": cache_dir}
-    s3_options = os.getenv("S3_STORAGE_OPTIONS")
-    if s3_options:
+    for env_name in ("S3_STORAGE_OPTIONS", "GS_STORAGE_OPTIONS"):
+        raw = os.getenv(env_name)
+        if not raw:
+            continue
         try:
-            parsed = json.loads(s3_options)
+            parsed = json.loads(raw)
         except json.JSONDecodeError as exc:
             raise RuntimeError(
-                "S3_STORAGE_OPTIONS must contain valid JSON."
+                f"{env_name} must contain valid JSON."
             ) from exc
         if not isinstance(parsed, dict):
-            raise RuntimeError("S3_STORAGE_OPTIONS must be a JSON object.")
+            raise RuntimeError(f"{env_name} must be a JSON object.")
         storage.update(parsed)
     return storage
 

@@ -57,6 +57,65 @@ def test_normalize_storage_opts_rejects_wrong_type():
 
 
 # --------------------------------------------------------------------------
+# gs:// (Google Cloud Storage) URI manipulation -- parity with s3://
+# (credential init skipped: these only exercise pure URI string handling)
+# --------------------------------------------------------------------------
+
+def test_gs_parent_nested():
+    p = URIPath("gs://my-bucket/a/b/c.svs", _skip_validation=True)
+    assert str(p.parent) == "gs://my-bucket/a/b/"
+
+
+def test_gs_parent_top_level():
+    p = URIPath("gs://my-bucket/c.svs", _skip_validation=True)
+    assert str(p.parent) == "gs://my-bucket"
+
+
+def test_gs_parts():
+    p = URIPath("gs://my-bucket/a/b/c.svs", _skip_validation=True)
+    assert p.parts == ("gs", "my-bucket", "a", "b", "c.svs")
+
+
+def test_gs_with_suffix():
+    p = URIPath("gs://my-bucket/a/b/c.svs", _skip_validation=True)
+    assert str(p.with_suffix(".png")) == "gs://my-bucket/a/b/c.png"
+
+
+def test_gs_truediv_joins_key():
+    p = URIPath("gs://my-bucket/a", _skip_validation=True)
+    assert str(p / "b.svs") == "gs://my-bucket/a/b.svs"
+
+
+# --------------------------------------------------------------------------
+# GS_STORAGE_OPTIONS env var parsing (parity with S3_STORAGE_OPTIONS)
+# --------------------------------------------------------------------------
+
+def test_gs_storage_options_parsed(monkeypatch):
+    from wsinsight.cli._paths import default_storage_kwargs
+
+    monkeypatch.delenv("S3_STORAGE_OPTIONS", raising=False)
+    monkeypatch.setenv("GS_STORAGE_OPTIONS", json.dumps({"token": "/tmp/sa.json"}))
+    out = default_storage_kwargs()
+    assert out["token"] == "/tmp/sa.json"
+
+
+def test_gs_storage_options_rejects_malformed(monkeypatch):
+    from wsinsight.cli._paths import default_storage_kwargs
+
+    monkeypatch.setenv("GS_STORAGE_OPTIONS", "{not json}")
+    with pytest.raises(RuntimeError, match="GS_STORAGE_OPTIONS must contain valid JSON"):
+        default_storage_kwargs()
+
+
+def test_gs_storage_options_rejects_non_object(monkeypatch):
+    from wsinsight.cli._paths import default_storage_kwargs
+
+    monkeypatch.setenv("GS_STORAGE_OPTIONS", "[1, 2, 3]")
+    with pytest.raises(RuntimeError, match="GS_STORAGE_OPTIONS must be a JSON object"):
+        default_storage_kwargs()
+
+
+# --------------------------------------------------------------------------
 # Click ParamType
 # --------------------------------------------------------------------------
 

@@ -37,7 +37,7 @@ pip install --trusted-host github.com --trusted-host raw.githubusercontent.com -
 pip install -c constraints.txt "numpy<2" \
     scikit-learn shapely geopandas pyproj rasterio pyogrio \
     openslide-python wsidicom paquo "wsinfer-zoo>=0.6.2" \
-    igraph leidenalg s3fs boto3 platformdirs timm \
+    igraph leidenalg s3fs gcsfs boto3 platformdirs timm \
     tiffslide imagecodecs opencv-python-headless orjson click
 
 # the rest + your package (use --no-build-isolation to speed up resolve)

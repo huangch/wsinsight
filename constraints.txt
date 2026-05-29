@@ -42,6 +42,7 @@ fonttools==4.60.1
 frozenlist==1.8.0
 fsspec==2025.9.0
 gast==0.6.0
+gcsfs==2025.9.0
 # GDAL: installed via conda, not pip — intentionally omitted.
 geopandas==1.1.1
 girder-client==3.2.11

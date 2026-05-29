@@ -1,7 +1,7 @@
 """Composable URI-aware path abstraction with caching and remote syncing."""
 
 # uri_path.py
-# pip install fsspec s3fs requests pandas
+# pip install fsspec s3fs gcsfs requests pandas
 
 from __future__ import annotations
 
@@ -204,11 +204,11 @@ class URIPath:
             return self._child(base)
         if self.is_local:
             return self._child(str(Path(self._path).parent))
-        if self.scheme == "s3":
+        if self.scheme in ("s3", "gs"):
             if "/" in self.key:
                 parent_key = "/".join(self.key.split("/")[:-1])
-                return self._child(f"s3://{self.bucket}/{parent_key}/")
-            return self._child(f"s3://{self.bucket}")
+                return self._child(f"{self.scheme}://{self.bucket}/{parent_key}/")
+            return self._child(f"{self.scheme}://{self.bucket}")
         return self._child(self.uri.rsplit("/", 1)[0])
 
     @property
@@ -217,8 +217,8 @@ class URIPath:
             return ("gdc-manifest", self._gdc_manifest_path, *([p for p in self._gdc_filename_in_manifest.split('/') if p]))
         if self.is_local:
             return Path(self._path).parts
-        if self.scheme == "s3":
-            return ("s3", self.bucket, *([p for p in self.key.split('/') if p]))
+        if self.scheme in ("s3", "gs"):
+            return (self.scheme, self.bucket, *([p for p in self.key.split('/') if p]))
         return (self.scheme, self.bucket, self.key)
 
     # ------------------------ Public I/O ------------------------
@@ -535,7 +535,17 @@ class URIPath:
                 raise RuntimeError(f"S3 filesystem init failed for {self.uri!r}: {e!r}") from e
             return
     
-        # Generic fsspec scheme (e.g., gs, abfs): try to init the FS
+        if self.scheme == "gs":
+            # Init gcsfs with current options (surfaces missing gcsfs / bad creds early).
+            # Auth defaults to Application Default Credentials
+            # (GOOGLE_APPLICATION_CREDENTIALS); override via GS_STORAGE_OPTIONS.
+            try:
+                self._fs_and_path()
+            except Exception as e:
+                raise RuntimeError(f"GCS filesystem init failed for {self.uri!r}: {e!r}") from e
+            return
+    
+        # Generic fsspec scheme (e.g., abfs): try to init the FS
         try:
             self._fs_and_path()
         except Exception as e:
@@ -806,16 +816,16 @@ class URIPath:
             new_local = str(self._path.with_suffix(suffix))
             return self._child(new_local)
 
-        # ----- generic remote (e.g., s3) -----
+        # ----- generic remote (e.g., s3, gs) -----
         # Replace suffix only in the last path segment
         last = os.path.basename(self.key) if self.key else self.name
         stem, _ = os.path.splitext(last)
         new_last = (stem + suffix) if suffix else stem
-        if self.scheme == "s3":
-            # rebuild s3 URI
+        if self.scheme in ("s3", "gs"):
+            # rebuild bucket/key URI
             prefix = os.path.dirname(self.key) if self.key else ""
             new_key = f"{prefix}/{new_last}" if prefix else new_last
-            new_uri = f"s3://{self.bucket}/{new_key}"
+            new_uri = f"{self.scheme}://{self.bucket}/{new_key}"
         else:
             # fallback: replace only the trailing segment in self.uri
             # handle URIs that may not have bucket semantics

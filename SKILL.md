@@ -171,6 +171,7 @@ air-gapped networks the first variable is mandatory.
 | ------------------------------ | -------- | ---------------------------------------------------------------------------------------- |
 | `WSINSIGHT_ZOO_REGISTRY_PATH` | Yes*     | Path to a local `wsinsight-zoo-registry.json`. Prevents network calls to HuggingFace. Legacy `WSINFER_ZOO_REGISTRY_PATH` still honored (emits `DeprecationWarning`). |
 | `S3_STORAGE_OPTIONS`           | If S3    | JSON passed to `s3fs` / `fsspec` for AWS credentials (e.g. `'{"profile":"saml"}'`).      |
+| `GS_STORAGE_OPTIONS`           | If GCS   | JSON passed to `gcsfs` / `fsspec` for Google Cloud Storage (`gs://`). Optional: defaults to Application Default Credentials; override e.g. `'{"token":"/path/sa.json"}'`. |
 | `WSINSIGHT_REMOTE_CACHE_DIR`   | No       | Local cache dir for remote assets. Default: `~/.cache/wsinsight`.                        |
 | `KERAS_HOME`                   | No       | Override Keras config/weights directory.                                                  |
 | `CUDA_VISIBLE_DEVICES`         | No       | Pin to specific GPU(s) (e.g. `0` or `0,1`).                                             |
@@ -1003,12 +1004,14 @@ assembly function that emits a long-form
 | -------------------- | ---------------------------------------------------------- |
 | Local path           | `slides/` or `/data/slides`                                |
 | S3                   | `s3://bucket/prefix`                                       |
+| GCS                  | `gs://bucket/prefix`                                       |
 | GDC manifest         | `gdc-manifest:///absolute/path/to/manifest.tsv`            |
 | Image list           | `image-list:///path/to/filelist.txt`                       |
 
 A plain local `.txt` file passed as `--wsi-dir` is rejected with a clear
 error — prefix it with `image-list://` to pass a slide list.  S3 access
-requires `S3_STORAGE_OPTIONS` to be set.
+requires `S3_STORAGE_OPTIONS` to be set; GCS access uses Application
+Default Credentials by default and can be overridden with `GS_STORAGE_OPTIONS`.
 
 **Important:** The GDC manifest URI scheme is `gdc-manifest://` (not `gdc://`).
 The path must be absolute (triple slash: `gdc-manifest:///absolute/path`).
