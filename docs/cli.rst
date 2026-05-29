@@ -61,7 +61,8 @@ Use the standalone ``ncomp`` command to re-run neighborhood analytics on
 existing inference outputs without repeating inference.  Use ``reg`` to enrich
 earlier runs with region-level probabilities without re-running inference.
 All commands share the same URI-aware options for local folders, ``s3://``
-buckets, ``gdc-manifest://`` manifests, and ``image-list://`` file lists
+buckets, ``gs://`` buckets, ``gdc-manifest://`` manifests, and ``image-list://``
+file lists
 (a text file with one slide path per line; blank lines and ``#`` comments
 are ignored).  A plain local text file passed directly as ``--wsi-dir`` is
 rejected — prefix it with ``image-list://`` to pass a slide list.

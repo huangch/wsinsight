@@ -28,7 +28,7 @@ and reproducible CLI workflows. Key features include:
 * 🔬 Cell-aware inference through WSInsight-native CellViT and HoverNet checkpoints
 * ⚙️ Compatibility with WSInfer configuration/schema for legacy models
 * 🧭 Deterministic output layouts (CSV + GeoJSON + OME-CSV)
-* ☁️ Unified URI handling for reading WSIs from local disks, ``s3://`` buckets, or ``gdc-manifest://`` manifests and writing outputs back to local paths or S3, plus resumable runs via cached patches
+* ☁️ Unified URI handling for reading WSIs from local disks, ``s3://`` buckets, ``gs://`` buckets, or ``gdc-manifest://`` manifests and writing outputs back to local paths, S3, or GCS, plus resumable runs via cached patches
 
 
 Getting help
@@ -122,7 +122,7 @@ existing inference outputs. Use ``cme`` to discover recurring cellular microenvi
 across a cohort (note: CME is cross-slide and cannot be parallelized across GPU shards).
 Use ``reg`` to enrich an earlier run with region-level
 probabilities without re-running inference. All commands share the same URI-aware options
-and support local folders, ``s3://`` buckets, ``gdc-manifest://`` manifests, and
+and support local folders, ``s3://`` buckets, ``gs://`` buckets, ``gdc-manifest://`` manifests, and
 ``image-list://`` file lists.
 
 
@@ -229,19 +229,23 @@ Remote data sources and caching
 All CLI commands accept the same URI-aware options:
 
 * ``--wsi-dir`` may point to local folders, ``s3://bucket/prefix`` paths,
+  ``gs://bucket/prefix`` paths,
   ``gdc-manifest://`` manifests, or ``image-list:///path/to/filelist.txt`` URIs.
   An ``image-list://`` URI references a plain text file listing one slide path per
   line (blank lines and ``#`` comments are ignored).  Passing a plain local text file
   directly as ``--wsi-dir`` is rejected with a clear error — use the
   ``image-list://`` prefix instead.
   GDC manifests stream WSIs through the built-in cache.
-* ``--results-dir`` (and the derived GeoJSON/OME outputs) may target local disks or S3
-   buckets. Remote destinations do **not** need to exist beforehand; they are created as
+* ``--results-dir`` (and the derived GeoJSON/OME outputs) may target local disks, S3
+   buckets, or GCS buckets. Remote destinations do **not** need to exist beforehand; they are created as
    needed.
 
 Environment variables tune remote behavior:
 
 * ``S3_STORAGE_OPTIONS`` — JSON blob passed to ``fsspec`` (e.g., ``{"profile": "research"}``).
+* ``GS_STORAGE_OPTIONS`` — JSON blob passed to ``gcsfs`` / ``fsspec`` for ``gs://`` URIs
+   (optional; defaults to Application Default Credentials, override e.g.
+   ``{"token": "/path/to/service-account.json"}``).
 * ``WSINSIGHT_REMOTE_CACHE_DIR`` — directory where remote assets are materialized. Default
    is ``~/.cache/wsinsight``; point it at a fast SSD for large batches.
 * ``WSINSIGHT_ZOO_REGISTRY_PATH`` — optional override for the model registry JSON if you

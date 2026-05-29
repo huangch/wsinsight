@@ -85,10 +85,10 @@ Highlights
 - Automated tissue segmentation, patch extraction, and batched inference with
   resumable runs
 - First-class support for QuPath projects, GeoJSON/OME-CSV exports, and remote
-  slides (S3, GDC manifests)
-- Transparent URI handling lets you read WSIs from local disks, S3 buckets, or
-  GDC manifests and write inference outputs back to either local paths or S3
-  using the same CLI options
+  slides (S3, GCS, GDC manifests)
+- Transparent URI handling lets you read WSIs from local disks, S3 buckets, GCS
+  buckets, or GDC manifests and write inference outputs back to local paths, S3,
+  or GCS using the same CLI options
 - Built for reproducibility: metadata capture, deterministic configuration, and
   container-friendly execution
 - Optional Model Context Protocol (MCP) server (``wsinsight-mcp``) that exposes
@@ -175,9 +175,9 @@ not part of upstream WSInfer. To run them:
 4. Review the outputs in ``results-cellvit/model-outputs-*`` and downstream
   GeoJSON artifacts just like the compatible workflow.
 
-All commands understand local filesystem paths, ``s3://`` URIs, and
-``gdc-manifest://`` manifests for ``--wsi-dir``. Outputs such as ``--results-dir``,
-GeoJSON, and OME-CSV artifacts can be written to local disks or S3 using the
+All commands understand local filesystem paths, ``s3://`` URIs, ``gs://`` URIs,
+and ``gdc-manifest://`` manifests for ``--wsi-dir``. Outputs such as ``--results-dir``,
+GeoJSON, and OME-CSV artifacts can be written to local disks, S3, or GCS using the
 same URI syntax, with caching controlled via ``WSINSIGHT_REMOTE_CACHE_DIR``.
 
 To get started, please :ref:`install WSInsight<installing>` and check out the

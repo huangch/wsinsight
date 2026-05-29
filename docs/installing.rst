@@ -50,7 +50,7 @@ needed.
    python -m pip install -c constraints.txt "numpy<2" \
      scikit-learn shapely geopandas pyproj rasterio pyogrio \
      openslide-python wsidicom paquo "wsinfer-zoo>=0.6.2" \
-     igraph leidenalg s3fs boto3 platformdirs timm \
+     igraph leidenalg s3fs gcsfs boto3 platformdirs timm \
      tiffslide imagecodecs opencv-python-headless orjson click
 
    # install WSInsight itself in editable mode (--no-build-isolation speeds up resolve)
@@ -174,12 +174,16 @@ profile or job scheduler) to enable seamless access to cloud storage and manifes
 
 * ``S3_STORAGE_OPTIONS`` — JSON passed directly to ``fsspec`` (examples: ``{"profile": "research"}``, ``{"key": "…", "secret": "…"}``). This unlocks reading WSIs from
    ``s3://`` URIs and writing ``--results-dir`` outputs back to S3.
+* ``GS_STORAGE_OPTIONS`` — JSON passed directly to ``gcsfs`` / ``fsspec`` for Google Cloud
+   Storage (``gs://``) URIs. Optional: authentication defaults to Application Default
+   Credentials (``GOOGLE_APPLICATION_CREDENTIALS``); set this only to override, e.g.
+   ``{"token": "/path/to/service-account.json"}``.
 * ``WSINSIGHT_REMOTE_CACHE_DIR`` — Directory used to cache remote assets locally. Defaults
    to ``~/.cache/wsinsight``; point it at a fast SSD for tera-scale slides.
 * ``WSINSIGHT_ZOO_REGISTRY_PATH`` — Optional path/URI for a custom copy of the WSInfer model
    registry (local file, ``s3://…``, etc.). The legacy name ``WSINFER_ZOO_REGISTRY_PATH`` is
    still honored for one release and emits a ``DeprecationWarning``.
 
-With these variables in place, all CLI commands accept local paths, ``s3://`` URIs, or
-``gdc-manifest://`` manifests for ``--wsi-dir`` and can write outputs to either local disks or S3
+With these variables in place, all CLI commands accept local paths, ``s3://`` URIs, ``gs://`` URIs, or
+``gdc-manifest://`` manifests for ``--wsi-dir`` and can write outputs to local disks, S3, or GCS
 without code changes.
