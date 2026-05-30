@@ -296,6 +296,28 @@ return a `job_id` and are polled via `job_status` / `job_logs` /
 for client config snippets, the full tool list, and concurrency / GPU
 pinning details.
 
+### Human-in-the-loop agentic architecture
+
+The MCP server is the entry point for a larger human-in-the-loop stack
+that lets people drive WSInsight in natural language while keeping a human
+in control of every result.
+
+![Human-in-the-loop agentic architecture](docs/_static/architecture.drawio.png)
+
+- **Conversational interfaces** — users issue chat commands from Telegram
+  or Discord, or interact directly through the Web UI.
+- **Agentic AI layer (OpenClaw / Hermes)** — a planner decomposes the task,
+  a tool router calls MCP/API tools, memory holds context and state, an
+  orchestrator manages flow control, and a summarization step returns
+  human-readable results.
+- **[ClawSight](https://github.com/huangch/clawsight)** bridges the agent
+  layer to WSInsight over MCP, while **ClawPyter** exposes a REST API for
+  Jupyter collaboration.
+- **WSInsight ecosystem** — the WSInsight engine produces results and
+  artifacts that flow back to the user and into QuPath, OMERO+, and Jupyter
+  for visualization and review, so a human validates the analysis at each
+  step.
+
 ## Results Layout
 
 ```text
