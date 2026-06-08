@@ -552,10 +552,12 @@ def hplot_generation(
         return failed_generation
 
     with ThreadPoolExecutor(max_workers=num_workers) as ex:
-        futures = [
-            ex.submit(_worker, *args, (i % num_workers) + 1)
-            for i, args in enumerate(jobs)
-        ]
+        future_to_id: dict = {}
+        futures = []
+        for i, args in enumerate(jobs):
+            fut = ex.submit(_worker, *args, (i % num_workers) + 1)
+            future_to_id[fut] = args[0].stem
+            futures.append(fut)
         outer = tqdm(
             total=len(futures),
             desc="Slides",
@@ -565,7 +567,16 @@ def hplot_generation(
             dynamic_ncols=True,
         )
         for f in cancellable_as_completed(futures, ex):
-            image_id, df, hm = f.result()
+            try:
+                image_id, df, hm = f.result()
+            except Exception as exc:
+                # One slide's unhandled error must not abort the whole run;
+                # record it and keep processing the remaining slides.
+                sid = future_to_id.get(f, "<unknown>")
+                _logger.warning("H-Plot generation failed for %s: %s", sid, exc)
+                failed_generation.append(sid)
+                outer.update(1)
+                continue
 
             # hmetrics disabled: hm is always None now; only require df
             if df is None:

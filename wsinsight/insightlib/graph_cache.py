@@ -49,6 +49,15 @@ def _centers_hash(point2d_ary: np.ndarray) -> bytes:
 # Cache I/O
 # ---------------------------------------------------------------------------
 
+_REQUIRED_DATASETS = (
+    "cell_centers",
+    "simplices",
+    "edges_source",
+    "edges_target",
+    "edges_length",
+)
+
+
 def _is_cache_valid(
     h5path: Path,
     num_cells: int,
@@ -67,6 +76,12 @@ def _is_cache_valid(
             stored_hash = bytes(f.attrs["centers_hash"])
             if stored_hash != centers_hash:
                 return False
+            # A run interrupted mid-write can leave the attrs flushed but one
+            # or more datasets missing/truncated; treat that as a cache miss so
+            # the graph is rebuilt instead of crashing on read.
+            for name in _REQUIRED_DATASETS:
+                if name not in f:
+                    return False
         return True
     except Exception:
         return False
@@ -149,11 +164,24 @@ def get_or_build_delaunay(
 
     if _is_cache_valid(h5path, len(point2d_ary), mpp, chash):
         _logger.debug("Graph cache HIT for %s", slide_id)
-        data = read_graph_cache(h5path)
-        return prune_edges(
-            data["edges_source"], data["edges_target"],
-            data["edges_length"], max_edge_length_px,
-        )
+        try:
+            data = read_graph_cache(h5path)
+        except (KeyError, OSError) as exc:
+            # Defence in depth: the validity check passed but the file is still
+            # unreadable (e.g. truncated/corrupt). Drop it and rebuild rather
+            # than letting the exception abort the whole hplot run.
+            _logger.warning(
+                "Graph cache for %s is unreadable (%s); rebuilding.", slide_id, exc
+            )
+            try:
+                h5path.unlink()
+            except OSError:
+                pass
+        else:
+            return prune_edges(
+                data["edges_source"], data["edges_target"],
+                data["edges_length"], max_edge_length_px,
+            )
 
     _logger.debug("Graph cache MISS for %s — building", slide_id)
     simplices, src, dst, lengths = _delaunay_full(point2d_ary)
