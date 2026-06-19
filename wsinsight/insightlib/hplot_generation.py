@@ -61,6 +61,8 @@ def _worker(
     slide_mpp_lookup: Mapping[str, float] | None = None,
     overwrite: bool = False,
     graph_cache_dir: Path | URIPath | None = None,
+    base_by: str = "celltype",
+    target_by: str = "celltype",
     pbar_position: int = 1,
 ):
     """Process a single slide to build cell layers, save intermediates, and compute metrics."""
@@ -117,11 +119,11 @@ def _worker(
     _step("load CSV")
 
     prob_columns = [c for c in nodes_df.columns.to_list() if c.startswith("prob_")]
-    if not prob_columns:
+    if not prob_columns and (base_by == "celltype" or target_by == "celltype"):
         inner.close()
         return slide_id, None, None
 
-    predicted_labels = nodes_df[prob_columns].idxmax(axis=1)
+    predicted_labels = nodes_df[prob_columns].idxmax(axis=1) if prob_columns else None
     prob_prefix = "prob_"
 
     # Build a case-insensitive lookup: lowered column name -> actual column name
@@ -137,25 +139,67 @@ def _worker(
                 resolved.add(actual)
         return resolved
 
-    base_targets = _resolve_types(base_type_list)
-    target_targets = _resolve_types(target_type_list)
-    available_prob_cols = set(prob_columns)
-    if not base_targets:
-        _logger.warning(
-            "[%s] None of the base types %s matched available columns %s (case-insensitive). Skipping slide.",
-            slide_id, sorted(base_type_list), sorted(available_prob_cols),
-        )
-        inner.close()
-        return slide_id, None, None
-    if not target_targets:
-        _logger.warning(
-            "[%s] None of the target types %s matched available columns %s (case-insensitive). Skipping slide.",
-            slide_id, sorted(target_type_list), sorted(available_prob_cols),
-        )
-        inner.close()
-        return slide_id, None, None
-    nodes_df["is_base_type"] = predicted_labels.isin(base_targets)
-    nodes_df["is_target_type"] = predicted_labels.isin(target_targets)
+    # CME one-hot columns (present only in cme-outputs-csv/cells/<id>.csv).
+    cme_columns = [c for c in nodes_df.columns.to_list() if c.startswith("cme_")]
+    _cme_lower_to_actual = {c.lower(): c for c in cme_columns}
+
+    def _resolve_cmes(type_list: Sequence[str]) -> list[str]:
+        """Map CME ids ("2" or "cme_2") to actual cme_ columns, case-insensitively."""
+        resolved = []
+        for t in type_list:
+            key = str(t).strip().lower()
+            if not key.startswith("cme_"):
+                key = f"cme_{key}"
+            actual = _cme_lower_to_actual.get(key)
+            if actual is not None and actual not in resolved:
+                resolved.append(actual)
+        return resolved
+
+    # ---- base membership: cell type (prob idxmax) OR cme one-hot ----
+    if base_by == "cme":
+        base_cme_cols = _resolve_cmes(base_type_list)
+        if not base_cme_cols:
+            _logger.warning(
+                "[%s] None of the base CMEs %s matched cme_ columns %s. Skipping slide.",
+                slide_id, sorted(base_type_list), sorted(cme_columns),
+            )
+            inner.close()
+            return slide_id, None, None
+        nodes_df["is_base_type"] = nodes_df[base_cme_cols].fillna(0).max(axis=1) > 0
+    else:
+        base_targets = _resolve_types(base_type_list)
+        if not base_targets:
+            _logger.warning(
+                "[%s] None of the base types %s matched available columns %s (case-insensitive). Skipping slide.",
+                slide_id, sorted(base_type_list), sorted(set(prob_columns)),
+            )
+            inner.close()
+            return slide_id, None, None
+        nodes_df["is_base_type"] = predicted_labels.isin(base_targets)
+
+    # ---- target membership: cell type (prob idxmax) OR cme one-hot ----
+    if target_by == "cme":
+        target_cme_cols = _resolve_cmes(target_type_list)
+        if not target_cme_cols:
+            _logger.warning(
+                "[%s] None of the target CMEs %s matched cme_ columns %s. Skipping slide.",
+                slide_id, sorted(target_type_list), sorted(cme_columns),
+            )
+            inner.close()
+            return slide_id, None, None
+        # One-hot membership: max over requested cme_ columns is 0/1 per cell, so
+        # its per-layer mean is exactly the niche fraction.
+        nodes_df["is_target_type"] = nodes_df[target_cme_cols].fillna(0).max(axis=1) > 0
+    else:
+        target_targets = _resolve_types(target_type_list)
+        if not target_targets:
+            _logger.warning(
+                "[%s] None of the target types %s matched available columns %s (case-insensitive). Skipping slide.",
+                slide_id, sorted(target_type_list), sorted(set(prob_columns)),
+            )
+            inner.close()
+            return slide_id, None, None
+        nodes_df["is_target_type"] = predicted_labels.isin(target_targets)
     nodes_df = compute_cell_center_points(nodes_df)
     _step("cell centers")
 
@@ -416,6 +460,9 @@ def hplot_generation(
     num_workers: int = 8,
     slide_mpp_lookup: Mapping[str, float] | None = None,
     overwrite: bool = False,
+    base_by: str = "celltype",
+    target_by: str = "celltype",
+    model_output_subdir: str = "model-outputs-csv",
 ) -> list[str]:
     """Compute H-Plot layers/metrics for WSInsight outputs and persist aggregated CSVs."""
 
@@ -464,7 +511,7 @@ def hplot_generation(
 
     slide_paths = normalized_slide_paths
 
-    model_output_dir = results_dir / "model-outputs-csv"
+    model_output_dir = results_dir / model_output_subdir
     model_output_dir.mkdir(parents=True, exist_ok=True)
 
     model_output_paths = [model_output_dir / p.with_suffix(".csv").name for p in slide_paths]
@@ -545,6 +592,8 @@ def hplot_generation(
                 slide_mpp_lookup,
                 overwrite,
                 graph_cache_dir,
+                base_by,
+                target_by,
             )
         )
 

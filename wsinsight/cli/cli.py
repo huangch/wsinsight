@@ -21,7 +21,7 @@ from .reg import reg
 from .ncomp import ncomp
 from .ecomp import ecomp
 from .tcomp import tcomp
-from .cme import cme
+from .cme import cme, cme_profile_cmd
 
 _logging_levels = ["debug", "info", "warning", "error", "critical"]
 
@@ -91,6 +91,7 @@ cli.add_command(ncomp)
 cli.add_command(ecomp)
 cli.add_command(tcomp)
 cli.add_command(cme)
+cli.add_command(cme_profile_cmd)
 
 # Hide experimental commands from --help unless WSINSIGHT_EXPERIMENTAL is set.
 # They remain registered so `describe` can emit the full schema; invocation is

@@ -132,6 +132,21 @@ def _validate_types(
     help="Target cell type or cell type list whose layer-wise proportion is computed, e.g., lymphocytes.",
 )
 @click.option(
+    "--base-by",
+    default="celltype",
+    show_default=True,
+    type=click.Choice(["celltype", "cme"]),
+    help="Interpret --hplot-base-types as cell types or CME (niche) ids.",
+)
+@click.option(
+    "--target-by",
+    default="celltype",
+    show_default=True,
+    type=click.Choice(["celltype", "cme"]),
+    help="Interpret --hplot-target-types as cell types or CME (niche) ids. "
+         "Use 'cme' to plot a niche's layer-wise fraction; requires a prior `wsinsight cme` run.",
+)
+@click.option(
     "--hplot-k",
     default=2,
     type=click.IntRange(min=0),
@@ -189,6 +204,8 @@ def hplot(
     hplot_max_neighbor_distance: float = 25.0,
     hplot_base_types: List | None = None,
     hplot_target_types: List | None = None,
+    base_by: str = "celltype",
+    target_by: str = "celltype",
     hplot_k: int = 2,
     hplot_n: int = 8,
     hplot_r: float = 0.5,
@@ -208,25 +225,43 @@ def hplot(
     if not slide_paths:
         raise click.ClickException(f"no files exist in the slide directory: {wsi_dir}")
 
-    model_output_dir = results_dir / "model-outputs-csv"
+    cme_involved = (base_by == "cme") or (target_by == "cme")
+    # CME (niche) one-hot columns live in cme-outputs-csv/cells/, a superset of
+    # model-outputs-csv that also carries the prob_ columns. Read from there
+    # whenever either axis is a CME.
+    model_output_subdir = "cme-outputs-csv/cells" if cme_involved else "model-outputs-csv"
+    model_output_dir = results_dir / model_output_subdir
     if not model_output_dir.exists():
         raise click.ClickException(
-            "The 'model-outputs-csv' directory was not found in results directory."
+            f"The '{model_output_subdir}' directory was not found in results directory."
+            + (" Run `wsinsight cme` first." if cme_involved else "")
         )
 
     if not hplot_base_types or not hplot_target_types:
         raise click.ClickException("H-Plot requires both --hplot-base-types and --hplot-target-types.")
 
-    base_type_list = _normalize_types(hplot_base_types)
-    target_type_list = _normalize_types(hplot_target_types)
+    # Cell-type names are normalised against prob_ columns; CME ids ("7" or
+    # "cme_7") are passed through verbatim and resolved later.
+    base_type_list = (
+        _normalize_types(hplot_base_types) if base_by == "celltype"
+        else [str(t).strip() for t in hplot_base_types]
+    )
+    target_type_list = (
+        _normalize_types(hplot_target_types) if target_by == "celltype"
+        else [str(t).strip() for t in hplot_target_types]
+    )
 
-    available_types = _collect_available_types(model_output_dir, num_workers)
-    if not available_types:
-        raise click.ClickException(
-            f"No 'prob_*' columns found in any CSV under {model_output_dir}."
-        )
-    _validate_types(base_type_list, available_types, "--hplot-base-types")
-    _validate_types(target_type_list, available_types, "--hplot-target-types")
+    # Validate only the cell-type axis/axes against available prob_ columns.
+    if base_by == "celltype" or target_by == "celltype":
+        available_types = _collect_available_types(model_output_dir, num_workers)
+        if not available_types:
+            raise click.ClickException(
+                f"No 'prob_*' columns found in any CSV under {model_output_dir}."
+            )
+        if base_by == "celltype":
+            _validate_types(base_type_list, available_types, "--hplot-base-types")
+        if target_by == "celltype":
+            _validate_types(target_type_list, available_types, "--hplot-target-types")
 
     click.secho("\nRunning H-Plot generation.\n", fg="green")
     failed_hplot_generation = hplot_generation(
@@ -235,6 +270,9 @@ def hplot(
         results_dir=results_dir,
         base_type_list=base_type_list,
         target_type_list=target_type_list,
+        base_by=base_by,
+        target_by=target_by,
+        model_output_subdir=model_output_subdir,
         max_neighbor_distance_um=hplot_max_neighbor_distance,
         hplot_k=hplot_k,
         hplot_N=hplot_n,

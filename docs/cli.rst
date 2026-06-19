@@ -6,7 +6,8 @@ Command reference
 .. note::
 
    **Experimental commands.** ``hplot``, ``hplot-finalize``, ``cme``,
-   ``ecomp``, and ``tcomp`` (together with their ``hplot-outputs.csv`` /
+   ``cme-profile``, ``ecomp``, and ``tcomp`` (together with their
+   ``hplot-outputs.csv`` /
    ``hmetrics-outputs.csv`` / ``ecomp-outputs-csv/`` / ``tcomp-outputs-csv/``
    outputs) are research features under active development.  Their CLI flags,
    output directory layouts, and column schemas may change without notice in
@@ -79,7 +80,11 @@ Command                       Purpose
                               outputs.  Requires both ``--hplot-base-types`` and
                               ``--hplot-target-types``.  Computes layer-wise cell-type
                               proportions from tumour boundary outward.  Can also run inline
-                              via ``wsinsight run --hplot``.
+                              via ``wsinsight run --hplot``.  Use ``--base-by`` /
+                              ``--target-by`` (``celltype`` | ``cme``) to plot the
+                              fraction of cells in a discovered niche across layers
+                              instead of a cell type; CME ids may be given as ``7`` or
+                              ``cme_7``.
 ``wsinsight hplot-finalize``  Aggregate per-slide H-plot intermediates into cohort-level
                               ``hplot-outputs.csv`` and ``hmetrics-outputs.csv``.  Run this
                               after parallel ``hplot`` jobs that share an output directory.
@@ -100,6 +105,11 @@ Command                       Purpose
                               cross-slide analysis (global DGI training + global clustering)
                               and cannot be parallelized across GPU shards — run it after
                               merging all per-shard inference outputs.
+``wsinsight cme-profile``     Summarise each discovered CME (niche) by its dominant cell
+                              types, writing ``cme-profile-composition.csv`` under the
+                              results directory.  Reads the per-cell labels from ``cme``.
+                              Whole-slide H&E cohorts carry no transcriptome, so no
+                              marker-gene table is produced.
 ============================  ================================================================
 
 

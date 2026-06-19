@@ -86,6 +86,52 @@
         }
       ]
     },
+    "cme-profile": {
+      "help": "Summarise each CME's cell composition (and marker genes, if any) to help name niches.",
+      "name": "cme-profile",
+      "params": [
+        {
+          "default": null,
+          "flags": [
+            "-o",
+            "--results-dir"
+          ],
+          "help": "Results directory containing cme-outputs-csv/cells/ from `wsinsight cme`.",
+          "is_flag": false,
+          "kind": "string",
+          "multiple": false,
+          "name": "results_dir",
+          "param_type": "option",
+          "required": true
+        },
+        {
+          "default": 10,
+          "flags": [
+            "--top-genes"
+          ],
+          "help": "Number of top enriched marker genes to report per CME (if expr_ columns exist).",
+          "is_flag": false,
+          "kind": "int",
+          "multiple": false,
+          "name": "top_genes",
+          "param_type": "option",
+          "required": false
+        },
+        {
+          "default": 5,
+          "flags": [
+            "--top-types"
+          ],
+          "help": "Number of top cell types to summarise per CME.",
+          "is_flag": false,
+          "kind": "int",
+          "multiple": false,
+          "name": "top_types",
+          "param_type": "option",
+          "required": false
+        }
+      ]
+    },
     "ecomp": {
       "help": "Compute edge-level neighborhood composition for WSInsight inference outputs.\n\n    For every Delaunay edge (two cells connected in the triangulation), the\n    k-hop neighboring edges are collected from the line graph and the\n    proportion of each edge type in that neighborhood is recorded.\n\n    \b\n    Outputs written to <results-dir>/:\n      ecomp-outputs-csv/<slide_id>.csv   per-edge neighborhood composition",
       "name": "ecomp",
@@ -356,6 +402,40 @@
           "kind": "string",
           "multiple": false,
           "name": "hplot_target_types",
+          "param_type": "option",
+          "required": false
+        },
+        {
+          "choices": [
+            "celltype",
+            "cme"
+          ],
+          "default": "celltype",
+          "flags": [
+            "--base-by"
+          ],
+          "help": "Interpret --hplot-base-types as cell types or CME (niche) ids.",
+          "is_flag": false,
+          "kind": "choice",
+          "multiple": false,
+          "name": "base_by",
+          "param_type": "option",
+          "required": false
+        },
+        {
+          "choices": [
+            "celltype",
+            "cme"
+          ],
+          "default": "celltype",
+          "flags": [
+            "--target-by"
+          ],
+          "help": "Interpret --hplot-target-types as cell types or CME (niche) ids. Use 'cme' to plot a niche's layer-wise fraction; requires a prior `wsinsight cme` run.",
+          "is_flag": false,
+          "kind": "choice",
+          "multiple": false,
+          "name": "target_by",
           "param_type": "option",
           "required": false
         },

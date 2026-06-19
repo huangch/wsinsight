@@ -175,7 +175,7 @@ air-gapped networks the first variable is mandatory.
 | `WSINSIGHT_REMOTE_CACHE_DIR`   | No       | Local cache dir for remote assets. Default: `~/.cache/wsinsight`.                        |
 | `KERAS_HOME`                   | No       | Override Keras config/weights directory.                                                  |
 | `CUDA_VISIBLE_DEVICES`         | No       | Pin to specific GPU(s) (e.g. `0` or `0,1`).                                             |
-| `WSINSIGHT_EXPERIMENTAL`       | No       | Set to `1` to unlock experimental subcommands (`hplot`, `hplot-finalize`, `ecomp`, `tcomp`, `cme`). Not needed for normal use. |
+| `WSINSIGHT_EXPERIMENTAL`       | No       | Set to `1` to unlock experimental subcommands (`hplot`, `hplot-finalize`, `ecomp`, `tcomp`, `cme`, `cme-profile`). Not needed for normal use. |
 
 \* Required when HuggingFace Hub is unreachable (SSL errors, air-gapped).
 
@@ -196,8 +196,9 @@ wsinsight
 └── describe          Emit a machine-readable JSON schema of every subcommand
 ```
 
-> Additional subcommands — `hplot`, `hplot-finalize`, `ecomp`, `tcomp`, `cme` —
-> are gated as **experimental**. They are hidden from `--help` and cannot be
+> Additional subcommands — `hplot`, `hplot-finalize`, `ecomp`, `tcomp`, `cme`,
+> `cme-profile` — are gated as **experimental**. They are hidden from `--help`
+> and cannot be
 > executed unless `WSINSIGHT_EXPERIMENTAL=1` is exported. Their CLI flags,
 > output schemas, and metric definitions may change without notice. This
 > skill file documents only the stable surface.

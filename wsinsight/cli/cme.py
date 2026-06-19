@@ -12,6 +12,7 @@ import os
 from pathlib import Path
 
 import click
+import pandas as pd
 
 from ..insightlib.cme_generation import cme_generation
 from ..uri_path import URIPath, URIPathType
@@ -207,3 +208,62 @@ def cme(
     )
 
     click.secho("\nCME analysis completed.\n", fg="green")
+
+
+# ---------------------------------------------------------------------------
+# wsinsight cme-profile
+# ---------------------------------------------------------------------------
+
+@click.command(name="cme-profile")
+@click.option(
+    "-o",
+    "--results-dir",
+    type=URIPathType(exists=True, **_STORAGE_KWARGS),
+    required=True,
+    help="Results directory containing cme-outputs-csv/cells/ from `wsinsight cme`.",
+)
+@click.option(
+    "--top-genes",
+    default=10,
+    show_default=True,
+    type=click.IntRange(min=1),
+    help="Number of top enriched marker genes to report per CME (if expr_ columns exist).",
+)
+@click.option(
+    "--top-types",
+    default=5,
+    show_default=True,
+    type=click.IntRange(min=1),
+    help="Number of top cell types to summarise per CME.",
+)
+def cme_profile_cmd(*, results_dir: URIPath, top_genes: int, top_types: int) -> None:
+    """Summarise each CME's cell composition (and marker genes, if any) to help name niches."""
+    # Imported lazily: cme_profile is torch-free, so this keeps the command
+    # usable even without the deep-learning stack.
+    from ..insightlib.cme_profile import cme_profile
+
+    comp, markers = cme_profile(
+        str(results_dir), top_genes=top_genes, top_types=top_types, write=True,
+    )
+
+    click.secho("\nCME composition (mean cell-type fractions):\n", fg="green")
+    cols = [c for c in ("n_cells", "frac", "top_types") if c in comp.columns]
+    with pd.option_context("display.max_colwidth", 80, "display.width", 200):
+        click.echo(comp[cols].to_string())
+
+    if markers is not None:
+        click.secho("\nTop enriched marker genes per CME:\n", fg="green")
+        for cme_id, grp in markers.groupby("cme", sort=False):
+            top = ", ".join(f"{r.gene}({r.log2_enrichment:+.1f})" for r in grp.itertuples())
+            click.echo(f"  {cme_id}: {top}")
+    else:
+        click.secho(
+            "\n(No expr_ columns found; this is expected for whole-slide H&E "
+            "cohorts. Composition fingerprints are sufficient to name niches.)\n",
+            fg="yellow",
+        )
+
+    click.secho(
+        f"\nWrote cme-profile-composition.csv (and markers, if any) to {results_dir}\n",
+        fg="green",
+    )

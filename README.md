@@ -11,7 +11,7 @@ WSInsight is a whole-slide pathology toolkit for giga-pixel H&E images. It start
 
 - **Two model families.** WSInfer-compatible region/patch classifiers from the WSInfer Model Zoo *and* WSInsight-native cell-level Vision Transformers (CellViT-256, CellViT-SAM-H, CellViT-Virchow, HoverNet-PanNuke) for single-cell detection and classification.
 - **End-to-end CLI.** `wsinsight run` chains tissue segmentation → patch extraction → inference → downstream analytics in one resumable command; every stage is also available as a standalone subcommand (`patch`, `infer`, `reg`, `hplot`, `ncomp`, `ecomp`, `tcomp`, `cme`, `export`).
-- **Spatial analytics.** Built-in neighborhood / edge / triad composition (`ncomp` / `ecomp` / `tcomp`) on Delaunay cell graphs, H-Plot layer-wise composition curves, and unsupervised cellular-microenvironment discovery (`cme`).
+- **Spatial analytics.** Built-in neighborhood / edge / triad composition (`ncomp` / `ecomp` / `tcomp`) on Delaunay cell graphs, H-Plot layer-wise composition curves (which can plot a cell type **or a discovered niche** across tissue layers), and unsupervised cellular-microenvironment discovery + profiling (`cme` / `cme-profile`).
 - **QuPath integration.** A companion extension ([`qupath-extension-wsinsight`](https://github.com/huangch/qupath-extension-wsinsight)) drives every CLI subcommand from a generated form, so adding a CLI option propagates to the GUI without Java changes.
 - **Transparent URIs.** Read WSIs from local disks, S3 buckets, or GDC manifests and write outputs to local paths or S3 using the same flags. GeoJSON / OME-CSV exports interoperate with QuPath, OMERO, and standard pathology viewers.
 - **Reproducible runs.** Per-run metadata capture, deterministic configuration, container-friendly execution, and an idempotent `patch → infer` split for caching expensive stages.
@@ -259,8 +259,8 @@ The editable install enables rapid iteration on CLI commands, model definitions,
 ## CLI Overview
 
 Stable commands are available by default.  Experimental commands (`hplot`,
-`hplot-finalize`, `cme`, `ecomp`, `tcomp`) are hidden unless the environment
-variable `WSINSIGHT_EXPERIMENTAL=1` is set; see
+`hplot-finalize`, `cme`, `cme-profile`, `ecomp`, `tcomp`) are hidden unless the
+environment variable `WSINSIGHT_EXPERIMENTAL=1` is set; see
 [Experimental Features](#experimental-features) below.
 
  Command            | Purpose
@@ -270,6 +270,7 @@ variable `WSINSIGHT_EXPERIMENTAL=1` is set; see
  `wsinsight infer`  | Load cached patches, run the selected model, and produce per-cell CSV outputs. Enrich object CSVs with region-level probabilities via `--region-inference-dir` and `--overwrite`. Use the standalone `ncomp`/`export` commands (or `run`) for downstream analytics. Does **not** run analytics or export — use `run` for one-shot orchestration.
  `wsinsight reg`    | Post-hoc object-to-region registration: enrich existing object-level CSV outputs with `region_prob_*` columns derived from a separate region-level inference run (`-r`). Equivalent to running `infer` with `--region-inference-dir`, but works on already-completed runs without re-running inference. Use `--overwrite` to replace existing `region_*` columns.
  `wsinsight ncomp`  | Neighborhood composition analysis on existing cell-detection outputs. For each target cell, builds a Delaunay graph, collects k-hop neighbors, and records the cell-type composition of the local neighborhood. Outputs per-cell CSVs under `ncomp-outputs-csv/`.
+ `wsinsight cme-profile` | Summarise each discovered CME (niche) by its dominant cell types, writing `cme-profile-composition.csv` under the results directory. Reads the per-cell labels produced by `cme`. Whole-slide H&E cohorts have no transcriptome, so no marker-gene table is produced. Experimental (`WSINSIGHT_EXPERIMENTAL=1`).
  `wsinsight export` | Merge all available per-cell analytics (inference, ncomp, and — when enabled — H-plot / CME) into `export-csv/` and write GeoJSON and/or OME-CSV files. Can be run any time after inference without repeating the full pipeline.
 
 Pick `run` when you want a one-liner for single slides or small batches; switch
