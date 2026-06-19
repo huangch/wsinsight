@@ -397,6 +397,8 @@ def run_inference(
                     continue
                 
                 qpdet_df = pd.read_csv(slide_det, delimiter='\t')
+                # Keep only detection/cell objects so coords, labels and N stay aligned.
+                qpdet_df = qpdet_df[(qpdet_df["Object type"] == "Detection") | (qpdet_df["Object type"] == "Cell")].reset_index(drop=True)
                 width  = model_info.config.patch_size_pixels
                 height = model_info.config.patch_size_pixels
                 half_patch_size = round(model_info.config.patch_size_pixels / 2)
@@ -408,8 +410,8 @@ def run_inference(
                 coords = np.column_stack([x, y, np.full_like(x, width), np.full_like(y, height)])
                 slide_coords = [row[np.newaxis, :] for row in coords]
                 
-                indexer = pd.Index(model_info.config.class_names).get_indexer(qpdet_df[(qpdet_df["Object type"]=="Detection")|(qpdet_df["Object type"]=="Cell")]["Name"].str.strip().str.replace(' ', '_').str.lower()) \
-                    if qupath_name_as_class else pd.Index(model_info.config.class_names).get_indexer(qpdet_df[(qpdet_df["Object type"]=="Detection")|(qpdet_df["Object type"]=="Cell")]["Classification"].str.strip().str.replace(' ', '_').str.lower())
+                indexer = pd.Index(model_info.config.class_names).get_indexer(qpdet_df["Name"].str.strip().str.replace(' ', '_').str.lower()) \
+                    if qupath_name_as_class else pd.Index(model_info.config.class_names).get_indexer(qpdet_df["Classification"].str.strip().str.replace(' ', '_').str.lower())
                     
                 N = len(qpdet_df)
                 K = len(model_info.config.class_names)
@@ -442,6 +444,8 @@ def run_inference(
                 
                 gdf = gpd.read_file(slide_geojson)
                 gdf.set_crs(None, allow_override=True)
+                # Keep only detection/cell objects so coords, labels and N stay aligned.
+                gdf = gdf[(gdf["objectType"] == "detection") | (gdf["objectType"] == "cell")].reset_index(drop=True)
                 # model_info.config.class_names = \
                 #     gdf.name.str.strip().str.replace(" ", "_", regex=False).str.lower().unique().tolist() \
                 #     if qupath_name_as_class else \
@@ -467,9 +471,9 @@ def run_inference(
                 coords = np.column_stack([x, y, np.full_like(x, width), np.full_like(y, height)])
                 slide_coords = [row[np.newaxis, :] for row in coords]
                 
-                indexer = pd.Index(model_info.config.class_names).get_indexer(gdf[(gdf["objectType"]=="detection")|(gdf["objectType"]=="cell")]["name"].str.strip().str.replace(' ', '_').str.lower()) \
+                indexer = pd.Index(model_info.config.class_names).get_indexer(gdf["name"].str.strip().str.replace(' ', '_').str.lower()) \
                     if qupath_name_as_class else \
-                    pd.Index(model_info.config.class_names).get_indexer(gdf[(gdf["objectType"]=="detection")|(gdf["objectType"]=="cell")]["classification"].str.strip().str.replace(' ', '_').str.lower())
+                    pd.Index(model_info.config.class_names).get_indexer(gdf["classification"].str.strip().str.replace(' ', '_').str.lower())
                 
                 N = len(gdf)
                 K = len(model_info.config.class_names)
