@@ -20,7 +20,7 @@ STABLE_COMMANDS: frozenset[str] = frozenset(
     {"run", "patch", "infer", "ncomp", "export", "reg"}
 )
 EXPERIMENTAL_COMMANDS: frozenset[str] = frozenset(
-    {"hplot", "hplot-finalize", "ecomp", "tcomp", "cme", "cme-profile"}
+    {"hplot", "hplot-finalize", "ecomp", "tcomp", "cme", "cme-profile", "agg"}
 )
 
 # Commands that may run for many minutes or hours. These are exposed as
@@ -28,7 +28,7 @@ EXPERIMENTAL_COMMANDS: frozenset[str] = frozenset(
 # the agent polls job_status / job_logs / cancel_job). All other stable
 # commands run synchronously.
 LONG_RUNNING_COMMANDS: frozenset[str] = frozenset(
-    {"run", "patch", "infer", "ncomp", "hplot", "ecomp", "tcomp", "cme"}
+    {"run", "patch", "infer", "ncomp", "hplot", "ecomp", "tcomp", "cme", "agg"}
 )
 
 _KIND_TO_JSON_TYPE: dict[str, str] = {

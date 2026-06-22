@@ -10,8 +10,8 @@ WSInsight is a whole-slide pathology toolkit for giga-pixel H&E images. It start
 ## Highlights
 
 - **Two model families.** WSInfer-compatible region/patch classifiers from the WSInfer Model Zoo *and* WSInsight-native cell-level Vision Transformers (CellViT-256, CellViT-SAM-H, CellViT-Virchow, HoverNet-PanNuke) for single-cell detection and classification.
-- **End-to-end CLI.** `wsinsight run` chains tissue segmentation → patch extraction → inference → downstream analytics in one resumable command; every stage is also available as a standalone subcommand (`patch`, `infer`, `reg`, `hplot`, `ncomp`, `ecomp`, `tcomp`, `cme`, `export`).
-- **Spatial analytics.** Built-in neighborhood / edge / triad composition (`ncomp` / `ecomp` / `tcomp`) on Delaunay cell graphs, H-Plot layer-wise composition curves (which can plot a cell type **or a discovered niche** across tissue layers), and unsupervised cellular-microenvironment discovery + profiling (`cme` / `cme-profile`).
+- **End-to-end CLI.** `wsinsight run` chains tissue segmentation → patch extraction → inference → downstream analytics in one resumable command; every stage is also available as a standalone subcommand (`patch`, `infer`, `reg`, `hplot`, `ncomp`, `ecomp`, `tcomp`, `cme`, `agg`, `export`).
+- **Spatial analytics.** Built-in neighborhood / edge / triad composition (`ncomp` / `ecomp` / `tcomp`) on Delaunay cell graphs, H-Plot layer-wise composition curves (which can plot a cell type **or a discovered niche** across tissue layers), unsupervised cellular-microenvironment discovery + profiling (`cme` / `cme-profile`), and density-gated cell-type aggregate detection (`agg`, e.g. T+B cells → tertiary lymphoid structures).
 - **QuPath integration.** A companion extension ([`qupath-extension-wsinsight`](https://github.com/huangch/qupath-extension-wsinsight)) drives every CLI subcommand from a generated form, so adding a CLI option propagates to the GUI without Java changes.
 - **Transparent URIs.** Read WSIs from local disks, S3 buckets, or GDC manifests and write outputs to local paths or S3 using the same flags. GeoJSON / OME-CSV exports interoperate with QuPath, OMERO, and standard pathology viewers.
 - **Reproducible runs.** Per-run metadata capture, deterministic configuration, container-friendly execution, and an idempotent `patch → infer` split for caching expensive stages.
@@ -259,7 +259,7 @@ The editable install enables rapid iteration on CLI commands, model definitions,
 ## CLI Overview
 
 Stable commands are available by default.  Experimental commands (`hplot`,
-`hplot-finalize`, `cme`, `cme-profile`, `ecomp`, `tcomp`) are hidden unless the
+`hplot-finalize`, `cme`, `cme-profile`, `ecomp`, `tcomp`, `agg`) are hidden unless the
 environment variable `WSINSIGHT_EXPERIMENTAL=1` is set; see
 [Experimental Features](#experimental-features) below.
 
@@ -652,9 +652,10 @@ QuPath extension, etc.) can discover every command; only invocation is gated.
  `wsinsight ecomp`          | Edge-level composition analysis. For each Delaunay edge, builds the line graph, collects k-hop edge neighbors, and records the composition of edge types in the local neighborhood. Outputs per-edge CSVs under `ecomp-outputs-csv/`.
  `wsinsight tcomp`          | Triad-level composition analysis. For each Delaunay triangle, builds the dual graph (triads sharing ≥1 vertex), collects k-hop triad neighbors, and records the composition of triad types plus per-triad geometry (area, perimeter, regularity). Outputs per-triad CSVs under `tcomp-outputs-csv/`.
  `wsinsight cme`            | Cellular microenvironment (CME) analysis across a cohort of slides. Builds per-slide Delaunay cell graphs, trains a global Deep Graph Infomax (DGI) encoder, clusters the resulting embeddings, and writes per-cell CME labels plus annotation-level region merges under `cme-outputs-csv/`. Cross-slide analysis — cannot be parallelized across GPU shards.
+ `wsinsight agg`            | Cell-type aggregate analysis on existing inference outputs. Detects connected, density-gated aggregates of a chosen cell-type set (`--agg-types`, e.g. `t_cell,b_cell` → TLS) over the cached Delaunay graph, contracts them into a quotient graph, and writes namespaced outputs under the product label `--agg-name`: an `object_<name>_prob_<name>` per-cell membership column (upserted into `model-outputs-csv/`), a per-aggregate sidecar under `agg-<name>-outputs-csv/`, and an `agg/<name>/` subgroup in `graphs/<slide>.h5`. The name is selectable in `hplot` via `--base-by aggregate` / `--target-by aggregate`.
 
 Experimental stages can also be invoked inline from `wsinsight run` via
-`--hplot` / `--cme` (when `WSINSIGHT_EXPERIMENTAL=1`).  `ecomp` / `tcomp` are
+`--hplot` / `--cme` (when `WSINSIGHT_EXPERIMENTAL=1`).  `ecomp` / `tcomp` / `agg` are
 standalone only.
 
 ### Simplicial composition hierarchy — `ncomp` / `ecomp` / `tcomp`
@@ -714,6 +715,25 @@ where 1.0 is equilateral).  Edges and triads are **not** merged into
  `--cme-clusters` | auto    | Number of KMeans clusters; when omitted, determined via Leiden community detection
  `--overwrite`    | off     | Delete cached checkpoints and recompute from scratch
 
+### Aggregate parameters (`--agg-*` options in `wsinsight agg`)
+
+ Option                          | Default  | Description
+---------------------------------|----------|---------------------------------------------------------------------------------
+ `--agg-name`                    | required | Product label (lower-case `[a-z0-9_]+`, e.g. `tls`); namespaces every artifact and is selectable in `hplot` via `--base-by aggregate` / `--target-by aggregate`
+ `--agg-types`                   | required | Comma-separated ingredient cell types that may join the aggregate (e.g. `t_cell,b_cell`)
+ `--agg-max-neighbor-distance`   | `25.0`   | Maximum Delaunay edge length in µm
+ `--agg-k`                       | `2`      | k-hop neighborhood radius for the density gate
+ `--agg-n`                       | `8`      | Minimum neighborhood size for region membership
+ `--agg-r`                       | `0.5`    | Minimum ingredient-type fraction for region membership
+ `--agg-min-size`                | `10`     | Drop aggregates with fewer than this many cells
+ `--overwrite`                   | off      | Recompute existing per-slide outputs for this name
+
+`agg` writes three namespaced artifacts: an `object_<name>_prob_<name>`
+membership column upserted into `model-outputs-csv/<slide>.csv` (siblings
+preserved, so multiple `--agg-name` runs coexist), a per-aggregate sidecar
+under `agg-<name>-outputs-csv/<slide>.csv`, and an `agg/<name>/` quotient-graph
+subgroup inside `graphs/<slide>.h5`.
+
 ### Experimental example workflows
 
 Run inference + all experimental analytics + export in a single command:
@@ -752,6 +772,21 @@ wsinsight hplot \
   --hplot-range-min -5 --hplot-range-max 5
 ```
 
+Detect T+B-cell aggregates (e.g. TLS) on existing inference outputs, then plot
+their member-cell fraction across tumour layers:
+
+```bash
+wsinsight agg \
+  --wsi-dir slides/ --results-dir results/ \
+  --agg-name tls --agg-types t_cell,b_cell
+
+wsinsight hplot \
+  --wsi-dir slides/ --results-dir results/ \
+  --hplot-base-types tumor --hplot-target-types tls \
+  --target-by aggregate \
+  --hplot-range-min -5 --hplot-range-max 5
+```
+
 After parallel `hplot` jobs, aggregate to cohort level:
 
 ```bash
@@ -772,7 +807,7 @@ WSInsight reads the following environment variables at startup. Set them in your
  Variable                     | Purpose                                                                                                                                                                             | Example
 ------------------------------|-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|---------------------------------------------------------------------------------------------
  `WSINSIGHT_ZOO_REGISTRY_PATH` | Path to a local `wsinsight-zoo-registry.json` file. **Required in air-gapped / restricted-SSL environments.** When set (and the file exists), no network call to HuggingFace is made. The legacy name `WSINFER_ZOO_REGISTRY_PATH` is still honored for one release (emits a `DeprecationWarning`). | `export WSINSIGHT_ZOO_REGISTRY_PATH=/workspace/wsinsight/devel/zoo/wsinsight-zoo-registry.json`
- `WSINSIGHT_EXPERIMENTAL`     | Set to `1` (or `true`/`yes`/`on`) to unhide experimental subcommands (`hplot`, `hplot-finalize`, `cme`, `ecomp`, `tcomp`) and the `--hplot` / `--cme` flags on `wsinsight run`. Without it, experimental commands are hidden from `--help` and refuse to run.  See [Experimental Features](#experimental-features). | `export WSINSIGHT_EXPERIMENTAL=1`
+ `WSINSIGHT_EXPERIMENTAL`     | Set to `1` (or `true`/`yes`/`on`) to unhide experimental subcommands (`hplot`, `hplot-finalize`, `cme`, `ecomp`, `tcomp`, `agg`) and the `--hplot` / `--cme` flags on `wsinsight run`. Without it, experimental commands are hidden from `--help` and refuse to run.  See [Experimental Features](#experimental-features). | `export WSINSIGHT_EXPERIMENTAL=1`
  `S3_STORAGE_OPTIONS`         | JSON object passed verbatim to `s3fs` / `fsspec` (e.g. AWS profile, endpoint URL). Required to read/write S3 URIs.                                                                  | `export S3_STORAGE_OPTIONS='{"profile":"saml"}'`
  `GS_STORAGE_OPTIONS`         | JSON object passed verbatim to `gcsfs` / `fsspec` for Google Cloud Storage (`gs://`) URIs. Optional: auth defaults to Application Default Credentials (`GOOGLE_APPLICATION_CREDENTIALS`); set this only to override (e.g. a service-account key).                         | `export GS_STORAGE_OPTIONS='{"token":"/path/to/service-account.json"}'`
  `WSINSIGHT_REMOTE_CACHE_DIR` | Local directory where remote assets (S3 tiles, GDC downloads) are materialised. Defaults to `~/.cache/wsinsight`. Point it at a fast SSD for large cohorts.                         | `export WSINSIGHT_REMOTE_CACHE_DIR=/scratch/wsinsight-cache`

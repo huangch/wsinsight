@@ -6,29 +6,34 @@ import json
 import logging
 import os
 from pathlib import Path
-from typing import Any, Literal
+from typing import Any
+from typing import Literal
 
 import click
 
 from ..wsi import set_backend
-from .run import run
-from .infer import infer
-from .patch import patch
+from .agg import agg
+from .cme import cme
+from .cme import cme_profile_cmd
+from .ecomp import ecomp
+
 # from .convert_csv_to_sbubmi import tosbu
 from .export import export
-from .hplot import hplot, hplot_finalize_cmd
-from .reg import reg
+from .hplot import hplot
+from .hplot import hplot_finalize_cmd
+from .infer import infer
 from .ncomp import ncomp
-from .ecomp import ecomp
+from .patch import patch
+from .reg import reg
+from .run import run
 from .tcomp import tcomp
-from .cme import cme, cme_profile_cmd
 
 _logging_levels = ["debug", "info", "warning", "error", "critical"]
 
 # Subcommands hidden unless the user opts into experimental features by
 # setting the WSINSIGHT_EXPERIMENTAL environment variable. Keep this list in
 # sync with qupath-extension-wsinsight/commands/WSInsightCommands.EXPERIMENTAL.
-_EXPERIMENTAL_COMMANDS = ("hplot", "hplot-finalize", "cme", "tcomp", "ecomp")
+_EXPERIMENTAL_COMMANDS = ("hplot", "hplot-finalize", "cme", "tcomp", "ecomp", "agg")
 
 
 def _experimental_enabled() -> bool:
@@ -92,6 +97,7 @@ cli.add_command(ecomp)
 cli.add_command(tcomp)
 cli.add_command(cme)
 cli.add_command(cme_profile_cmd)
+cli.add_command(agg)
 
 # Hide experimental commands from --help unless WSINSIGHT_EXPERIMENTAL is set.
 # They remain registered so `describe` can emit the full schema; invocation is

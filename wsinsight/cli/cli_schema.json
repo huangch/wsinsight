@@ -1,5 +1,156 @@
 {
   "commands": {
+    "agg": {
+      "help": "Detect cell-type aggregates (e.g. TLS) and write namespaced outputs.\n\n    \b\n    Outputs written to <results-dir>/:\n      model-outputs-csv/<slide>.csv      gains object_<name>_prob_<name> column\n      agg-<name>-outputs-csv/<slide>.csv  one row per aggregate (hplot-consumable)\n      graphs/<slide>.h5                   gains an agg/<name>/ quotient-graph group",
+      "name": "agg",
+      "params": [
+        {
+          "default": null,
+          "flags": [
+            "-i",
+            "--wsi-dir"
+          ],
+          "help": "Directory containing whole slide images.  Used only to enumerate slides and resolve \u00b5m-per-pixel spacing; images are not fully read during agg.",
+          "is_flag": false,
+          "kind": "string",
+          "multiple": false,
+          "name": "wsi_dir",
+          "param_type": "option",
+          "required": true
+        },
+        {
+          "default": null,
+          "flags": [
+            "-o",
+            "--results-dir"
+          ],
+          "help": "Directory holding WSInsight inference outputs.  Must contain a ``model-outputs-csv/`` subdirectory produced by ``wsinsight infer`` or ``wsinsight run``.",
+          "is_flag": false,
+          "kind": "string",
+          "multiple": false,
+          "name": "results_dir",
+          "param_type": "option",
+          "required": true
+        },
+        {
+          "default": null,
+          "flags": [
+            "--agg-name"
+          ],
+          "help": "Product label for this aggregate (lower-case [a-z0-9_]+), e.g. 'tls'.  Namespaces every artifact (object_<name>_prob_<name> column, agg-<name>-outputs-csv/, agg/<name>/ in the graph cache) and is usable as a type in `wsinsight hplot --target-by aggregate`.",
+          "is_flag": false,
+          "kind": "string",
+          "multiple": false,
+          "name": "agg_name",
+          "param_type": "option",
+          "required": true
+        },
+        {
+          "default": null,
+          "flags": [
+            "--agg-types"
+          ],
+          "help": "Comma-separated ingredient cell types that may join the aggregate, e.g. 't_cell,b_cell'.",
+          "is_flag": false,
+          "kind": "string",
+          "multiple": false,
+          "name": "agg_types",
+          "param_type": "option",
+          "required": true
+        },
+        {
+          "default": 25.0,
+          "flags": [
+            "--agg-max-neighbor-distance"
+          ],
+          "help": "Maximum distance (\u00b5m) between neighboring cells in the Delaunay graph.",
+          "is_flag": false,
+          "kind": "float",
+          "multiple": false,
+          "name": "agg_max_neighbor_distance",
+          "param_type": "option",
+          "required": false
+        },
+        {
+          "default": 2,
+          "flags": [
+            "--agg-k"
+          ],
+          "help": "k-hop neighborhood radius for the density gate.",
+          "is_flag": false,
+          "kind": "int",
+          "multiple": false,
+          "name": "agg_k",
+          "param_type": "option",
+          "required": false
+        },
+        {
+          "default": 8,
+          "flags": [
+            "--agg-n"
+          ],
+          "help": "Minimum neighborhood size for a cell to be inside an aggregate region.",
+          "is_flag": false,
+          "kind": "int",
+          "multiple": false,
+          "name": "agg_n",
+          "param_type": "option",
+          "required": false
+        },
+        {
+          "default": 0.5,
+          "flags": [
+            "--agg-r"
+          ],
+          "help": "Minimum fraction of ingredient cells in the neighborhood (density gate).",
+          "is_flag": false,
+          "kind": "float",
+          "multiple": false,
+          "name": "agg_r",
+          "param_type": "option",
+          "required": false
+        },
+        {
+          "default": 10,
+          "flags": [
+            "--agg-min-size"
+          ],
+          "help": "Drop aggregates with fewer than this many cells.",
+          "is_flag": false,
+          "kind": "int",
+          "multiple": false,
+          "name": "agg_min_size",
+          "param_type": "option",
+          "required": false
+        },
+        {
+          "default": false,
+          "flags": [
+            "--overwrite"
+          ],
+          "help": "Recompute and overwrite existing per-slide agg outputs for this name.",
+          "is_flag": true,
+          "kind": "bool",
+          "multiple": false,
+          "name": "overwrite",
+          "param_type": "option",
+          "required": false
+        },
+        {
+          "default": 8,
+          "flags": [
+            "--num-workers"
+          ],
+          "help": "Number of slides to process concurrently.",
+          "is_flag": false,
+          "kind": "int",
+          "multiple": false,
+          "name": "num_workers",
+          "param_type": "option",
+          "required": false
+        }
+      ]
+    },
     "cme": {
       "help": "Discover cellular microenvironments (CMEs) across a cohort of slides.\n\n    Builds per-slide Delaunay cell graphs, trains a global Deep Graph Infomax\n    (DGI) encoder across all slides, clusters the resulting embeddings, and\n    writes per-cell CME labels and annotation-level region merges.\n\n    \b\n    Outputs written to <results-dir>/:\n      cme-outputs-csv/cells/<slide>.csv   per-cell CME labels + features\n      cme-outputs-csv/cmes/<slide>.csv    annotation-level merged CME regions\n      cme-outputs-geojson/cells/          GeoJSON cell detections with CME labels\n      cme-outputs-geojson/cmes/           GeoJSON CME region annotations",
       "name": "cme",
@@ -408,13 +559,14 @@
         {
           "choices": [
             "celltype",
-            "cme"
+            "cme",
+            "aggregate"
           ],
           "default": "celltype",
           "flags": [
             "--base-by"
           ],
-          "help": "Interpret --hplot-base-types as cell types or CME (niche) ids.",
+          "help": "Interpret --hplot-base-types as cell types, CME (niche) ids, or aggregate names.",
           "is_flag": false,
           "kind": "choice",
           "multiple": false,
@@ -425,13 +577,14 @@
         {
           "choices": [
             "celltype",
-            "cme"
+            "cme",
+            "aggregate"
           ],
           "default": "celltype",
           "flags": [
             "--target-by"
           ],
-          "help": "Interpret --hplot-target-types as cell types or CME (niche) ids. Use 'cme' to plot a niche's layer-wise fraction; requires a prior `wsinsight cme` run.",
+          "help": "Interpret --hplot-target-types as cell types, CME (niche) ids, or aggregate names. Use 'cme' for a niche's layer-wise fraction (requires `wsinsight cme`); use 'aggregate' for an aggregate's member-cell fraction (requires `wsinsight agg`).",
           "is_flag": false,
           "kind": "choice",
           "multiple": false,

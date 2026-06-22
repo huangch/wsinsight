@@ -3,23 +3,23 @@
 from __future__ import annotations
 
 import math
-import os
 import re
-from concurrent.futures import ThreadPoolExecutor, as_completed
-from pathlib import Path
-from typing import Iterable, List
+from concurrent.futures import ThreadPoolExecutor
+from concurrent.futures import as_completed
+from typing import Iterable
+from typing import List
 
 import click
 import pandas as pd
 from tqdm import tqdm
 
-from ..insightlib.hplot_generation import hplot_generation, hplot_finalize
-from ..uri_path import URIPath, URIPathType
+from ..insightlib.hplot_generation import hplot_finalize
+from ..insightlib.hplot_generation import hplot_generation
+from ..uri_path import URIPath
+from ..uri_path import URIPathType
 from ._meta import write_runtime_metadata
-from ._paths import (
-    default_storage_kwargs,
-    ensure_input_directory,
-)
+from ._paths import default_storage_kwargs
+from ._paths import ensure_input_directory
 
 _STORAGE_KWARGS = default_storage_kwargs()
 
@@ -41,10 +41,16 @@ def _coerce_number(token: str) -> int | float | str:
     return t.lower()
 
 
-def _csv_to_list(_: click.Context, __: click.Parameter, value: str | list[str] | None) -> list[int | float | str]:
+def _csv_to_list(
+    _: click.Context, __: click.Parameter, value: str | list[str] | None
+) -> list[int | float | str]:
     if value is None:
         return []
-    tokens = value if isinstance(value, list) else [x for x in re.split(r"[,\s]+", str(value).strip()) if x]
+    tokens = (
+        value
+        if isinstance(value, list)
+        else [x for x in re.split(r"[,\s]+", str(value).strip()) if x]
+    )
     return [_coerce_number(str(x)) for x in tokens]
 
 
@@ -135,16 +141,17 @@ def _validate_types(
     "--base-by",
     default="celltype",
     show_default=True,
-    type=click.Choice(["celltype", "cme"]),
-    help="Interpret --hplot-base-types as cell types or CME (niche) ids.",
+    type=click.Choice(["celltype", "cme", "aggregate"]),
+    help="Interpret --hplot-base-types as cell types, CME (niche) ids, or aggregate names.",
 )
 @click.option(
     "--target-by",
     default="celltype",
     show_default=True,
-    type=click.Choice(["celltype", "cme"]),
-    help="Interpret --hplot-target-types as cell types or CME (niche) ids. "
-         "Use 'cme' to plot a niche's layer-wise fraction; requires a prior `wsinsight cme` run.",
+    type=click.Choice(["celltype", "cme", "aggregate"]),
+    help="Interpret --hplot-target-types as cell types, CME (niche) ids, or aggregate names. "
+    "Use 'cme' for a niche's layer-wise fraction (requires `wsinsight cme`); "
+    "use 'aggregate' for an aggregate's member-cell fraction (requires `wsinsight agg`).",
 )
 @click.option(
     "--hplot-k",
@@ -221,7 +228,9 @@ def hplot(
     ensure_input_directory(wsi_dir, "--wsi-dir")
     ensure_input_directory(results_dir, "--results-dir")
 
-    slide_paths = sorted([p for p in wsi_dir.iterdir() if wsi_dir.scheme == "image-list" or p.is_file()])
+    slide_paths = sorted(
+        [p for p in wsi_dir.iterdir() if wsi_dir.scheme == "image-list" or p.is_file()]
+    )
     if not slide_paths:
         raise click.ClickException(f"no files exist in the slide directory: {wsi_dir}")
 
@@ -229,7 +238,9 @@ def hplot(
     # CME (niche) one-hot columns live in cme-outputs-csv/cells/, a superset of
     # model-outputs-csv that also carries the prob_ columns. Read from there
     # whenever either axis is a CME.
-    model_output_subdir = "cme-outputs-csv/cells" if cme_involved else "model-outputs-csv"
+    model_output_subdir = (
+        "cme-outputs-csv/cells" if cme_involved else "model-outputs-csv"
+    )
     model_output_dir = results_dir / model_output_subdir
     if not model_output_dir.exists():
         raise click.ClickException(
@@ -238,16 +249,21 @@ def hplot(
         )
 
     if not hplot_base_types or not hplot_target_types:
-        raise click.ClickException("H-Plot requires both --hplot-base-types and --hplot-target-types.")
+        raise click.ClickException(
+            "H-Plot requires both --hplot-base-types and --hplot-target-types."
+        )
 
     # Cell-type names are normalised against prob_ columns; CME ids ("7" or
-    # "cme_7") are passed through verbatim and resolved later.
+    # "cme_7") are passed through verbatim and resolved later.  Aggregate names
+    # are normalised to lower-case snake (matching `wsinsight agg --agg-name`).
     base_type_list = (
-        _normalize_types(hplot_base_types) if base_by == "celltype"
+        _normalize_types(hplot_base_types)
+        if base_by in ("celltype", "aggregate")
         else [str(t).strip() for t in hplot_base_types]
     )
     target_type_list = (
-        _normalize_types(hplot_target_types) if target_by == "celltype"
+        _normalize_types(hplot_target_types)
+        if target_by in ("celltype", "aggregate")
         else [str(t).strip() for t in hplot_target_types]
     )
 
@@ -307,7 +323,7 @@ def hplot(
     type=URIPathType(exists=True, **_STORAGE_KWARGS),
     required=True,
     help="Results directory containing hplot per-slide outputs. The aggregated "
-         "hplot-outputs.csv and hmetrics-outputs.csv will be written here.",
+    "hplot-outputs.csv and hmetrics-outputs.csv will be written here.",
 )
 @click.option(
     "--overwrite",

@@ -55,10 +55,11 @@ experimental subcommands that are gated by ``WSINSIGHT_EXPERIMENTAL=1`` (see
 .. note::
 
    **Experimental commands.** ``hplot``, ``hplot-finalize``, ``ncomp``,
-   ``ecomp``, ``tcomp``, and ``cme`` (together with their
+   ``ecomp``, ``tcomp``, ``cme``, and ``agg`` (together with their
    ``hplot-outputs.csv`` / ``hmetrics-outputs.csv`` /
    ``ncomp-outputs-csv/`` / ``ecomp-outputs-csv/`` / ``tcomp-outputs-csv/`` /
-   ``cme-outputs-*/`` outputs) are research features under active
+   ``cme-outputs-*/`` / ``agg-<name>-outputs-csv/`` outputs) are research
+   features under active
    development.  CLI flags, output layouts, and column schemas may change
    without notice.  All but ``ncomp`` are hidden from ``wsinsight --help``
    and refuse to run unless ``WSINSIGHT_EXPERIMENTAL=1`` is set.
@@ -111,6 +112,16 @@ Command                       Purpose
                               slides.  Trains a global DGI encoder, clusters embeddings,
                               and writes per-cell CME labels and annotation regions.
                               Cross-slide — cannot be parallelised across GPU shards.
+``wsinsight agg``             Cell-type aggregate analysis on existing inference outputs.
+                              Detects connected, density-gated aggregates of a chosen
+                              cell-type set (``--agg-types``, e.g. T+B cells → TLS) over
+                              the cached Delaunay graph, contracts them into a quotient
+                              graph, and writes namespaced outputs under the product label
+                              ``--agg-name``: an ``object_<name>_prob_<name>`` membership
+                              column, an ``agg-<name>-outputs-csv/`` sidecar, and an
+                              ``agg/<name>/`` graph-cache subgroup.  The name is selectable
+                              in ``hplot`` via ``--base-by aggregate`` / ``--target-by
+                              aggregate``.
 ============================  ================================================================
 
 Pick ``run`` for one-shot processing. Switch to the explicit ``patch`` → ``infer`` flow

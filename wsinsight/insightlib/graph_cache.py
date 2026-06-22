@@ -12,6 +12,21 @@ Layout of each ``graphs/{slide_id}.h5``::
         edges_source   (E,)    int32
         edges_target   (E,)    int32
         edges_length   (E,)    float64
+    groups:
+        agg/<name>/                       one per ``wsinsight agg --agg-name``
+            attrs:  params_key  str   (validity key; rebuilt when it changes)
+                    num_cells   int64 (must match the file-level num_cells)
+            datasets:
+                aggregate_centers       (F, 2)  float64
+                aggregate_sizes         (F,)    int64
+                cell_to_aggregate       (N,)    int64   (-1 = no aggregate)
+                quotient_edges_source   (Q,)    int64
+                quotient_edges_target   (Q,)    int64
+
+The ``agg/`` groups live in the same per-slide file but are written separately
+(in append mode) after the base graph.  Rebuilding the base graph (mode ``w``)
+intentionally drops any stale ``agg/`` groups, since changed cell centres
+invalidate every derived aggregate.
 """
 
 from __future__ import annotations
@@ -25,7 +40,8 @@ import h5py
 import numpy as np
 import pandas as pd
 
-from .insight_helpers import _delaunay_full, prune_edges
+from .insight_helpers import _delaunay_full
+from .insight_helpers import prune_edges
 
 if TYPE_CHECKING:
     from ..uri_path import URIPath
@@ -36,6 +52,7 @@ _logger = logging.getLogger(__name__)
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
+
 
 def _cache_path(graph_cache_dir: Path | URIPath, slide_id: str) -> Path:
     return Path(str(graph_cache_dir)) / f"{slide_id}.h5"
@@ -128,6 +145,7 @@ def read_graph_cache(h5path: Path) -> dict:
 # Main entry point
 # ---------------------------------------------------------------------------
 
+
 def get_or_build_delaunay(
     graph_cache_dir: Path | URIPath,
     slide_id: str,
@@ -179,8 +197,10 @@ def get_or_build_delaunay(
                 pass
         else:
             return prune_edges(
-                data["edges_source"], data["edges_target"],
-                data["edges_length"], max_edge_length_px,
+                data["edges_source"],
+                data["edges_target"],
+                data["edges_length"],
+                max_edge_length_px,
             )
 
     _logger.debug("Graph cache MISS for %s — building", slide_id)
@@ -197,3 +217,118 @@ def get_or_build_delaunay(
     )
 
     return prune_edges(src, dst, lengths, max_edge_length_px)
+
+
+# ---------------------------------------------------------------------------
+# Aggregate (quotient-graph) cache — agg/<name>/ subgroups
+# ---------------------------------------------------------------------------
+
+
+def make_aggregate_params_key(
+    *,
+    agg_types: "list[str]",
+    k: int,
+    N: int,
+    R: float,
+    min_size: int,
+    max_edge_length_px: float,
+) -> str:
+    """Build the validity key string for an ``agg/<name>`` subgroup.
+
+    The aggregate cache is rebuilt whenever any of these parameters change.
+    """
+    types = ",".join(sorted(str(t) for t in agg_types))
+    return (
+        f"types={types};k={int(k)};N={int(N)};R={float(R):.6g};"
+        f"min_size={int(min_size)};max_edge_px={float(max_edge_length_px):.6g}"
+    )
+
+
+def is_aggregate_cache_valid(
+    h5path: Path,
+    name: str,
+    params_key: str,
+    num_cells: int,
+) -> bool:
+    """Return True if a cached ``agg/<name>`` subgroup matches the request."""
+    if not h5path.exists():
+        return False
+    try:
+        with h5py.File(h5path, "r") as f:
+            grp = f.get(f"agg/{name}")
+            if grp is None:
+                return False
+            if str(grp.attrs.get("params_key", "")) != params_key:
+                return False
+            if int(grp.attrs.get("num_cells", -1)) != int(num_cells):
+                return False
+            for ds in (
+                "aggregate_centers",
+                "aggregate_sizes",
+                "cell_to_aggregate",
+                "quotient_edges_source",
+                "quotient_edges_target",
+            ):
+                if ds not in grp:
+                    return False
+        return True
+    except Exception:
+        return False
+
+
+def write_aggregate_cache(
+    h5path: Path,
+    name: str,
+    *,
+    params_key: str,
+    num_cells: int,
+    aggregate_centers: np.ndarray,
+    aggregate_sizes: np.ndarray,
+    cell_to_aggregate: np.ndarray,
+    quotient_edges_source: np.ndarray,
+    quotient_edges_target: np.ndarray,
+) -> None:
+    """Write (or overwrite) the ``agg/<name>`` subgroup in append mode.
+
+    The base graph datasets in the file are left untouched.
+    """
+    h5path.parent.mkdir(parents=True, exist_ok=True)
+    with h5py.File(h5path, "a") as f:
+        agg_root = f.require_group("agg")
+        if name in agg_root:
+            del agg_root[name]
+        grp = agg_root.create_group(name)
+        grp.attrs["params_key"] = params_key
+        grp.attrs["num_cells"] = int(num_cells)
+        grp.create_dataset(
+            "aggregate_centers", data=np.asarray(aggregate_centers, dtype=np.float64)
+        )
+        grp.create_dataset(
+            "aggregate_sizes", data=np.asarray(aggregate_sizes, dtype=np.int64)
+        )
+        grp.create_dataset(
+            "cell_to_aggregate", data=np.asarray(cell_to_aggregate, dtype=np.int64)
+        )
+        grp.create_dataset(
+            "quotient_edges_source",
+            data=np.asarray(quotient_edges_source, dtype=np.int64),
+        )
+        grp.create_dataset(
+            "quotient_edges_target",
+            data=np.asarray(quotient_edges_target, dtype=np.int64),
+        )
+
+
+def read_aggregate_cache(h5path: Path, name: str) -> dict:
+    """Load the ``agg/<name>`` subgroup datasets and attrs."""
+    with h5py.File(h5path, "r") as f:
+        grp = f[f"agg/{name}"]
+        return {
+            "params_key": str(grp.attrs.get("params_key", "")),
+            "num_cells": int(grp.attrs.get("num_cells", -1)),
+            "aggregate_centers": grp["aggregate_centers"][:],
+            "aggregate_sizes": grp["aggregate_sizes"][:],
+            "cell_to_aggregate": grp["cell_to_aggregate"][:],
+            "quotient_edges_source": grp["quotient_edges_source"][:],
+            "quotient_edges_target": grp["quotient_edges_target"][:],
+        }
