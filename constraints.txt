@@ -45,8 +45,8 @@ gast==0.6.0
 gcsfs==2025.9.0
 # GDAL: installed via conda, not pip — intentionally omitted.
 geopandas==1.1.1
-girder-client==3.2.11
-girder-slicer-cli-web==1.5.14
+# girder-client==3.2.11  # BROKEN 2026-06: pypi sdist reports version 0.0.0; skip and install histomicstk --no-deps
+girder-client==5.0.10   # standalone CLI; replaces the broken 3.2.11 server-bundled sdist
 Glymur==0.14.4.1
 google-pasta==0.2.0
 greenlet==3.2.4

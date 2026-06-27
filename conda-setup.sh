@@ -1,4 +1,19 @@
-# Reset environment
+#!/usr/bin/env bash
+# conda-setup.sh — create and populate the wsinsight conda environment.
+#
+# Usage:  bash ./conda-setup.sh   (from /workspace/wsinsight/devel/wsinsight/)
+#
+# Key workarounds:
+#   1. PIP_CACHE_DIR=/tmp/...   — redirects pip wheel cache to /tmp to bypass NAS inode quotas
+#   2. histomicstk --no-deps    — skips broken girder-client 3.2.11 on PyPI (broken 2026-06)
+#   3. large-image explicit      — histomicstk imports large_image at module init; must install
+#   4. pyvips SSL fallback chain — handles Pfizer proxy certificate interception
+#   5. stringzilla pre-install  — isolates GCC-incompatible source build so failure
+#                                 doesn't roll back click/break the smoke test
+
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+
+# ── Reset environment ──────────────────────────────────────────────────────────
 source /opt/anaconda3/etc/profile.d/conda.sh
 conda deactivate
 conda env remove -n wsinsight -y
@@ -7,11 +22,17 @@ conda env remove -n wsinsight -y
 conda create -n wsinsight python=3.11 gdal=3.11.3 "setuptools<67" -c conda-forge -y
 conda activate wsinsight
 pip install --upgrade pip
-pip install -c constraints.txt "numpy<2"
 
-# heavy stacks first (optional but speeds up):
-pip install -c constraints.txt torch torchvision torch-geometric tensorflow keras stardist nvidia-ml-py
-# pip uninstall -y pynvml
+# ── Pip cache fix (NAS inode quota) ───────────────────────────────────────────
+# PIP_CACHE_DIR redirects ALL cache writes (including temp wheel builds) to /tmp.
+# This is more reliable than PIP_NO_CACHE_DIR=1 which doesn't prevent temp writes.
+pip cache purge || true
+export PIP_CACHE_DIR=/tmp/pip-cache-wsinsight
+
+pip install -c "${SCRIPT_DIR}/constraints.txt" "numpy<2"
+
+# heavy stacks first (torch/tensorflow dominate download time):
+pip install -c "${SCRIPT_DIR}/constraints.txt" torch torchvision torch-geometric tensorflow keras stardist nvidia-ml-py
 
 # histomicstk wheel source (same as before), still honoring constraints:
 # pip install -c constraints.txt "numpy<2" histomicstk --find-links https://girder.github.io/large_image_wheels
@@ -19,47 +40,88 @@ pip install -c constraints.txt torch torchvision torch-geometric tensorflow kera
 # then install histomicstk normally.
 pip install --trusted-host github.com --trusted-host raw.githubusercontent.com --trusted-host girder.github.io \
     --find-links https://girder.github.io/large_image_wheels \
-    -c constraints.txt "numpy<2" pyvips \
+    -c "${SCRIPT_DIR}/constraints.txt" "numpy<2" pyvips \
     2>/dev/null \
   || pip install --trusted-host github.com --trusted-host raw.githubusercontent.com --trusted-host girder.github.io \
     --find-links https://girder.github.io/large_image_wheels \
-    -c constraints.txt "numpy<2" pyvips \
+    -c "${SCRIPT_DIR}/constraints.txt" "numpy<2" pyvips \
+    --cert /etc/pki/tls/certs/ca-bundle.crt \
+    2>/dev/null \
+  || pip install --trusted-host github.com --trusted-host raw.githubusercontent.com --trusted-host girder.github.io \
+    --find-links https://girder.github.io/large_image_wheels \
+    -c "${SCRIPT_DIR}/constraints.txt" "numpy<2" pyvips \
     --cert /etc/ssl/certs/ca-certificates.crt \
     2>/dev/null \
   || PIP_TRUSTED_HOST="github.com girder.github.io raw.githubusercontent.com" \
     CURL_CA_BUNDLE="" \
-    pip install -c constraints.txt "numpy<2" pyvips \
-    --find-links https://girder.github.io/large_image_wheels
+    pip install -c "${SCRIPT_DIR}/constraints.txt" "numpy<2" pyvips \
+    --find-links https://girder.github.io/large_image_wheels \
+    2>/dev/null \
+  || echo "WARNING: pyvips install failed (all SSL fallbacks exhausted); continuing"
 
-pip install --trusted-host github.com --trusted-host raw.githubusercontent.com --trusted-host girder.github.io --find-links https://girder.github.io/large_image_wheels -c constraints.txt "numpy<2" histomicstk
+# ── histomicstk: install ALL deps first, then the wheel itself ────────────────
+# Strategy: histomicstk is installed with --no-deps at the END of this block.
+# Every dep is present before histomicstk arrives, so no subsequent pip call
+# will ever see histomicstk with unsatisfied requirements (= no conflict warning).
 
-# Pre-install remaining heavy deps that cause resolver backtracking
-pip install -c constraints.txt "numpy<2" \
+# 1. histomicstk runtime deps from PyPI
+pip install -c "${SCRIPT_DIR}/constraints.txt" \
+    nimfa pandas scipy scikit-image Pillow imageio sqlalchemy \
+    "ctk-cli" "girder-slicer-cli-web" "girder-client" \
+    "dask[dataframe]<2024.11.0" distributed
+
+# 2. large-image + sources + converter (from girder wheel index; SSL fallback for Pfizer proxy)
+pip install \
+      --trusted-host github.com --trusted-host raw.githubusercontent.com \
+      --trusted-host girder.github.io \
+      --find-links https://girder.github.io/large_image_wheels \
+      "large-image" "large-image-source-tifffile" "large-image-source-pil" \
+      "large-image-source-openslide" "large-image-source-vips" \
+      "large-image-converter" 2>/dev/null \
+  || pip install "large-image" "large-image-converter" \
+  || echo "WARNING: large-image install failed; histomicstk will not import"
+
+# 3. histomicstk itself — all deps are already above, so --no-deps is safe and
+#    NO dependency conflict message will appear in any subsequent pip call.
+pip install --no-deps \
+    --trusted-host github.com --trusted-host raw.githubusercontent.com \
+    --trusted-host girder.github.io \
+    --find-links https://girder.github.io/large_image_wheels \
+    -c "${SCRIPT_DIR}/constraints.txt" histomicstk
+
+# ── Remaining wsinsight deps ──────────────────────────────────────────────────
+pip install -c "${SCRIPT_DIR}/constraints.txt" "numpy<2" \
+    click \
     scikit-learn shapely geopandas pyproj rasterio pyogrio \
     openslide-python wsidicom paquo "wsinfer-zoo>=0.6.2" \
     igraph leidenalg s3fs gcsfs boto3 platformdirs timm \
-    tiffslide imagecodecs opencv-python-headless orjson click
+    tiffslide imagecodecs opencv-python-headless orjson
 
 # the rest + your package (use --no-build-isolation to speed up resolve)
-pip install -c constraints.txt --no-build-isolation -e .
+# --no-deps: all real deps installed above; prevents pip re-resolving
+# histomicstk -> girder-client (broken on PyPI).
+pip install --no-deps --no-build-isolation -e "${SCRIPT_DIR}"
 
-# install CellViT training dependencies (required for model-development training):
-#   - cupy-cuda12x<14 : pre-built binary wheel; pinned <14 because cupy 14.x
-#                       requires numpy>=2 which conflicts with our numpy<2 pin.
-#                       Replace with cupy-cuda11x if running on CUDA 11.
-pip install -c constraints.txt "numpy<2" "cupy-cuda12x<14" \
-    wandb albumentations colorama einops schema torchstain natsort \
+# ── CellViT training dependencies ─────────────────────────────────────────────
+# albumentations<2.0: versions >=2.0 require albucore which requires stringzilla,
+# a C extension that fails to compile on GCC < 11 (system has GCC 8.5).
+# CellViT training only uses basic augmentations available in albumentations 1.x.
+pip install -c "${SCRIPT_DIR}/constraints.txt" stringzilla 2>/dev/null \
+  || pip install stringzilla --no-build-isolation 2>/dev/null \
+  || echo "WARNING: stringzilla build failed (GCC < 11 incompatible with AVX-512 byte intrinsics); albumentations advanced features may be limited"
+
+pip install -c "${SCRIPT_DIR}/constraints.txt" "numpy<2" \
+    "cupy-cuda12x<14" \
+    wandb "albumentations<1.4.0" colorama einops schema torchstain natsort \
     geojson ujson ray torchmetrics "evalutils==0.5.0" torchinfo
 
-# Safety check: ensure numpy stayed below 2.0
-python -c "import numpy; v=numpy.__version__; assert int(v.split('.')[0]) < 2, f'ERROR: numpy {v} >= 2.0 detected; stardist will break. Re-run: pip install -c constraints.txt \"numpy<2\"'"
+# ── Safety check ──────────────────────────────────────────────────────────────
+python -c 'import numpy; v=numpy.__version__; assert int(v.split(".")[0])<2, "ERROR: numpy "+v+" >= 2.0; stardist will break"; print("numpy "+v+"  OK")'
 
-# Test the main entry
+# ── Smoke test ────────────────────────────────────────────────────────────────
 S3_STORAGE_OPTIONS='{"profile":"saml"}' \
 WSINSIGHT_ZOO_REGISTRY_PATH='/workspace/wsinsight/devel/zoo/wsinsight-zoo-registry.json' \
 WSINSIGHT_REMOTE_CACHE_DIR='/tmp' \
 KERAS_HOME='/workspace/wsinsight/devel/keras' \
 wsinsight
-
-
 
