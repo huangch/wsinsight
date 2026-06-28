@@ -293,7 +293,7 @@ def _worker(
                 columns=[c for c in _drop_cols if c in nodes_df.columns]
             ).to_csv(fp, index=False)
 
-        hplot_df = compute_hplot(nodes_df, edges_df)
+        hplot_df = compute_hplot(nodes_df, edges_df, mpp=mpp)
         _step("hplot curve")
 
         with hplot_csv.open("w", encoding="utf-8", newline="") as fp:
@@ -407,6 +407,7 @@ def hplot_finalize(output_dir: URIPath, overwrite: bool = False) -> None:
         "base_count",
         "all_count",
         "distance",
+        "distance_um",
     ]
 
     hplot_frames: list[pd.DataFrame] = []
@@ -429,6 +430,7 @@ def hplot_finalize(output_dir: URIPath, overwrite: bool = False) -> None:
                 "base_type_count",
                 "all_type_count",
                 "distance",
+                "distance_um",
             ]
             if c in df.columns
         ]
@@ -451,6 +453,7 @@ def hplot_finalize(output_dir: URIPath, overwrite: bool = False) -> None:
                     "base_count": entry.get("base_count", np.nan),
                     "all_count": entry.get("all_count", np.nan),
                     "distance": entry.get("distance", np.nan),
+                    "distance_um": entry.get("distance_um", np.nan),
                 }
             )
         hplot_frames.append(pd.DataFrame(rows, columns=_COL_ORDER))
@@ -628,6 +631,7 @@ def hplot_generation(
             "base_count": [],
             "all_count": [],
             "distance": [],
+            "distance_um": [],
         }
     )
     # DISABLED: hmetrics_df init
@@ -734,6 +738,7 @@ def hplot_generation(
                 "base_type_count",
                 "all_type_count",
                 "distance",
+                "distance_um",
             ]
             clean_df = clean_df[np.isfinite(clean_df["layer"])][required_cols]
             if clean_df.empty:
@@ -752,6 +757,7 @@ def hplot_generation(
                     row.get("base_type_count", np.nan),
                     row.get("all_type_count", np.nan),
                     row.get("distance", np.nan),
+                    row.get("distance_um", np.nan),
                 )
                 for layer, row in clean_df.set_index("layer")[
                     [
@@ -761,6 +767,7 @@ def hplot_generation(
                         "base_type_count",
                         "all_type_count",
                         "distance",
+                        "distance_um",
                     ]
                 ].iterrows()
             }
@@ -773,8 +780,9 @@ def hplot_generation(
                     base_count,
                     all_count,
                     distance,
+                    distance_um,
                 ) = layer_lookup.get(
-                    layer, (np.nan, np.nan, np.nan, np.nan, np.nan, np.nan)
+                    layer, (np.nan, np.nan, np.nan, np.nan, np.nan, np.nan, np.nan)
                 )
                 hplot_df.loc[len(hplot_df)] = [
                     image_id,
@@ -785,6 +793,7 @@ def hplot_generation(
                     base_count,
                     all_count,
                     distance,
+                    distance_um,
                 ]
 
             # DISABLED: hmetrics row append

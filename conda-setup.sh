@@ -1,7 +1,12 @@
 #!/usr/bin/env bash
 # conda-setup.sh — create and populate the wsinsight conda environment.
 #
-# Usage:  bash ./conda-setup.sh   (from /workspace/wsinsight/devel/wsinsight/)
+# Usage:  bash ./conda-setup.sh [-n ENV_NAME] [-r|--reset]
+#
+#   -n | --name  ENV_NAME   Conda environment to use (default: current active env).
+#   -r | --reset            Deactivate, remove, recreate, and activate the env.
+#                           Without this flag the script skips env creation and
+#                           only (re-)installs packages into the existing env.
 #
 # Key workarounds:
 #   1. PIP_CACHE_DIR=/tmp/...   — redirects pip wheel cache to /tmp to bypass NAS inode quotas
@@ -13,14 +18,51 @@
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 
-# ── Reset environment ──────────────────────────────────────────────────────────
-source /opt/anaconda3/etc/profile.d/conda.sh
-conda deactivate
-conda env remove -n wsinsight -y
+# ── Argument parsing ───────────────────────────────────────────────────────────
+ENV_NAME="${CONDA_DEFAULT_ENV:-}"   # default = current active env
+DO_RESET=0
 
-# conda gdal first as you already do
-conda create -n wsinsight python=3.11 gdal=3.11.3 "setuptools<67" -c conda-forge -y
-conda activate wsinsight
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        -n|--name)
+            if [[ -z "${2:-}" ]]; then
+                echo "Error: -n/--name requires an environment name." >&2
+                exit 1
+            fi
+            ENV_NAME="$2"
+            shift 2
+            ;;
+        -r|--reset)
+            DO_RESET=1
+            shift
+            ;;
+        *)
+            echo "Unknown option: $1" >&2
+            echo "Usage: bash ./conda-setup.sh [-n ENV_NAME] [-r|--reset]" >&2
+            exit 1
+            ;;
+    esac
+done
+
+if [[ -z "$ENV_NAME" ]]; then
+    echo "Error: no conda environment specified and no environment is currently active." >&2
+    echo "       Use -n ENV_NAME to specify one." >&2
+    exit 1
+fi
+
+echo "Target conda environment: ${ENV_NAME}  (reset=${DO_RESET})"
+
+# ── (Re-)create environment ────────────────────────────────────────────────────
+source /opt/anaconda3/etc/profile.d/conda.sh
+
+if [[ "$DO_RESET" -eq 1 ]]; then
+    conda deactivate
+    conda env remove -n "${ENV_NAME}" -y 2>/dev/null || true
+    # conda gdal first as you already do
+    conda create -n "${ENV_NAME}" python=3.11 gdal=3.11.3 "setuptools<67" -c conda-forge -y
+fi
+
+conda activate "${ENV_NAME}"
 pip install --upgrade pip
 
 # ── Pip cache fix (NAS inode quota) ───────────────────────────────────────────
