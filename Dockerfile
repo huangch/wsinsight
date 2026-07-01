@@ -88,18 +88,52 @@ RUN pip install --retries 10 -c constraints.txt "numpy<2" \
 # ------------------------------------
 # Install HistomicsTK for staining normalization
 # ------------------------------------
-RUN pip install --retries 10 -c constraints.txt \
-    --trusted-host github.com \
-    --trusted-host raw.githubusercontent.com \
-    --trusted-host girder.github.io \
-    --find-links https://girder.github.io/large_image_wheels \
-    "numpy<2" histomicstk
+# The girder large_image_wheels index redirects wheel downloads to github.com,
+# which a corporate proxy may intercept with a self-signed certificate, so a
+# plain `pip install histomicstk --find-links ...` dies pulling pyvips.
+# Mirror conda-setup.sh: (1) pre-install pyvips through an SSL fallback chain and
+# tolerate failure; (2) install histomicstk runtime deps from PyPI; (3) install
+# large-image + sources from the girder index with a PyPI fallback; (4) install
+# histomicstk itself with --no-deps so it never re-triggers the proxied wheel
+# downloads.
+RUN set -eu; \
+    CONSTR=/app/wsinsight/constraints.txt; \
+    GIRDER="--trusted-host github.com --trusted-host raw.githubusercontent.com --trusted-host girder.github.io --find-links https://girder.github.io/large_image_wheels"; \
+    ( pip install --retries 5 $GIRDER -c "$CONSTR" "numpy<2" pyvips \
+      || pip install --retries 5 $GIRDER -c "$CONSTR" "numpy<2" pyvips --cert /etc/pki/tls/certs/ca-bundle.crt \
+      || pip install --retries 5 $GIRDER -c "$CONSTR" "numpy<2" pyvips --cert /etc/ssl/certs/ca-certificates.crt \
+      || CURL_CA_BUNDLE="" pip install --retries 5 $GIRDER -c "$CONSTR" "numpy<2" pyvips \
+      || echo "WARNING: pyvips install failed (all SSL fallbacks exhausted); continuing" ); \
+    pip install --retries 10 -c "$CONSTR" "numpy<2" \
+        nimfa pandas scipy scikit-image Pillow imageio sqlalchemy \
+        ctk-cli girder-slicer-cli-web girder-client \
+        "dask[dataframe]<2024.11.0" distributed; \
+    ( pip install --retries 5 $GIRDER "large-image" "large-image-source-tifffile" "large-image-source-pil" \
+        "large-image-source-openslide" "large-image-source-vips" "large-image-converter" \
+      || pip install "large-image" "large-image-converter" \
+      || echo "WARNING: large-image install failed; histomicstk may not import" ); \
+    pip install --no-deps --retries 10 $GIRDER -c "$CONSTR" histomicstk
 
 # ------------------------------------
 # Install H-plot and WSInsight packages
 # ------------------------------------
 # RUN pip install --upgrade "numpy<2" -e ./hplot
-RUN pip install -c constraints.txt "numpy<2" -e ".[mcp]"
+# Installing `-e ".[mcp]"` directly makes pip re-resolve the ENTIRE dependency
+# graph (already-installed histomicstk large-image[sources] + the [mcp] extra's
+# fastmcp -> keyring -> jaraco.* subtree) and hit pip's "resolution-too-deep".
+# Mirror conda-setup.sh: pre-install the runtime deps (and fastmcp for the MCP
+# extra) in bounded steps, then install the package itself with --no-deps so pip
+# never re-resolves the already-satisfied graph.
+RUN pip install --retries 10 -c constraints.txt "numpy<2" \
+    click \
+    scikit-learn shapely geopandas pyproj rasterio pyogrio \
+    openslide-python wsidicom paquo "wsinfer-zoo>=0.6.2" \
+    igraph leidenalg s3fs gcsfs boto3 platformdirs timm \
+    tiffslide imagecodecs opencv-python-headless orjson \
+    h5py anndata \
+    "huggingface_hub[hf_transfer]"
+RUN pip install --retries 10 -c constraints.txt fastmcp
+RUN pip install --no-deps --no-build-isolation -e "."
 
 # ------------------------------------
 # Hugging Face hub cache (first-run model auto-download)

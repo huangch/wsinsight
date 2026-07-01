@@ -67,6 +67,7 @@ def segment_and_patch_one_slide(
     stardist_normalization_pmin: float = 1.0,
     stardist_normalization_pmax: float = 99.8,
     cache_image_patches: bool = False,
+    spacing_um_px: float | None = None,
 ) -> None:
     """Get non-overlapping patch coordinates in tissue regions for a slide."""
 
@@ -85,7 +86,7 @@ def segment_and_patch_one_slide(
         return None
 
     slide = get_wsi_cls()(slide_path)
-    mpp = get_avg_mpp(slide_path)
+    mpp = get_avg_mpp(slide_path, default_mpp=spacing_um_px)
     slide_width, slide_height = slide.dimensions
     logger.info(f"Slide has WxH {slide.dimensions} and MPP={mpp}")
 
@@ -469,6 +470,7 @@ def segment_and_patch_directory_of_slides(
     stardist_normalization_pmin: float = 1.0,
     stardist_normalization_pmax: float = 99.8,
     cache_image_patches: bool = False,
+    spacing_um_px: float | None = None,
 ) -> None:
     """Batch segment and patch a directory of slides."""
 
@@ -502,6 +504,7 @@ def segment_and_patch_directory_of_slides(
                     stardist_normalization_pmin=stardist_normalization_pmin,
                     stardist_normalization_pmax=stardist_normalization_pmax,
                     cache_image_patches=cache_image_patches,
+                    spacing_um_px=spacing_um_px,
                 )
             except Exception as e:  # pragma: no cover - logged for operators
                 logger.error(f"Failed to segment and patch slide\n{slide_path}", exc_info=e)

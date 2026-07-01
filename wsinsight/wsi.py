@@ -267,7 +267,10 @@ def _get_mpp_tifffile(slide_path: str | Path) -> tuple[float, float]:
         except KeyError as err:
             raise CannotReadSpacing() from err
 
-        RESUNIT = tifffile.TIFF.RESUNIT
+        # tifffile moved the RESUNIT enum to the module level in 2022.7.28 and
+        # removed ``tifffile.TIFF.RESUNIT`` in newer releases; prefer the
+        # module-level name and fall back to the legacy location.
+        RESUNIT = getattr(tifffile, "RESUNIT", None) or tifffile.TIFF.RESUNIT
         scale = {
             RESUNIT.INCH: 25400.0,
             RESUNIT.CENTIMETER: 10000.0,
@@ -320,15 +323,19 @@ def _get_appmag_tiffslide(slide_path: str | Path) -> float | None:
         return None
 
 
-def get_avg_mpp(slide_path: Path | str) -> float:
+def get_avg_mpp(slide_path: Path | str, default_mpp: float | None = None) -> float:
     """Return the average MPP of a whole slide image.
 
     The value is in units of micrometers per pixel and is
     the average of the X and Y dimensions.
 
+    ``default_mpp`` is a user-supplied fallback (um/px) used **only** when the
+    spacing cannot be read from the slide metadata. Slide metadata is always
+    preferred; the fallback exists for slides that carry no MPP at all.
+
     Raises
     ------
-    CannotReadSpacing if the spacing cannot be read.
+    CannotReadSpacing if the spacing cannot be read and no ``default_mpp`` is given.
     """
 
     mppx: float
@@ -376,6 +383,15 @@ def get_avg_mpp(slide_path: Path | str) -> float:
             "%s: MPP missing and AppMag=%g not in fallback table %s.",
             str(slide_path), appmag, sorted(_MPP_FROM_APPMAG),
         )
+
+    # User-supplied fallback: used only when nothing could be read from the slide.
+    if default_mpp is not None and default_mpp > 0:
+        logger.warning(
+            "%s: MPP could not be read from the slide; using the supplied "
+            "--spacing-um-px=%g um/px fallback. Verify this matches the scan.",
+            str(slide_path), default_mpp,
+        )
+        return float(default_mpp)
 
     raise CannotReadSpacing(slide_path)
 

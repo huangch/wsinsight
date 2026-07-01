@@ -35,7 +35,7 @@ _GEOM_COLS = frozenset({
 import orjson
 def _dumps(obj: dict) -> bytes:
     """Serialize a GeoJSON dictionary using the fast `orjson` backend."""
-    return orjson.dumps(obj)
+    return orjson.dumps(obj, option=orjson.OPT_SERIALIZE_NUMPY)
 
 # --------------------------
 # Helpers
@@ -133,7 +133,7 @@ def _dataframe_to_geojson_box_fast(
     features = []
     for i in range(len(df)):
         measurements = {
-            c: (None if np.isnan(v) else v)
+            c: (None if np.isnan(v) else float(v))
             for c, v in zip(measure_cols, meas_arr[i])
         }
         feat = {
@@ -203,7 +203,7 @@ def _dataframe_to_geojson_polygon_fast(
             {"name": names[i], "color": list(color_list[i]["rgb"])} for i in idx
         ]
     props["measurements"] = [
-        {c: (None if np.isnan(v) else v) for c, v in zip(measure_cols, row)}
+        {c: (None if np.isnan(v) else float(v)) for c, v in zip(measure_cols, row)}
         for row in meas_arr
     ]
     props["isLocked"] = True  # match box path

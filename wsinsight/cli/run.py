@@ -30,6 +30,7 @@ from ..qupath import make_qupath_project
 from ..cancel import raise_if_cancelled
 from ..uri_path import URIPath, URIPathType
 from ..write_geojson import write_geojsons
+from ..write_h5ad import write_h5ads
 from ..write_omecsv import write_omecsvs
 from ._paths import default_storage_kwargs
 
@@ -116,6 +117,7 @@ _PATCH_PARAM_NAMES: tuple[str, ...] = (
     "patch_overlap_ratio",
     "patch_size_um",
     "patch_size_px",
+    "spacing_um_px",
 )
 
 _INFER_PARAM_NAMES: tuple[str, ...] = (
@@ -424,6 +426,14 @@ def _select_kwargs(values: dict[str, Any], keys: tuple[str, ...]) -> dict[str, A
     help="The size of patch in pixel. The default value of 0 produces"
     " full patch size of the chosen model.",
 )
+@click.option(
+    "--spacing-um-px",
+    default=0.0,
+    type=click.FloatRange(min=0.0),
+    help="Fallback slide resolution in micrometres-per-pixel (MPP), used ONLY for"
+    " slides whose MPP cannot be read from the WSI metadata. Slide metadata is"
+    " always preferred. The default of 0 disables the fallback.",
+)
 # @click.option(
 #     "--patch-overlap-median-filter-size",
 #     default=3,
@@ -616,6 +626,17 @@ def _select_kwargs(values: dict[str, Any], keys: tuple[str, ...]) -> dict[str, A
         "'wsinsight export --omecsv'."
     ),
 )
+@click.option(
+    "--export-h5ad",
+    is_flag=True,
+    default=False,
+    show_default=True,
+    help=(
+        "After inference, merge all per-cell analytics and export to AnnData "
+        ".h5ad files (export-h5ad/).  Equivalent to running "
+        "'wsinsight export --h5ad'."
+    ),
+)
 def run(
     ctx: click.Context,
     *,
@@ -648,6 +669,7 @@ def run(
     patch_overlap_ratio: float = 0.0,
     patch_size_um: float = 0.0,
     patch_size_px: int = 0,
+    spacing_um_px: float = 0.0,
     hplot: bool = False,
     hplot_max_neighbor_distance: float = 25.0,
     hplot_base_types: List | None = None,
@@ -673,6 +695,7 @@ def run(
     cme_clusters: int | None = None,
     export_geojson: bool = False,
     export_omecsv: bool = False,
+    export_h5ad: bool = False,
 ) -> None:
     """Run both patch extraction and inference workflows for a slide directory.
 
@@ -743,8 +766,8 @@ def run(
         ctx.invoke(cme_command, **_select_kwargs(params, _CME_PARAM_NAMES))
         raise_if_cancelled()
 
-    # Stage 6 (optional): merged export to GeoJSON / OME-CSV.
-    if export_geojson or export_omecsv:
+    # Stage 6 (optional): merged export to GeoJSON / OME-CSV / h5ad.
+    if export_geojson or export_omecsv or export_h5ad:
         click.echo("\nMerging per-cell analytics into export CSVs...\n")
         build_export_csvs(results_dir, overwrite=True)
 
@@ -792,6 +815,17 @@ def run(
                     output_dir=URIPath("export-omecsv"),
                     prefix="prob",
                     num_workers=num_export_workers,
+                    overwrite=True,
+                )
+
+            if export_h5ad:
+                click.echo("\nWriting results to AnnData .h5ad files...\n")
+                write_h5ads(
+                    csvs=export_csvs,
+                    results_dir=results_dir,
+                    output_dir="export-h5ad",
+                    prefix="prob",
+                    object_type="detection",
                     overwrite=True,
                 )
 

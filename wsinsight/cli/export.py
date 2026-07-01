@@ -10,6 +10,7 @@ import click
 from ..export_helpers import build_export_csvs
 from ..uri_path import URIPath, URIPathType
 from ..write_geojson import write_geojsons
+from ..write_h5ad import write_h5ads
 from ..write_omecsv import write_omecsvs
 from ._paths import default_storage_kwargs
 
@@ -52,6 +53,17 @@ def _to_local_path(p: URIPath | Path) -> Path:
     ),
 )
 @click.option(
+    "--h5ad",
+    is_flag=True,
+    default=False,
+    show_default=True,
+    help=(
+        "Export per-cell data to AnnData .h5ad files (export-h5ad/).  "
+        "Compatible with scanpy / squidpy; cell centroids are stored in "
+        "obsm['spatial']."
+    ),
+)
+@click.option(
     "--patch-overlap-ratio",
     default=0.0,
     show_default=True,
@@ -89,6 +101,7 @@ def export(
     results_dir: URIPath,
     geojson: bool,
     omecsv: bool,
+    h5ad: bool,
     patch_overlap_ratio: float,
     object_type: str,
     export_workers: int,
@@ -104,8 +117,8 @@ def export(
       ncomp-outputs-csv/       — node-level (cell) composition features
 
     All per-cell sources above are left-joined into export-csv/, then
-    written to export-geojson/ and/or export-omecsv/ depending on the
-    flags provided.
+    written to export-geojson/, export-omecsv/, and/or export-h5ad/
+    depending on the flags provided.
 
     Edge-level (``ecomp-outputs-csv/``) and triad-level
     (``tcomp-outputs-csv/``) composition outputs are standalone
@@ -113,14 +126,14 @@ def export(
     export (they have different primary keys).  Consume them
     directly from their respective subdirectories.
 
-    At least one of --geojson or --omecsv must be supplied.
+    At least one of --geojson, --omecsv, or --h5ad must be supplied.
 
     This command can be run at any time after inference — and optionally after
     hplot / ncomp — without re-running the full inference pipeline.
     """
-    if not geojson and not omecsv:
+    if not geojson and not omecsv and not h5ad:
         raise click.UsageError(
-            "At least one of --geojson or --omecsv must be specified."
+            "At least one of --geojson, --omecsv, or --h5ad must be specified."
         )
 
     if not (results_dir / "model-outputs-csv").exists():
@@ -180,6 +193,18 @@ def export(
             output_dir=URIPath("export-omecsv"),
             prefix="prob",
             num_workers=export_workers,
+            overwrite=overwrite,
+        )
+
+    # --- AnnData (.h5ad) export ----------------------------------------------
+    if h5ad:
+        click.echo("\nWriting results to AnnData .h5ad files...\n")
+        write_h5ads(
+            csvs=export_csvs,
+            results_dir=results_dir,
+            output_dir="export-h5ad",
+            prefix="prob",
+            object_type=object_type,
             overwrite=overwrite,
         )
 
