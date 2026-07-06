@@ -323,25 +323,25 @@ def hplot(
     type=URIPathType(exists=True, **_STORAGE_KWARGS),
     required=True,
     help="Results directory containing hplot per-slide outputs. The aggregated "
-    "hplot-outputs.csv and hmetrics-outputs.csv will be written here.",
+    "hplot-outputs.csv will be written here.",
 )
 @click.option(
     "--overwrite",
     is_flag=True,
     default=False,
     show_default=True,
-    help="Overwrite existing hplot-outputs.csv and hmetrics-outputs.csv if they already exist.",
+    help="Overwrite existing hplot-outputs.csv if it already exists.",
 )
 def hplot_finalize_cmd(
     *,
     results_dir: URIPath,
     overwrite: bool = False,
 ) -> None:
-    """Rebuild hplot-outputs.csv and hmetrics-outputs.csv from per-slide intermediates.
+    """Rebuild hplot-outputs.csv from per-slide intermediates.
 
     Use this after running parallel ``hplot`` jobs that share the same
     ``--results-dir``. Each worker writes its per-slide files; this command
-    assembles the final aggregated CSVs from all of them.
+    assembles the final aggregated CSV from all of them.
     """
 
     ensure_input_directory(results_dir, "--results-dir")

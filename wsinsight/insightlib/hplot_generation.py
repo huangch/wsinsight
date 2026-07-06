@@ -23,8 +23,6 @@ from .graph_cache import get_or_build_delaunay
 from .insight_helpers import calculate_distance_to_border
 from .insight_helpers import compute_cell_center_points
 from .insight_helpers import compute_hplot
-
-# compute_hmetrics,  # DISABLED: hmetrics generation turned off
 from .insight_helpers import delaunay_triangulation
 from .insight_helpers import identify_border_cells
 from .insight_helpers import identify_region_by_cell_function_enrichment
@@ -41,7 +39,6 @@ _WORKER_STEPS = [
     "border cells",
     "layer dists",
     "hplot curve",
-    # "hmetrics",  # DISABLED
     "save outputs",
 ]
 _STEP_LABEL_W = 12  # pad postfix so tqdm bar geometry stays stable across steps
@@ -71,19 +68,13 @@ def _worker(
 
     slide_id = wsi_path.stem
     hplot_csv_name = model_output_csv.name
-    # hmetric_json_name = model_output_csv.with_suffix(".json").name  # DISABLED: hmetrics
     hplot_csv = insight_dir / "hplots" / hplot_csv_name
-    # hmetric_json = insight_dir / "hmetrics" / hmetric_json_name  # DISABLED: hmetrics
     cells_csv = insight_dir / "cells" / hplot_csv_name
 
     if not overwrite and hplot_csv.exists() and cells_csv.exists():
         with hplot_csv.open("r", encoding="utf-8") as fp:
             hplot_df = pd.read_csv(fp)
-        # DISABLED: hmetrics readback
-        # with hmetric_json.open("r", encoding="utf-8") as fp:
-        #     hmetric_dict = json.load(fp)
-        hmetric_dict = None
-        return slide_id, hplot_df, hmetric_dict
+        return slide_id, hplot_df
 
     desc = slide_id if len(slide_id) <= 32 else slide_id[:29] + "..."
     inner = tqdm(
@@ -299,22 +290,10 @@ def _worker(
         with hplot_csv.open("w", encoding="utf-8", newline="") as fp:
             hplot_df.to_csv(fp, index=False)
 
-        # DISABLED: hmetrics generation
-        # hmetric_dict = compute_hmetrics(
-        #     hplot_df=hplot_df,
-        #     range_min=range_min,
-        #     range_max=range_max,
-        #     hplot_samples_with_valid_range_only=samples_with_valid_range_only,
-        # )
-        # _step("hmetrics")
-        #
-        # with hmetric_json.open("w", encoding="utf-8") as fp:
-        #     json.dump(hmetric_dict, fp, indent=2)
-        hmetric_dict = None
         _step("save outputs")
 
     inner.close()
-    return slide_id, hplot_df, hmetric_dict
+    return slide_id, hplot_df
 
 
 def upsert_by_key(df_old: pd.DataFrame, df_new: pd.DataFrame, key: str) -> pd.DataFrame:
@@ -358,19 +337,17 @@ def upsert_by_key(df_old: pd.DataFrame, df_new: pd.DataFrame, key: str) -> pd.Da
 
 
 def hplot_finalize(output_dir: URIPath, overwrite: bool = False) -> None:
-    """Rebuild hplot-outputs.csv and hmetrics-outputs.csv from per-slide intermediates.
+    """Rebuild hplot-outputs.csv from per-slide intermediates.
 
-    Reads all per-slide CSV/JSON files written by hplot_generation into
-    ``output_dir/hplot-outputs-csv/hplots/`` and
-    ``output_dir/hplot-outputs-csv/hmetrics/`` and assembles the two
-    aggregated summary files at the top level of ``output_dir``.
+    Reads all per-slide CSV files written by hplot_generation into
+    ``output_dir/hplot-outputs-csv/hplots/`` and assembles the aggregated
+    summary file at the top level of ``output_dir``.
 
-    When *overwrite* is False and both summary files already exist, the
+    When *overwrite* is False and the summary file already exists, the
     function returns without modifying anything.
     """
 
     hplot_hplots_csv = output_dir / "hplot-outputs.csv"
-    # hplot_hmetrics_csv = output_dir / "hmetrics-outputs.csv"  # DISABLED: hmetrics
 
     if not overwrite and hplot_hplots_csv.exists():
         print("hplot-outputs.csv already exists. Use --overwrite to regenerate.")
@@ -378,13 +355,10 @@ def hplot_finalize(output_dir: URIPath, overwrite: bool = False) -> None:
 
     hplot_outputs_csv_dir = output_dir / "hplot-outputs-csv"
     hplots_dir = hplot_outputs_csv_dir / "hplots"
-    # hmetrics_dir = hplot_outputs_csv_dir / "hmetrics"  # DISABLED: hmetrics
 
     hplot_files = sorted(hplots_dir.iterdir()) if hplots_dir.exists() else []
-    # hmetric_files = sorted(hmetrics_dir.iterdir()) if hmetrics_dir.exists() else []  # DISABLED
 
     hplot_files = [f for f in hplot_files if f.name.endswith(".csv")]
-    # hmetric_files = [f for f in hmetric_files if f.name.endswith(".json")]  # DISABLED
 
     if not hplot_files:
         raise ValueError(
@@ -406,7 +380,6 @@ def hplot_finalize(output_dir: URIPath, overwrite: bool = False) -> None:
         "base_prop",
         "base_count",
         "all_count",
-        "distance",
         "distance_um",
     ]
 
@@ -429,7 +402,6 @@ def hplot_finalize(output_dir: URIPath, overwrite: bool = False) -> None:
                 "base_type_prop",
                 "base_type_count",
                 "all_type_count",
-                "distance",
                 "distance_um",
             ]
             if c in df.columns
@@ -452,7 +424,6 @@ def hplot_finalize(output_dir: URIPath, overwrite: bool = False) -> None:
                     "base_prop": entry.get("base_prop", np.nan),
                     "base_count": entry.get("base_count", np.nan),
                     "all_count": entry.get("all_count", np.nan),
-                    "distance": entry.get("distance", np.nan),
                     "distance_um": entry.get("distance_um", np.nan),
                 }
             )
@@ -465,64 +436,6 @@ def hplot_finalize(output_dir: URIPath, overwrite: bool = False) -> None:
         with critical_section("saving aggregated hplot-outputs.csv"):
             with hplot_hplots_csv.open("w", encoding="utf-8", newline="") as fp:
                 merged_hplot.to_csv(fp, index=False)
-
-    # DISABLED: hmetrics aggregation
-    # _HMETRICS_COLS = [
-    #     "id", "valid",
-    #     "convergence_distance (intra)", "abundance_score (intra)", "penetration_score (intra)",
-    #     "layerwise_enrichment_index (intra)", "global_enrichment_index (intra)",
-    #     "weighted_global_enrichment_index (intra)",
-    #     "convergence_distance (peri)", "abundance_score (peri)", "proximity_score (peri)",
-    #     "layerwise_enrichment_index (peri)", "global_enrichment_index (peri)",
-    #     "weighted_global_enrichment_index (peri)",
-    #     "exclusion_index", "desert_index", "inflammation_index",
-    #     "layerwise_enrichment_index", "global_enrichment_index",
-    #     "weighted_global_enrichment_index",
-    # ]
-    # hmetrics_rows: list[dict] = []
-    # for json_file in tqdm(hmetric_files, desc="Assembling hmetrics JSONs", unit="slide"):
-    #     slide_id = json_file.stem
-    #     with json_file.open("r", encoding="utf-8") as fp:
-    #         hm = json.load(fp)
-    #     intra = hm.get("intra", {})
-    #     peri = hm.get("peri", {})
-    #     intra_ab = intra.get("abundance_score", 0.0)
-    #     peri_ab = peri.get("abundance_score", 0.0)
-    #     hmetrics_rows.append({
-    #         "id": slide_id,
-    #         "valid": hm.get("valid"),
-    #         "convergence_distance (intra)": intra.get("convergence_distance"),
-    #         "abundance_score (intra)": intra_ab,
-    #         "penetration_score (intra)": intra.get("penetration_score"),
-    #         "layerwise_enrichment_index (intra)": intra.get("layerwise_enrichment_index"),
-    #         "global_enrichment_index (intra)": intra.get("global_enrichment_index"),
-    #         "weighted_global_enrichment_index (intra)": intra.get("weighted_global_enrichment_index"),
-    #         "convergence_distance (peri)": peri.get("convergence_distance"),
-    #         "abundance_score (peri)": peri_ab,
-    #         "proximity_score (peri)": peri.get("proximity_score"),
-    #         "layerwise_enrichment_index (peri)": peri.get("layerwise_enrichment_index"),
-    #         "global_enrichment_index (peri)": peri.get("global_enrichment_index"),
-    #         "weighted_global_enrichment_index (peri)": peri.get("weighted_global_enrichment_index"),
-    #         "exclusion_index": peri_ab / (1e-6 + peri_ab + intra_ab),
-    #         "desert_index": 1 - 0.5 * (intra_ab + peri_ab),
-    #         "inflammation_index": 0.5 * (intra_ab + peri_ab),
-    #         "layerwise_enrichment_index": 0.5 * (
-    #             peri.get("layerwise_enrichment_index", 0.0) + intra.get("layerwise_enrichment_index", 0.0)
-    #         ),
-    #         "global_enrichment_index": 0.5 * (
-    #             intra.get("global_enrichment_index", 0.0) + peri.get("global_enrichment_index", 0.0)
-    #         ),
-    #         "weighted_global_enrichment_index": 0.5 * (
-    #             intra.get("weighted_global_enrichment_index", 0.0) + peri.get("weighted_global_enrichment_index", 0.0)
-    #         ),
-    #     })
-    #
-    # if hmetrics_rows:
-    #     merged_hmetrics = pd.DataFrame(hmetrics_rows, columns=_HMETRICS_COLS)
-    #     merged_hmetrics.drop_duplicates(subset=["id"], keep="last", inplace=True)
-    #     with critical_section("saving aggregated hmetrics-outputs.csv"):
-    #         with hplot_hmetrics_csv.open("w", encoding="utf-8", newline="") as fp:
-    #             merged_hmetrics.to_csv(fp, index=False)
 
 
 def hplot_generation(
@@ -607,13 +520,10 @@ def hplot_generation(
     hplot_dir.mkdir(parents=True, exist_ok=True)
     hplot_hplots_dir = hplot_dir / "hplots"
     hplot_hplots_dir.mkdir(parents=True, exist_ok=True)
-    hplot_hmetrics_dir = hplot_dir / "hmetrics"
-    hplot_hmetrics_dir.mkdir(parents=True, exist_ok=True)
     hplot_cells_dir = hplot_dir / "cells"
     hplot_cells_dir.mkdir(parents=True, exist_ok=True)
 
     hplot_hplots_csv = results_dir / "hplot-outputs.csv"
-    # hplot_hmetrics_csv = results_dir / "hmetrics-outputs.csv"  # DISABLED: hmetrics
 
     failed_generation: list[str] = []
     base_types = list(base_type_list or [])
@@ -630,35 +540,9 @@ def hplot_generation(
             "base_prop": [],
             "base_count": [],
             "all_count": [],
-            "distance": [],
             "distance_um": [],
         }
     )
-    # DISABLED: hmetrics_df init
-    # hmetrics_df = pd.DataFrame(
-    #     {
-    #         "id": [],
-    #         "valid": [],
-    #         "convergence_distance (intra)": [],
-    #         "abundance_score (intra)": [],
-    #         "penetration_score (intra)": [],
-    #         "layerwise_enrichment_index (intra)": [],
-    #         "global_enrichment_index (intra)": [],
-    #         "weighted_global_enrichment_index (intra)": [],
-    #         "convergence_distance (peri)": [],
-    #         "abundance_score (peri)": [],
-    #         "proximity_score (peri)": [],
-    #         "layerwise_enrichment_index (peri)": [],
-    #         "global_enrichment_index (peri)": [],
-    #         "weighted_global_enrichment_index (peri)": [],
-    #         "exclusion_index": [],
-    #         "desert_index": [],
-    #         "inflammation_index": [],
-    #         "layerwise_enrichment_index": [],
-    #         "global_enrichment_index": [],
-    #         "weighted_global_enrichment_index": [],
-    #     }
-    # )
 
     graph_cache_dir = results_dir / "graphs"
     graph_cache_dir.mkdir(parents=True, exist_ok=True)
@@ -712,7 +596,7 @@ def hplot_generation(
         )
         for f in cancellable_as_completed(futures, ex):
             try:
-                image_id, df, hm = f.result()
+                image_id, df = f.result()
             except Exception as exc:
                 # One slide's unhandled error must not abort the whole run;
                 # record it and keep processing the remaining slides.
@@ -722,7 +606,6 @@ def hplot_generation(
                 outer.update(1)
                 continue
 
-            # hmetrics disabled: hm is always None now; only require df
             if df is None:
                 failed_generation.append(image_id)
                 outer.update(1)
@@ -737,7 +620,6 @@ def hplot_generation(
                 "base_type_prop",
                 "base_type_count",
                 "all_type_count",
-                "distance",
                 "distance_um",
             ]
             clean_df = clean_df[np.isfinite(clean_df["layer"])][required_cols]
@@ -756,7 +638,6 @@ def hplot_generation(
                     row.get("base_type_prop", np.nan),
                     row.get("base_type_count", np.nan),
                     row.get("all_type_count", np.nan),
-                    row.get("distance", np.nan),
                     row.get("distance_um", np.nan),
                 )
                 for layer, row in clean_df.set_index("layer")[
@@ -766,7 +647,6 @@ def hplot_generation(
                         "base_type_prop",
                         "base_type_count",
                         "all_type_count",
-                        "distance",
                         "distance_um",
                     ]
                 ].iterrows()
@@ -779,10 +659,9 @@ def hplot_generation(
                     base_prop,
                     base_count,
                     all_count,
-                    distance,
                     distance_um,
                 ) = layer_lookup.get(
-                    layer, (np.nan, np.nan, np.nan, np.nan, np.nan, np.nan, np.nan)
+                    layer, (np.nan, np.nan, np.nan, np.nan, np.nan, np.nan)
                 )
                 hplot_df.loc[len(hplot_df)] = [
                     image_id,
@@ -792,47 +671,8 @@ def hplot_generation(
                     base_prop,
                     base_count,
                     all_count,
-                    distance,
                     distance_um,
                 ]
-
-            # DISABLED: hmetrics row append
-            # hmetrics_df.loc[len(hmetrics_df)] = [
-            #     image_id,
-            #     hm["valid"],
-            #     hm["intra"]["convergence_distance"],
-            #     hm["intra"]["abundance_score"],
-            #     hm["intra"]["penetration_score"],
-            #     hm["intra"]["layerwise_enrichment_index"],
-            #     hm["intra"]["global_enrichment_index"],
-            #     hm["intra"]["weighted_global_enrichment_index"],
-            #     hm["peri"]["convergence_distance"],
-            #     hm["peri"]["abundance_score"],
-            #     hm["peri"]["proximity_score"],
-            #     hm["peri"]["layerwise_enrichment_index"],
-            #     hm["peri"]["global_enrichment_index"],
-            #     hm["peri"]["weighted_global_enrichment_index"],
-            #     hm["peri"]["abundance_score"]
-            #     / (1e-6 + hm["peri"]["abundance_score"] + hm["intra"]["abundance_score"]),
-            #     1
-            #     - 0.5 * (hm["intra"]["abundance_score"] + hm["peri"]["abundance_score"]),
-            #     0.5 * (hm["intra"]["abundance_score"] + hm["peri"]["abundance_score"]),
-            #     0.5
-            #     * (
-            #         hm["peri"]["layerwise_enrichment_index"]
-            #         + hm["intra"]["layerwise_enrichment_index"]
-            #     ),
-            #     0.5
-            #     * (
-            #         hm["intra"]["global_enrichment_index"]
-            #         + hm["peri"]["global_enrichment_index"]
-            #     ),
-            #     0.5
-            #     * (
-            #         hm["intra"]["weighted_global_enrichment_index"]
-            #         + hm["peri"]["weighted_global_enrichment_index"]
-            #     ),
-            # ]
 
             outer.update(1)
         outer.close()
@@ -844,14 +684,5 @@ def hplot_generation(
     with critical_section("saving hplot-outputs.csv"):
         with hplot_hplots_csv.open("w", encoding="utf-8", newline="") as fp:
             hplot_df.to_csv(fp, index=False)
-
-    # DISABLED: hmetrics-outputs.csv save
-    # if hplot_hmetrics_csv.exists():
-    #     with hplot_hmetrics_csv.open("r", encoding="utf-8") as fp:
-    #         hmetrics_df = upsert_by_key(pd.read_csv(fp), hmetrics_df, key="id")
-    #
-    # with critical_section("saving hmetrics-outputs.csv"):
-    #     with hplot_hmetrics_csv.open("w", encoding="utf-8", newline="") as fp:
-    #         hmetrics_df.to_csv(fp, index=False)
 
     return failed_generation

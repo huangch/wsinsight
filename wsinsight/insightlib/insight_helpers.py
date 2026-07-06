@@ -268,90 +268,6 @@ def k_hop_neighbors(nodes_df_or_N, edges_df_or_adj, k):
     return neighbor_lists, A, Mk
 
 
-# --------------------------- helpers ---------------------------
-
-def _reindex_nearest(series: pd.Series, target_levels: Iterable[int]) -> pd.Series:
-    """
-    Reindex a per-layer Series (index = layer) to a desired list of 'target_levels'
-    using nearest available index (clamped to ends). Missing -> NaN.
-    """
-    target_levels = list(target_levels)
-    if series.empty:
-        return pd.Series([np.nan] * len(target_levels), index=target_levels, dtype=float)
-    s = series.sort_index()
-    return s.reindex(target_levels, method="nearest").astype(float)
-
-def _depth_weights(levels: Iterable[int],
-                   mode: str,
-                   s: float,
-                   range_min: int,
-                   range_max: int,
-                   side: str) -> pd.Series:
-    """
-    Compute depth weights for 'inside' or 'outside' layers.
-
-    - linear:
-        inside  (levels <= 0): w = |level| / |range_min|
-        outside (levels >= 1): w = 1 - level / range_max
-    - sigmoid (1 - sigmoid(s * level)):
-        layer=0 -> 0.5; deeper inside (more negative) -> closer to 1; farther outside (more positive) -> closer to 0
-    """
-    levels = list(levels)
-    if not levels:
-        return pd.Series(dtype=float)
-
-    mode = (mode or "linear").lower()
-    lv = np.asarray(levels, dtype=float)
-
-    if mode == "sigmoid":
-        # w = 1 - sigmoid(s*layer); sigmoid(x)=1/(1+e^-x)
-        w = 1.0 - 1.0 / (1.0 + np.exp(-s * lv))
-        return pd.Series(np.clip(w, 0.0, 1.0), index=levels, dtype=float)
-
-    # default linear
-    if side == "inside":
-        denom = max(abs(int(range_min)), 1)
-        w = np.clip(np.abs(lv) / denom, 0.0, 1.0)
-    else:  # outside
-        denom = float(max(int(range_max), 1))
-        w = np.clip(1.0 - (lv / denom), 0.0, 1.0)
-
-    return pd.Series(w, index=levels, dtype=float)
-
-def _center_of_mass(values: pd.Series, coords: pd.Series) -> float:
-    """
-    Weighted center-of-mass along 1D coordinates.
-    values: weights per level (e.g., immune abundance per layer)
-    coords: coordinate per level (e.g., signed distance per layer)
-    Returns NaN if no finite weights.
-    """
-    v = np.asarray(values.values, dtype=float)
-    x = np.asarray(coords.values, dtype=float)
-    m = np.isfinite(v) & np.isfinite(x) & (v > 0)
-    if not np.any(m):
-        return np.nan
-    v, x = v[m], x[m]
-    return float(np.sum(v * x) / np.sum(v))
-
-def _safe_mean(series: pd.Series) -> float:
-    """Mean with NaN tolerance -> float in [0,1] or 0.0 when empty."""
-    if series is None or len(series) == 0:
-        return 0.0
-    return float(np.nanmean(series.values))
-
-def _weighted_mean(numer: pd.Series, denom: pd.Series) -> float:
-    """
-    Compute sum(numer)/sum(denom) with NaN masking.
-    Returns 0.0 when effective denominator is zero.
-    """
-    nv = np.asarray(numer.values, dtype=float)
-    dv = np.asarray(denom.values, dtype=float)
-    m = np.isfinite(nv) & np.isfinite(dv) & (dv > 0)
-    if not np.any(m):
-        return 0.0
-    return float(np.sum(nv[m]) / np.sum(dv[m]))
-
-
 # ---- helper for a single cell ----
 def _enrichment_for_cell(args) -> float:
     """
@@ -760,18 +676,28 @@ def calculate_distance_to_border(model_output_df, adjacency_list, A_sparse=None)
     return model_output_df
 
 
-def compute_hplot(df_with_distances, filtered_edges_df):
+def compute_hplot(df_with_distances, filtered_edges_df, mpp=1.0):
     """
     Calculates the target ratio by cumulative average distance to the tumor border.
 
     Args:
         df_with_distances: DataFrame with 'signed_distance_to_border' and 'is_target' columns.
         filtered_edges_df: DataFrame with 'source', 'target', and 'length' columns representing filtered edges.
+            For wsinsight the 'length' values are in pixels (WSI centroid coordinates),
+            so they are converted to microns via ``mpp`` before accumulation.
+        mpp: microns-per-pixel scale for the slide. Edge lengths are multiplied by
+            this factor so the resulting 'distance_um' column is in microns. Defaults
+            to 1.0 (no conversion) for callers whose coordinates are already microns.
 
     Returns:
-        A pandas DataFrame with 'cumulative_avg_edge_length' and 'target_type_prop' columns,
-        sorted by cumulative_avg_edge_length, ready for plotting.
+        A pandas DataFrame with explicit 'distance_um' and 'target_type_prop'
+        columns, sorted by 'layer', ready for plotting.
     """
+    # Convert pixel edge lengths to microns up front so every cumulative sum below
+    # is expressed in microns (matches the sptxinsight micron-native contract).
+    filtered_edges_df = filtered_edges_df.copy()
+    filtered_edges_df['length'] = filtered_edges_df['length'] * mpp
+
     # Group by signed_distance_to_border and calculate the ratio of targets
     # Handle potential empty groups or no targets at a distance
     # Exclude NaN distances from grouping
@@ -875,221 +801,13 @@ def compute_hplot(df_with_distances, filtered_edges_df):
         'all_type_count': all_type_count_by_distance.values
         })
 
-    # Map the cumulative average edge lengths to the signed_distance in plot_df
-    plot_df['distance'] = plot_df['layer'].map(cumulative_avg_lengths_series)
+    # Map the cumulative average edge lengths (now in microns) to the layer in plot_df.
+    plot_df['distance_um'] = plot_df['layer'].map(cumulative_avg_lengths_series)
 
     # Drop rows where we couldn't calculate the cumulative average edge length
-    plot_df = plot_df.dropna(subset=['distance'])
+    plot_df = plot_df.dropna(subset=['distance_um'])
 
     # Sort by the new x-axis values for a clear line plot
     plot_df = plot_df.sort_values('layer')
 
     return plot_df
-
-
-def compute_hmetrics(
-    hplot_df: pd.DataFrame,
-    range_min: int | None,
-    range_max: int | None,
-    hplot_samples_with_valid_range_only: bool = False,
-    depth_weight_mode: str = "linear",   # "linear" (default) or "sigmoid"
-    s: float = 6.0,                      # slope for sigmoid when depth_weight_mode="sigmoid"
-) -> Dict[str, Any]:
-    """
-    Compute spatial interaction metrics between a target cell class (e.g., immune)
-    and a base/tumor cell class across concentric layers around the tumor boundary.
-
-    Required df_cells columns (row = cell):
-      - layer (int): 0 = boundary; negative = inside tumor; positive = outside
-      - target_type_prop (float in [0,1]): target-type proportion at the cell
-      - base_type_prop   (float in [0,1]): tumor/base-type proportion at the cell
-      - distance (float): signed distance for the cell's layer (mean per layer is used)
-      - id (optional):   sample/image identifier (for valid-range filtering)
-
-    Returns:
-      {
-        "valid": bool,  # whether observed layers cover [range_min, range_max]
-        "intra": {
-           "convergence_distance": float (negative toward deeper inside),
-           "abundance_score":      float in [0,1] (immune abundance mean inside),
-           "penetration_score":    float in [0,1] (depth-normalized immune CoM inside),
-           "layerwise_enrichment_index": float in [0,1] (immune-weighted & depth-weighted mean of T/(T+B)),
-           "global_enrichment_index":    float in [0,1],  # global T_mean/(T_mean+B_mean)
-           "weighted_global_enrichment_index": float in [0,1],  # penetration * global_enrichment
-        },
-        "peri": {
-           "convergence_distance": float (positive outward),
-           "abundance_score":      float in [0,1] (immune abundance mean outside),
-           "proximity_score":      float in [0,1] (distance-normalized immune CoM outside),
-           "layerwise_enrichment_index": float in [0,1],
-           "global_enrichment_index":    float in [0,1],
-           "weighted_global_enrichment_index": float in [0,1],  # proximity * global_enrichment
-        }
-      }
-    """
-
-    # -------- optional: keep only images fully covering [range_min, range_max] --------
-    df_work = hplot_df
-    if hplot_samples_with_valid_range_only and ("id" in hplot_df.columns):
-        layer_clean = pd.to_numeric(hplot_df["layer"], errors="coerce")
-        img_layer = (
-            pd.concat([hplot_df["id"], layer_clean.rename("layer")], axis=1)
-            .dropna(subset=["id", "layer"])
-        )
-        img_layer["layer"] = img_layer["layer"].astype(int)
-        if not img_layer.empty:
-            per_img = img_layer.groupby("id")["layer"].agg(["min", "max"]).astype(int)
-            valid_mask = (per_img["min"] <= range_min) & (per_img["max"] >= range_max)
-            valid_ids = per_img.index[valid_mask].tolist()
-            df_work = hplot_df[hplot_df["id"].isin(valid_ids)].copy()
-        else:
-            df_work = hplot_df.iloc[0:0].copy()  # nothing passes
-
-    # -------- required columns & sanitize --------
-    for col in ("layer", "target_type_prop", "base_type_prop", "distance"):
-        if col not in df_work.columns:
-            raise KeyError(f"missing required column '{col}'")
-
-    layer = pd.to_numeric(df_work["layer"], errors="coerce").astype("Int64")
-    target_prop = pd.to_numeric(df_work["target_type_prop"], errors="coerce").clip(0.0, 1.0)
-    tumor_prop  = pd.to_numeric(df_work["base_type_prop"],   errors="coerce").clip(0.0, 1.0)
-    distance    = pd.to_numeric(df_work["distance"],         errors="coerce")
-
-    m = layer.notna() & target_prop.notna() & tumor_prop.notna() & distance.notna()
-    layer, target_prop, tumor_prop, distance = layer[m].astype(int), target_prop[m], tumor_prop[m], distance[m]
-
-    # Early exit if nothing remains
-    if len(layer) == 0 or range_max is None or range_min is None:
-        return {
-            "valid": False,
-            "intra": {
-                "penetration_score": 0.0,
-                "abundance_score": 0.0,
-                "convergence_distance": 0.0,
-                "layerwise_enrichment_index": 0.0,
-                "global_enrichment_index": np.nan,
-                "weighted_global_enrichment_index": 0.0,
-            },
-            "peri": {
-                "proximity_score": 0.0,
-                "abundance_score": 0.0,
-                "convergence_distance": 0.0,
-                "layerwise_enrichment_index": 0.0,
-                "global_enrichment_index": np.nan,
-                "weighted_global_enrichment_index": 0.0,
-            },
-        }
-
-    # -------- coverage check --------
-    obs_min, obs_max = int(layer.min()), int(layer.max())
-    valid = (range_min >= obs_min) and (range_max <= obs_max)
-
-    # -------- per-layer aggregates --------
-    target_by_layer = target_prop.groupby(layer).mean()  # immune abundance per layer
-    tumor_by_layer  = tumor_prop.groupby(layer).mean()   # tumor abundance per layer
-    dist_by_layer   = distance.groupby(layer).mean()     # signed distance per layer
-
-    # desired indices on both sides
-    inside_levels  = list(range(0, range_min - 1, -1))  #  0, -1, -2, ..., range_min
-    outside_levels = list(range(1, range_max + 1))      #  1,  2,  3, ..., range_max
-
-    # align series to the indices we want (nearest)
-    target_intra = _reindex_nearest(target_by_layer[target_by_layer.index <= 0], inside_levels).clip(0.0, 1.0)
-    target_peri= _reindex_nearest(target_by_layer[target_by_layer.index >= 1], outside_levels).clip(0.0, 1.0)
-    tumor_intra  = _reindex_nearest(tumor_by_layer[tumor_by_layer.index   <= 0], inside_levels).clip(0.0, 1.0)
-    tumor_peri = _reindex_nearest(tumor_by_layer[tumor_by_layer.index   >= 1], outside_levels).clip(0.0, 1.0)
-
-    dist_intra   = _reindex_nearest(dist_by_layer[dist_by_layer.index     <= 0], inside_levels)
-    dist_peri  = _reindex_nearest(dist_by_layer[dist_by_layer.index     >= 1], outside_levels)
-
-    # shorthand: immune abundance per layer (weights)
-    p_intra, p_peri = target_intra, target_peri
-
-    # -------- base spatial metrics --------
-    # abundance = mean immune fraction per side
-    abundance_intra  = _safe_mean(p_intra)
-    abundance_peri = _safe_mean(p_peri)
-
-    # outside proximity: immune-weighted CoM outward normalized by max distance
-    total_p_out = float(np.nansum(p_peri.values))
-    if total_p_out > 0 and len(dist_peri) > 0:
-        com_out = _center_of_mass(p_peri, dist_peri)           # >0 outward
-        D_out_max = float(np.nanmax(dist_peri.values)) or 0.0
-        if D_out_max > 0:
-            proximity_peri = float(np.clip(1.0 - (com_out / D_out_max), 0.0, 1.0))
-        else:
-            proximity_peri = 1.0
-        convergence_distance_out = float(com_out)
-    else:
-        proximity_peri = 0.0
-        convergence_distance_out = float(np.nanmax(dist_peri.values)) if len(dist_peri) else 0.0
-
-    # inside penetration: immune-weighted mean depth normalized by max |range_min|
-    # also save convergence_distance_intra as negative magnitude inward
-    depth_intra_mag = (-dist_intra).clip(lower=0.0)  # positive inward depth
-    p_intra_neg = p_intra[p_intra.index < 0]
-    depth_intra_neg = depth_intra_mag.reindex(p_intra_neg.index)
-    if len(p_intra_neg) and float(np.nansum(p_intra_neg.values)) > 0.0:
-        com_in_mag = _center_of_mass(p_intra_neg, depth_intra_neg)  # positive magnitude inward
-        convergence_distance_intra = -float(com_in_mag)              # report negative inward
-    else:
-        com_in_mag = 0.0
-        convergence_distance_intra = 0.0
-
-    max_depth = max(abs(int(range_min)), 1)
-    if len(p_intra) and float(np.nansum(p_intra.values)) > 0.0:
-        all_depths = pd.Series([abs(l) for l in inside_levels], index=inside_levels, dtype=float)
-        mean_depth = float(np.nansum((all_depths * p_intra).values) / np.nansum(p_intra.values))
-        penetration_intra = float(np.clip(mean_depth / max_depth, 0.0, 1.0))
-    else:
-        penetration_intra = 0.0
-
-    # -------- layerwise enrichment (immune- & depth-weighted mean of R_i) --------
-    eps = 1e-6
-    R_intra  = (target_intra  / (target_intra  + tumor_intra  + eps)).clip(0.0, 1.0)
-    R_peri = (target_peri / (target_peri + tumor_peri + eps)).clip(0.0, 1.0)
-    valid_intra  = (target_intra  + tumor_intra)  > 0
-    valid_peri = (target_peri + tumor_peri) > 0
-
-    w_depth_intra  = _depth_weights(inside_levels,  depth_weight_mode, s, range_min, range_max, side="inside")
-    w_depth_peri = _depth_weights(outside_levels, depth_weight_mode, s, range_min, range_max, side="outside")
-
-    # final weights = immune abundance * depth weight
-    w_intra  = (p_intra  * w_depth_intra ).where(valid_intra,  np.nan)
-    w_peri = (p_peri * w_depth_peri).where(valid_peri, np.nan)
-
-    num_intra  = (R_intra  * w_intra ).where(valid_intra,  np.nan)
-    num_peri = (R_peri * w_peri).where(valid_peri, np.nan)
-
-    layerwise_enrichment_intra  = _weighted_mean(num_intra,  w_intra)
-    layerwise_enrichment_peri = _weighted_mean(num_peri, w_peri)
-
-    # -------- global enrichment (side-wise mean T and B) --------
-    target_intra_mean  = _safe_mean(target_intra)
-    tumor_intra_mean   = _safe_mean(tumor_intra)
-    target_peri_mean = _safe_mean(target_peri)
-    tumor_peri_mean  = _safe_mean(tumor_peri)
-
-    global_enrichment_intra  = float(target_intra_mean  / (target_intra_mean  + tumor_intra_mean  + eps))
-    global_enrichment_peri = float(target_peri_mean / (target_peri_mean + tumor_peri_mean + eps))
-
-    # -------- combine into outputs --------
-    return {
-        "valid": valid,
-        "intra": {
-            "convergence_distance":  convergence_distance_intra,  # negative inward
-            "abundance_score":       abundance_intra,
-            "penetration_score":     penetration_intra,
-            "layerwise_enrichment_index":   layerwise_enrichment_intra,
-            "global_enrichment_index":      global_enrichment_intra,
-            "weighted_global_enrichment_index": penetration_intra * global_enrichment_intra,
-        },
-        "peri": {
-            "convergence_distance":  convergence_distance_out,
-            "abundance_score":       abundance_peri,
-            "proximity_score":       proximity_peri,
-            "layerwise_enrichment_index":   layerwise_enrichment_peri,
-            "global_enrichment_index":      global_enrichment_peri,
-            "weighted_global_enrichment_index": proximity_peri * global_enrichment_peri,
-        }
-    }
