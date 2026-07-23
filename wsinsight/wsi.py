@@ -253,39 +253,97 @@ def _get_mpp_tiffslide(
 # Modified from
 # https://github.com/bayer-science-for-a-better-life/tiffslide/blob/8bea5a4c8e1429071ade6d4c40169ce153786d19/tiffslide/tiffslide.py#L712-L745
 def _get_mpp_tifffile(slide_path: str | Path) -> tuple[float, float]:
-    """Read MPP using Tifffile."""
+    """Read MPP using Tifffile.
+
+    Tries the standard TIFF resolution tags first; if those are missing or
+    unusable (e.g. ``ResolutionUnit=NONE``), falls back to the OME-XML
+    ``PhysicalSizeX``/``PhysicalSizeY`` fields. Some OME-TIFFs — notably 10x
+    Xenium H&E images — store the real spacing only in the OME-XML and leave the
+    baseline TIFF resolution tags empty, so this second path is required to read
+    their MPP without a manual ``--spacing-um-px`` fallback.
+    """
     logger.debug("Attempting to read MPP using tifffile")
     with tifffile.TiffFile(slide_path) as tif:
         series0 = tif.series[0]
         page0 = series0[0]
         if not isinstance(page0, tifffile.TiffPage):
             raise CannotReadSpacing("not a tifffile.TiffPage instance")
+
+        # 1) Standard TIFF resolution tags.
+        resolution_unit = x_resolution = y_resolution = None
         try:
             resolution_unit = page0.tags["ResolutionUnit"].value
             x_resolution = Fraction(*page0.tags["XResolution"].value)
             y_resolution = Fraction(*page0.tags["YResolution"].value)
-        except KeyError as err:
-            raise CannotReadSpacing() from err
+        except KeyError:
+            pass
 
-        # tifffile moved the RESUNIT enum to the module level in 2022.7.28 and
-        # removed ``tifffile.TIFF.RESUNIT`` in newer releases; prefer the
-        # module-level name and fall back to the legacy location.
-        RESUNIT = getattr(tifffile, "RESUNIT", None) or tifffile.TIFF.RESUNIT
-        scale = {
-            RESUNIT.INCH: 25400.0,
-            RESUNIT.CENTIMETER: 10000.0,
-            RESUNIT.MILLIMETER: 1000.0,
-            RESUNIT.MICROMETER: 1.0,
-            RESUNIT.NONE: None,
-        }.get(resolution_unit, None)
-        if scale is not None:
-            try:
-                mpp_x = scale / x_resolution
-                mpp_y = scale / y_resolution
-                return mpp_x, mpp_y
-            except ArithmeticError as err:
-                raise CannotReadSpacing() from err
+        if resolution_unit is not None and x_resolution and y_resolution:
+            # tifffile moved the RESUNIT enum to the module level in 2022.7.28
+            # and removed ``tifffile.TIFF.RESUNIT`` in newer releases; prefer
+            # the module-level name and fall back to the legacy location.
+            RESUNIT = getattr(tifffile, "RESUNIT", None) or tifffile.TIFF.RESUNIT
+            scale = {
+                RESUNIT.INCH: 25400.0,
+                RESUNIT.CENTIMETER: 10000.0,
+                RESUNIT.MILLIMETER: 1000.0,
+                RESUNIT.MICROMETER: 1.0,
+                RESUNIT.NONE: None,
+            }.get(resolution_unit, None)
+            if scale is not None:
+                try:
+                    return scale / x_resolution, scale / y_resolution
+                except ArithmeticError:
+                    pass  # fall through to OME-XML
+
+        # 2) OME-XML PhysicalSizeX/Y fallback (spacing lives only here for some
+        #    OME-TIFFs whose TIFF ResolutionUnit is NONE).
+        ome = getattr(tif, "ome_metadata", None)
+        if ome:
+            return _mpp_from_ome_xml(ome)
+
     raise CannotReadSpacing()
+
+
+# Map OME ``PhysicalSize*Unit`` strings to micrometers. Keys are normalized
+# (both micro-sign U+00B5 and Greek-mu U+03BC folded to ``u``, lower-cased).
+_OME_UNIT_TO_UM: dict[str, float] = {
+    "um": 1.0, "micron": 1.0, "microns": 1.0, "micrometer": 1.0,
+    "micrometre": 1.0, "nm": 1e-3, "mm": 1e3, "cm": 1e4, "m": 1e6,
+}
+
+
+def _mpp_from_ome_xml(ome_xml: str) -> tuple[float, float]:
+    """Parse ``PhysicalSizeX``/``PhysicalSizeY`` (µm) from an OME-XML string.
+
+    Per the OME spec the default ``PhysicalSize*Unit`` is micrometers, so a
+    missing unit is treated as µm. Raises :class:`CannotReadSpacing` if either
+    size is absent, non-positive, or carries an unrecognized unit.
+    """
+    import re
+
+    def _size(axis: str) -> float | None:
+        m = re.search(rf'PhysicalSize{axis}="([^"]+)"', ome_xml)
+        try:
+            return float(m.group(1)) if m else None
+        except (TypeError, ValueError):
+            return None
+
+    def _unit(axis: str) -> str:
+        m = re.search(rf'PhysicalSize{axis}Unit="([^"]+)"', ome_xml)
+        raw = m.group(1) if m else "\u00b5m"  # OME default is micrometers
+        return raw.replace("\u00b5", "u").replace("\u03bc", "u").strip().lower()
+
+    sx, sy = _size("X"), _size("Y")
+    if not sx or not sy or sx <= 0 or sy <= 0:
+        raise CannotReadSpacing("OME-XML PhysicalSizeX/Y missing or non-positive")
+    fx = _OME_UNIT_TO_UM.get(_unit("X"))
+    fy = _OME_UNIT_TO_UM.get(_unit("Y"))
+    if fx is None or fy is None:
+        raise CannotReadSpacing(
+            f"OME-XML PhysicalSize unit unrecognized ({_unit('X')}/{_unit('Y')})"
+        )
+    return sx * fx, sy * fy
 
 
 def _get_appmag_openslide(slide_path: str | Path) -> float | None:
