@@ -20,7 +20,7 @@ STABLE_COMMANDS: frozenset[str] = frozenset(
     {"run", "patch", "infer", "ncomp", "export", "reg"}
 )
 EXPERIMENTAL_COMMANDS: frozenset[str] = frozenset(
-    {"hplot", "hplot-finalize", "ecomp", "tcomp", "cme", "cme-profile", "agg"}
+    {"hplot", "hplot-finalize", "ecomp", "tcomp", "cme", "cme-profile", "agg", "import"}
 )
 
 # Commands that may run for many minutes or hours. These are exposed as

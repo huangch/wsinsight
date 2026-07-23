@@ -5,56 +5,19 @@
 
 from __future__ import annotations
 
-import hashlib
-import json
-import logging
-import os
-import tempfile
-import time
-import weakref  # added for auto-cleanup
+import os, json, hashlib, shutil, tempfile, time
 from pathlib import Path
-from typing import Any
-from typing import Callable
-from typing import Dict
-from typing import Iterator
-from typing import Optional
-from typing import Tuple
-from typing import Union
-from urllib.parse import urlparse
-from urllib.parse import urlunparse
-
+from typing import Any, Callable, Dict, Iterator, Tuple, Union, Optional
+from urllib.parse import urlparse, urlunparse
 import click
 import fsspec
-import pandas as pd
 import requests
+import pandas as pd
+import weakref  # added for auto-cleanup
 
+import logging
 logging.getLogger("aiobotocore.credentials").setLevel(logging.WARNING)
 logging.getLogger("botocore.credentials").setLevel(logging.WARNING)
-
-# Virtual-directory schemes that expand a newline-delimited manifest of sample
-# paths. ``sptx-list`` is the canonical scheme; ``image-list`` is kept as a
-# deprecated alias inherited from the whole-slide-image codebase.
-_LIST_SCHEMES = ("sptx-list", "image-list")
-
-
-def _split_sample_list_line(line: str) -> Tuple[str, Optional[str]]:
-    """Split a ``sptx-list`` manifest line into ``(path, sample_id)``.
-
-    The optional second column (an explicit sample id) is separated from the
-    path by a TAB or a comma; a TAB takes precedence so that comma-bearing
-    paths still parse. Returns ``(path, None)`` when no id column is present.
-
-    The id column exists because transcriptomics exports (e.g. Xenium) often
-    reuse the same filename (``cells.h5ad``) across projects, so the file stem
-    is not a reliable per-sample identifier.
-    """
-    if "\t" in line:
-        path_str, _, id_str = line.partition("\t")
-    elif "," in line:
-        path_str, _, id_str = line.partition(",")
-    else:
-        return line.strip(), None
-    return path_str.strip(), (id_str.strip() or None)
 
 
 class URIPath:
@@ -63,8 +26,7 @@ class URIPath:
       - Local filesystem paths
       - fsspec remotes (e.g., s3://bucket/key)
       - gdc-manifest:///abs/path/to/manifest.tsv/<filename>
-      - sptx-list:///abs/path/to/filelist.txt  (one sample path per line;
-        ``image-list://`` is accepted as a deprecated alias)
+      - image-list:///abs/path/to/filelist.txt  (one slide file path per line)
 
     Features:
       - open(): stream (local/remote) or local-open after materialize (gdc-manifest)
@@ -81,31 +43,21 @@ class URIPath:
         uri: Union[str, os.PathLike[str], "URIPath"],
         *,
         cache_dir: Optional[str] = None,
-        token: Optional[str] = None,  # GDC only (optional for open-access)
-        token_path: Optional[str] = None,  # GDC only (optional)
-        auto_cleanup: bool = False,  # delete cached file when this object is GC'd
-        _skip_validation: bool = False,  # internal: skip credential check for child paths
-        **storage_options: Any,  # fsspec options (e.g., profile="saml", client_kwargs={...})
+        token: Optional[str] = None,        # GDC only (optional for open-access)
+        token_path: Optional[str] = None,   # GDC only (optional)
+        auto_cleanup: bool = False,         # delete cached file when this object is GC'd
+        _skip_validation: bool = False,     # internal: skip credential check for child paths
+        **storage_options: Any,             # fsspec options (e.g., profile="saml", client_kwargs={...})
     ) -> None:
         if isinstance(uri, URIPath):
             self.uri: str = uri.uri
             self._cache_dir: str = cache_dir or uri._cache_dir
-            merged = dict(uri.storage_options)
-            merged.update(storage_options)
+            merged = dict(uri.storage_options); merged.update(storage_options)
             self.storage_options: Dict[str, Any] = merged
             self._materialized_path: Optional[str] = uri._materialized_path
-            self._gdc_token = (
-                token if token is not None else getattr(uri, "_gdc_token", None)
-            )
-            self._gdc_token_path = (
-                token_path
-                if token_path is not None
-                else getattr(uri, "_gdc_token_path", None)
-            )
-            self._auto_cleanup: bool = auto_cleanup or getattr(
-                uri, "_auto_cleanup", False
-            )
-            self._sample_id: Optional[str] = getattr(uri, "_sample_id", None)
+            self._gdc_token = token if token is not None else getattr(uri, "_gdc_token", None)
+            self._gdc_token_path = token_path if token_path is not None else getattr(uri, "_gdc_token_path", None)
+            self._auto_cleanup: bool = auto_cleanup or getattr(uri, "_auto_cleanup", False)
         else:
             try:
                 self.uri = os.fspath(uri)
@@ -117,43 +69,30 @@ class URIPath:
             self._gdc_token = token
             self._gdc_token_path = token_path
             self._auto_cleanup = auto_cleanup
-            self._sample_id = None
 
         parsed = urlparse(self.uri)
         self.scheme = parsed.scheme or "file"
-        self.is_local = self.scheme in ("", "file")
+        self.is_local = (self.scheme in ("", "file"))
         self.bucket = parsed.netloc if not self.is_local else ""
         self.key = parsed.path.lstrip("/") if not self.is_local else ""
 
         if self.scheme == "gdc-manifest":
             parts = parsed.path.split("/")
             try:
-                idx = max(
-                    i
-                    for i, p in enumerate(parts)
-                    if p.lower().endswith((".tsv", ".txt", ".csv"))
-                )
+                idx = max(i for i, p in enumerate(parts) if p.lower().endswith((".tsv", ".txt", ".csv")))
             except ValueError:
-                raise ValueError(
-                    "gdc-manifest URI must include a manifest file (.tsv/.txt/.csv)"
-                ) from None
-            manifest_abs = "/" + "/".join(parts[1 : idx + 1])
-            rel = parts[idx + 1 :]
+                raise ValueError("gdc-manifest URI must include a manifest file (.tsv/.txt/.csv)")
+            manifest_abs = "/" + "/".join(parts[1:idx + 1])
+            rel = parts[idx + 1:]
             self._gdc_manifest_path = manifest_abs
-            self._gdc_filename_in_manifest = "/".join(
-                [p for p in rel if p]
-            )  # may be ""
+            self._gdc_filename_in_manifest = "/".join([p for p in rel if p])  # may be ""
             self._path = Path(self._gdc_filename_in_manifest or "manifest/")
-        elif self.scheme in _LIST_SCHEMES:
-            self._sample_list_path: str = (
-                parsed.path
-            )  # absolute local path to list file
-            self._path = Path(self._sample_list_path)
+        elif self.scheme == "image-list":
+            self._image_list_path: str = parsed.path  # absolute local path to list file
+            self._path = Path(self._image_list_path)
         else:
             base = os.path.basename(self.uri.rstrip("/"))
-            self._path = (
-                Path(self.uri) if self.is_local else Path(base or "remote.file")
-            )
+            self._path = Path(self.uri) if self.is_local else Path(base or "remote.file")
 
         # ---- auto-clean internals (added; non-breaking) ----
         self._finalizer = None  # weakref.finalize handle; set when we materialize
@@ -169,11 +108,7 @@ class URIPath:
             "auto_cleanup": getattr(self, "_auto_cleanup", False),
             "_skip_validation": True,
         }
-        if (
-            self.scheme == "gdc-manifest"
-            or getattr(self, "_gdc_token", None)
-            or getattr(self, "_gdc_token_path", None)
-        ):
+        if self.scheme == "gdc-manifest" or getattr(self, "_gdc_token", None) or getattr(self, "_gdc_token_path", None):
             kwargs["token"] = self._gdc_token
             kwargs["token_path"] = self._gdc_token_path
         kwargs.update(self.storage_options)
@@ -181,27 +116,14 @@ class URIPath:
         return URIPath(uri, **kwargs)
 
     # ------------------------ Coercion helpers -----------------
-    def coerce_sample_list(self) -> "URIPath":
-        """Validate the ``--sptx-dir`` value.
-
-        Historically a plain local text file passed as ``--sptx-dir`` was
-        silently treated as a manifest. That hidden coercion hides bugs (e.g.
-        pointing at a stray ``README.txt``) and is now a hard error: callers
-        that want to pass a sample list must spell it out as
-        ``sptx-list:///path/to/filelist.txt``.
-        """
-        if self.is_local and self._path.is_file():
-            raise ValueError(
-                f"--sptx-dir points at a regular file ({self.uri}). To process "
-                "a list of samples, pass it as 'sptx-list:///path/to/filelist.txt'. "
-                "Otherwise point --sptx-dir at a directory."
-            )
-        return self
-
     def coerce_image_list(self) -> "URIPath":
-        """Back-compat alias of :meth:`coerce_sample_list` for the whole-slide-image
-        (``--wsi-dir``) callers inherited from WSInsight. Same validation, but the
-        error message uses WSI/slide terminology and the ``image-list://`` scheme.
+        """Validate the ``--wsi-dir`` value.
+
+        Historically a plain local text file passed as ``--wsi-dir`` was
+        silently treated as an ``image-list://`` manifest. That hidden coercion
+        hides bugs (e.g. pointing at a stray ``README.txt``) and is now a hard
+        error: callers that want to pass a slide list must spell it out as
+        ``image-list:///path/to/filelist.txt``.
         """
         if self.is_local and self._path.is_file():
             raise ValueError(
@@ -212,22 +134,12 @@ class URIPath:
         return self
 
     # ------------------------ Path-ish ------------------------
-    def __str__(self) -> str:
-        return self.uri
-
-    def __repr__(self) -> str:
-        return f"URIPath({self.uri!r})"
-
+    def __str__(self) -> str: return self.uri
+    def __repr__(self) -> str: return f"URIPath({self.uri!r})"
     def __fspath__(self) -> str:
-        if self.scheme in _LIST_SCHEMES:
-            raise IsADirectoryError(
-                f"{self.scheme}:// is a virtual directory; access entries via iterdir(): {self.uri}"
-            )
-        return (
-            os.fspath(self._path)
-            if self.is_local and self.scheme != "gdc-manifest"
-            else self._ensure_local()
-        )
+        if self.scheme == "image-list":
+            raise IsADirectoryError(f"image-list:// is a virtual directory; access entries via iterdir(): {self.uri}")
+        return os.fspath(self._path) if self.is_local and self.scheme != "gdc-manifest" else self._ensure_local()
 
     def __truediv__(self, other: os.PathLike | str) -> "URIPath":
         other_str = os.fspath(other)
@@ -246,7 +158,7 @@ class URIPath:
         exist_ok: bool = False,
         **overrides: Any,
     ) -> None:
-        if self.scheme in ("gdc-manifest", *_LIST_SCHEMES):
+        if self.scheme in ("gdc-manifest", "image-list"):
             raise IOError(f"{self.scheme} URIs are read-only virtual directories")
 
         if self.is_local:
@@ -258,9 +170,7 @@ class URIPath:
         if not parents:
             parent = target.rsplit("/", 1)[0] if "/" in target else ""
             if parent and not fs.exists(parent):
-                raise FileNotFoundError(
-                    f"Parent directory does not exist for {self.uri}"
-                )
+                raise FileNotFoundError(f"Parent directory does not exist for {self.uri}")
 
         mkdirs = getattr(fs, "makedirs", None)
         if mkdirs:
@@ -276,27 +186,11 @@ class URIPath:
                 raise
 
     @property
-    def name(self) -> str:
-        return self._path.name
-
+    def name(self) -> str:   return self._path.name
     @property
-    def stem(self) -> str:
-        return self._path.stem
-
+    def stem(self) -> str:   return self._path.stem
     @property
-    def suffix(self) -> str:
-        return self._path.suffix
-
-    @property
-    def sample_id(self) -> str:
-        """Per-sample identifier: the explicit id from a ``sptx-list`` manifest's
-        optional 2nd column if present, otherwise the file stem.
-
-        Prefer this over ``stem`` as the sample/slide id: transcriptomics
-        exports (e.g. Xenium) frequently reuse the same filename
-        (``cells.h5ad``) across projects, so stems collide.
-        """
-        return self._sample_id or self.stem
+    def suffix(self) -> str: return self._path.suffix
 
     @property
     def parent(self) -> "URIPath":
@@ -320,23 +214,17 @@ class URIPath:
     @property
     def parts(self) -> Tuple[str, ...]:
         if self.scheme == "gdc-manifest":
-            return (
-                "gdc-manifest",
-                self._gdc_manifest_path,
-                *([p for p in self._gdc_filename_in_manifest.split("/") if p]),
-            )
+            return ("gdc-manifest", self._gdc_manifest_path, *([p for p in self._gdc_filename_in_manifest.split('/') if p]))
         if self.is_local:
             return Path(self._path).parts
         if self.scheme in ("s3", "gs"):
-            return (self.scheme, self.bucket, *([p for p in self.key.split("/") if p]))
+            return (self.scheme, self.bucket, *([p for p in self.key.split('/') if p]))
         return (self.scheme, self.bucket, self.key)
 
     # ------------------------ Public I/O ------------------------
     def open(self, mode: str = "rb", **overrides: Any):
-        if self.scheme in _LIST_SCHEMES:
-            raise IsADirectoryError(
-                f"{self.scheme}:// is a virtual directory; access entries via iterdir(): {self.uri}"
-            )
+        if self.scheme == "image-list":
+            raise IsADirectoryError(f"image-list:// is a virtual directory; access entries via iterdir(): {self.uri}")
         write_mode = self._is_write_mode(mode)
 
         if self.scheme == "gdc-manifest":
@@ -362,23 +250,17 @@ class URIPath:
             fp = open(local_path, mode)
             self._materialized_path = local_path
             self._register_finalizer(local_path)
-
             def _sync_back():
                 self._sync_remote_from_cache(local_path, **overrides)
-
             return _SyncOnCloseFile(fp, _sync_back)
 
         # read-only remote path -> stream from cached copy
         local_path = self._materialize_via_fsspec(None, **overrides)
         return open(local_path, mode)
 
-    def materialize(
-        self, dest_path: Optional[str | os.PathLike] = None, **overrides: Any
-    ) -> str:
-        if self.scheme in _LIST_SCHEMES:
-            raise IsADirectoryError(
-                f"{self.scheme}:// is a virtual directory; access entries via iterdir(): {self.uri}"
-            )
+    def materialize(self, dest_path: Optional[str | os.PathLike] = None, **overrides: Any) -> str:
+        if self.scheme == "image-list":
+            raise IsADirectoryError(f"image-list:// is a virtual directory; access entries via iterdir(): {self.uri}")
         if self.is_local and self.scheme != "gdc-manifest":
             self._materialized_path = os.fspath(self._path)
             # local file — no cache to clean, no finalizer needed
@@ -387,31 +269,21 @@ class URIPath:
         if self.scheme == "gdc-manifest":
             filename = self._gdc_filename_in_manifest
             if not filename:
-                raise IsADirectoryError(
-                    "gdc-manifest points to the manifest root, not a file."
-                )
+                raise IsADirectoryError("gdc-manifest points to the manifest root, not a file.")
             df = self._load_manifest_table(self._gdc_manifest_path)
             row = df[df["filename"] == filename]
             if row.empty:
-                raise FileNotFoundError(
-                    f"{filename!r} not found in manifest {self._gdc_manifest_path}"
-                )
+                raise FileNotFoundError(f"{filename!r} not found in manifest {self._gdc_manifest_path}")
             uuid = str(row["id"].iloc[0])
-            md5 = (
-                str(row["md5"].iloc[0]).lower()
-                if "md5" in row and pd.notna(row["md5"].iloc[0])
-                else None
-            )
+            md5 = str(row["md5"].iloc[0]).lower() if "md5" in row and pd.notna(row["md5"].iloc[0]) else None
 
             if dest_path is None:
                 key_for_hash = f"{self._gdc_manifest_path}::{uuid}"
                 h = self._hash_key(key_for_hash)
-                dest_dir = os.path.join(self._cache_dir, "gdc", h[:2])
-                self._ensure_dir(dest_dir)
+                dest_dir = os.path.join(self._cache_dir, "gdc", h[:2]); self._ensure_dir(dest_dir)
                 dest = os.path.join(dest_dir, filename)
             else:
-                dest = os.fspath(dest_path)
-                self._ensure_dir(os.path.dirname(dest))
+                dest = os.fspath(dest_path); self._ensure_dir(os.path.dirname(dest))
 
             # if already materialized, register finalizer and return
             if self._materialized_path and os.path.exists(self._materialized_path):
@@ -435,8 +307,7 @@ class URIPath:
                 dir=os.path.dirname(dest) or None,
                 prefix=".uripath-",
                 suffix=os.path.splitext(filename)[1] or "",
-            )
-            tmp.close()
+            ); tmp.close()
             success = False
             try:
                 self._gdc_download_requests(uuid, tmp.name, token=token)
@@ -466,8 +337,8 @@ class URIPath:
     def exists(self, **overrides: Any) -> bool:
         if self.scheme == "gdc-manifest":
             return self._exists_gdc_manifest()
-        if self.scheme in _LIST_SCHEMES:
-            return self._exists_sample_list()
+        if self.scheme == "image-list":
+            return self._exists_image_list()
         if self.is_local:
             return self._exists_local()
         return self._exists_remote(**overrides)
@@ -475,7 +346,7 @@ class URIPath:
     def is_file(self, **overrides: Any) -> bool:
         if self.scheme == "gdc-manifest":
             return self._is_file_gdc_manifest()
-        if self.scheme in _LIST_SCHEMES:
+        if self.scheme == "image-list":
             return False
         if self.is_local:
             return self._path.is_file()
@@ -484,35 +355,29 @@ class URIPath:
     def is_dir(self, **overrides: Any) -> bool:
         if self.scheme == "gdc-manifest":
             return self._is_dir_gdc_manifest()
-        if self.scheme in _LIST_SCHEMES:
-            return self._exists_sample_list()
+        if self.scheme == "image-list":
+            return self._exists_image_list()
         if self.is_local:
             return self._path.is_dir()
         return self._is_dir_remote(**overrides)
 
-    def iterdir(
-        self, recursive: bool = False, files_only: bool = True, **overrides: Any
-    ) -> Iterator["URIPath"]:
+    def iterdir(self, recursive: bool = False, files_only: bool = True, **overrides: Any) -> Iterator["URIPath"]:
         if self.scheme == "gdc-manifest":
             yield from self._iterdir_gdc_manifest()
             return
-        if self.scheme in _LIST_SCHEMES:
-            yield from self._iterdir_sample_list()
+        if self.scheme == "image-list":
+            yield from self._iterdir_image_list()
             return
         if self.is_local:
             yield from self._iterdir_local(recursive=recursive, files_only=files_only)
             return
-        yield from self._iterdir_remote(
-            recursive=recursive, files_only=files_only, **overrides
-        )
+        yield from self._iterdir_remote(recursive=recursive, files_only=files_only, **overrides)
 
     # ------------------------ Scheme helpers: LOCAL ------------------------
     def _exists_local(self) -> bool:
         return self._path.exists()
 
-    def _iterdir_local(
-        self, *, recursive: bool, files_only: bool
-    ) -> Iterator["URIPath"]:
+    def _iterdir_local(self, *, recursive: bool, files_only: bool) -> Iterator["URIPath"]:
         it = self._path.rglob("*") if recursive else self._path.iterdir()
         for child in it:
             if files_only and child.is_dir():
@@ -530,10 +395,7 @@ class URIPath:
             return False
 
     def _is_file_gdc_manifest(self) -> bool:
-        return (
-            getattr(self, "_gdc_filename_in_manifest", "") != ""
-            and self._exists_gdc_manifest()
-        )
+        return getattr(self, "_gdc_filename_in_manifest", "") != "" and self._exists_gdc_manifest()
 
     def _is_dir_gdc_manifest(self) -> bool:
         return getattr(self, "_gdc_filename_in_manifest", "") == ""
@@ -545,23 +407,19 @@ class URIPath:
         for fn in df["filename"].tolist():
             yield self._child(f"gdc-manifest://{self._gdc_manifest_path}/{fn}")
 
-    # ------------------------ Scheme helpers: SPTX-LIST ------------------------
-    def _exists_sample_list(self) -> bool:
-        return os.path.isfile(self._sample_list_path)
+    # ------------------------ Scheme helpers: IMAGE-LIST ------------------------
+    def _exists_image_list(self) -> bool:
+        return os.path.isfile(self._image_list_path)
 
-    def _iterdir_sample_list(self) -> Iterator["URIPath"]:
-        if not os.path.isfile(self._sample_list_path):
+    def _iterdir_image_list(self) -> Iterator["URIPath"]:
+        if not os.path.isfile(self._image_list_path):
             return
-        with open(self._sample_list_path, encoding="utf-8-sig") as fh:
+        with open(self._image_list_path, encoding="utf-8-sig") as fh:
             for raw in fh:
                 line = raw.strip()
                 if not line or line.startswith("#"):
                     continue
-                path_str, sample_id = _split_sample_list_line(line)
-                child = self._child(path_str)
-                if sample_id:
-                    child._sample_id = sample_id
-                yield child
+                yield self._child(line)
 
     # ------------------------ Scheme helpers: REMOTE (fsspec, e.g., S3) ------------------------
     def _exists_remote(self, **overrides: Any) -> bool:
@@ -585,16 +443,10 @@ class URIPath:
             except Exception:
                 # Fallback 2: parent listing
                 try:
-                    parent = (
-                        fs._parent(fs_path)
-                        if hasattr(fs, "_parent")
-                        else fs_path.rsplit("/", 1)[0]
-                    )
+                    parent = fs._parent(fs_path) if hasattr(fs, "_parent") else fs_path.rsplit("/", 1)[0]
                     for entry in fs.ls(parent, detail=True):
                         name = entry.get("name") or entry
-                        if isinstance(name, str) and name.rstrip("/") == fs_path.rstrip(
-                            "/"
-                        ):
+                        if isinstance(name, str) and name.rstrip("/") == fs_path.rstrip("/"):
                             return True
                     return False
                 except Exception:
@@ -608,11 +460,7 @@ class URIPath:
         try:
             info = fs.info(fs_path)
             t = info.get("type")
-            return (
-                (t == "file")
-                if t is not None
-                else ("size" in info and info["size"] is not None)
-            )
+            return (t == "file") if t is not None else ("size" in info and info["size"] is not None)
         except FileNotFoundError:
             return False
         except Exception:
@@ -633,9 +481,7 @@ class URIPath:
         except Exception:
             return False
 
-    def _iterdir_remote(
-        self, *, recursive: bool, files_only: bool, **overrides: Any
-    ) -> Iterator["URIPath"]:
+    def _iterdir_remote(self, *, recursive: bool, files_only: bool, **overrides: Any) -> Iterator["URIPath"]:
         fs, fs_path = self._fs_and_path(**overrides)
         base = fs_path if fs_path.endswith("/") else fs_path + "/"
         if recursive:
@@ -653,7 +499,7 @@ class URIPath:
     def _validate_credentials(self) -> None:
         """
         Fail fast on bad credentials for remote targets.
-
+    
         Local paths: no-op.
         gdc-manifest: if a token is set, do a tiny HEAD.
         S3 (and other fsspec remotes): verify AWS identity (S3) or init fs.
@@ -662,7 +508,7 @@ class URIPath:
         if self.is_local and self.scheme != "gdc-manifest":
             return
 
-        if self.scheme in _LIST_SCHEMES:
+        if self.scheme == "image-list":
             return  # local text file, no credentials needed
 
         if self.scheme == "gdc-manifest":
@@ -671,31 +517,24 @@ class URIPath:
                 return
             try:
                 import requests as _rq
-
                 headers = {"Accept": "application/octet-stream", "X-Auth-Token": token}
                 # tiny auth check; not downloading anything
-                resp = _rq.head(
-                    "https://api.gdc.cancer.gov/data/", headers=headers, timeout=8
-                )
+                resp = _rq.head("https://api.gdc.cancer.gov/data/", headers=headers, timeout=8)
                 if resp.status_code >= 400:
-                    raise RuntimeError(
-                        f"GDC token check failed (status {resp.status_code})"
-                    )
+                    raise RuntimeError(f"GDC token check failed (status {resp.status_code})")
             except Exception as e:
                 raise RuntimeError(f"GDC credential check failed: {e!r}") from e
             return
-
+    
         # fsspec-backed remotes
         if self.scheme == "s3":
             # 1) Init the filesystem with current options (surfaces invalid tokens in practice)
             try:
                 self._fs_and_path()
             except Exception as e:
-                raise RuntimeError(
-                    f"S3 filesystem init failed for {self.uri!r}: {e!r}"
-                ) from e
+                raise RuntimeError(f"S3 filesystem init failed for {self.uri!r}: {e!r}") from e
             return
-
+    
         if self.scheme == "gs":
             # Init gcsfs with current options (surfaces missing gcsfs / bad creds early).
             # Auth defaults to Application Default Credentials
@@ -703,40 +542,29 @@ class URIPath:
             try:
                 self._fs_and_path()
             except Exception as e:
-                raise RuntimeError(
-                    f"GCS filesystem init failed for {self.uri!r}: {e!r}"
-                ) from e
+                raise RuntimeError(f"GCS filesystem init failed for {self.uri!r}: {e!r}") from e
             return
-
+    
         # Generic fsspec scheme (e.g., abfs): try to init the FS
         try:
             self._fs_and_path()
         except Exception as e:
-            raise RuntimeError(
-                f"Remote filesystem init failed for {self.uri!r}: {e!r}"
-            ) from e
+            raise RuntimeError(f"Remote filesystem init failed for {self.uri!r}: {e!r}") from e
+    
 
     # ------------------------ fsspec helpers ------------------------
     def _fs_and_path(self, **overrides: Any):
         opts = self._normalize_storage_opts({**self.storage_options, **overrides})
-        target = (
-            self.uri
-            if not (self.is_local and self.scheme != "gdc-manifest")
-            else os.fspath(self._path)
-        )
+        target = self.uri if not (self.is_local and self.scheme != "gdc-manifest") else os.fspath(self._path)
         return fsspec.url_to_fs(target, **opts)
 
-    def _materialize_via_fsspec(
-        self, dest_path: Optional[str | os.PathLike], **overrides: Any
-    ) -> str:
+    def _materialize_via_fsspec(self, dest_path: Optional[str | os.PathLike], **overrides: Any) -> str:
         if dest_path is None:
             h = self._hash_key(self.uri)
-            dest_dir = os.path.join(self._cache_dir, "remote", h[:2])
-            self._ensure_dir(dest_dir)
+            dest_dir = os.path.join(self._cache_dir, "remote", h[:2]); self._ensure_dir(dest_dir)
             dest = os.path.join(dest_dir, self.name or "remote.file")
         else:
-            dest = os.fspath(dest_path)
-            self._ensure_dir(os.path.dirname(dest))
+            dest = os.fspath(dest_path); self._ensure_dir(os.path.dirname(dest))
 
         if self._materialized_path and os.path.exists(self._materialized_path):
             self._register_finalizer(self._materialized_path)
@@ -753,8 +581,7 @@ class URIPath:
             dir=os.path.dirname(dest) or None,
             prefix=".uripath-",
             suffix=os.path.splitext(self.name)[1] or "",
-        )
-        tmp.close()
+        ); tmp.close()
         success = False
         try:
             fs.get(fs_path, tmp.name)
@@ -795,13 +622,10 @@ class URIPath:
         return ("r" in mode) and ("w" not in mode) and ("x" not in mode)
 
     # ------------------------ GDC (requests backend) ------------------------
-    def _gdc_download_requests(
-        self, uuid: str, out_path: str, *, token: Optional[str] = None
-    ) -> None:
+    def _gdc_download_requests(self, uuid: str, out_path: str, *, token: Optional[str] = None) -> None:
         url = f"https://api.gdc.cancer.gov/data/{uuid}"  # fixed typo
         headers = {"Accept": "application/octet-stream"}
-        if token:
-            headers["X-Auth-Token"] = token
+        if token: headers["X-Auth-Token"] = token
 
         backoff = 1.0
         for attempt in range(5):
@@ -812,14 +636,11 @@ class URIPath:
                     r.raise_for_status()
                     with open(out_path, "wb") as fp:
                         for chunk in r.iter_content(chunk_size=1024 * 1024):
-                            if chunk:
-                                fp.write(chunk)
+                            if chunk: fp.write(chunk)
                 return
             except (requests.Timeout, requests.ConnectionError, requests.HTTPError):
-                if attempt == 4:
-                    raise
-                time.sleep(backoff)
-                backoff = min(backoff * 2, 16.0)
+                if attempt == 4: raise
+                time.sleep(backoff); backoff = min(backoff * 2, 16.0)
 
     # ------------------------ Utilities ------------------------
     @staticmethod
@@ -896,18 +717,13 @@ class URIPath:
             # .tsv/.txt → sep autodetect (handles tabs/spaces)
             df = pd.read_csv(manifest_path, sep=None, engine="python")
         cols = {c.lower(): c for c in df.columns}
-
         def pick(*names):
             for n in names:
-                if n in cols:
-                    return cols[n]
+                if n in cols: return cols[n]
             raise ValueError(f"Manifest missing required column among {names!r}")
-
         id_col = pick("id", "file_id")
         fn_col = pick("filename", "file_name")
-        out = pd.DataFrame(
-            {"id": df[id_col].astype(str), "filename": df[fn_col].astype(str)}
-        )
+        out = pd.DataFrame({"id": df[id_col].astype(str), "filename": df[fn_col].astype(str)})
         if "md5" in cols:
             out["md5"] = df[cols["md5"]].astype(str)
 
@@ -919,12 +735,8 @@ class URIPath:
         return out
 
     # Convenience
-    def as_uri(self) -> str:
-        return self.uri
-
-    def local_path(self) -> str:
-        return self._ensure_local()
-
+    def as_uri(self) -> str: return self.uri
+    def local_path(self) -> str: return self._ensure_local()
     def _ensure_local(self) -> str:
         if self.is_local and self.scheme != "gdc-manifest":
             return os.fspath(self._path)
@@ -956,11 +768,9 @@ class URIPath:
         """
         if self.scheme == "gdc-manifest":
             # manifest path first, then the filename within it
-            return (
-                "gdc-manifest",
-                os.path.abspath(self._gdc_manifest_path),
-                self._gdc_filename_in_manifest or "",
-            )
+            return ("gdc-manifest",
+                    os.path.abspath(self._gdc_manifest_path),
+                    self._gdc_filename_in_manifest or "")
         if self.scheme == "image-list":
             return ("image-list", os.path.abspath(self._image_list_path))
         if self.is_local:
@@ -989,10 +799,7 @@ class URIPath:
         if not self.is_local:
             if self.uri.endswith("/"):
                 raise ValueError("Can't change suffix of a directory")
-            if (
-                self.scheme == "gdc-manifest"
-                and getattr(self, "_gdc_filename_in_manifest", "") == ""
-            ):
+            if self.scheme == "gdc-manifest" and getattr(self, "_gdc_filename_in_manifest", "") == "":
                 raise ValueError("Can't change suffix of a directory (manifest root)")
 
         # ----- gdc-manifest -----
@@ -1040,15 +847,11 @@ class URIPath:
         """
 
         if any(sep in new_name for sep in ("/", "\\")):
-            raise ValueError(
-                f"Invalid new_name '{new_name}': must not contain path separators"
-            )
+            raise ValueError(f"Invalid new_name '{new_name}': must not contain path separators")
 
         s = self.uri
         parsed = urlparse(s)
-        is_uri = bool(parsed.scheme) and not (
-            len(parsed.scheme) == 1 and parsed.scheme.isalpha()
-        )
+        is_uri = bool(parsed.scheme) and not (len(parsed.scheme) == 1 and parsed.scheme.isalpha())
 
         if not is_uri:
             new_uri = str(Path(s).with_name(new_name))
@@ -1059,19 +862,11 @@ class URIPath:
                 new_path = pth + new_name
             else:
                 head, _, _ = pth.rpartition("/")
-                new_path = (
-                    head + "/" if head else ("/" if pth.startswith("/") else "")
-                ) + new_name
-            new_uri = urlunparse(
-                (
-                    parsed.scheme,
-                    parsed.netloc,
-                    new_path,
-                    parsed.params,
-                    parsed.query,
-                    parsed.fragment,
-                )
-            )
+                new_path = (head + "/" if head else ("/" if pth.startswith("/") else "")) + new_name
+            new_uri = urlunparse((
+                parsed.scheme, parsed.netloc, new_path,
+                parsed.params, parsed.query, parsed.fragment
+            ))
 
         return self._child(new_uri)
 
@@ -1140,7 +935,7 @@ class URIPath:
 
     def __getstate__(self) -> dict:
         state = self.__dict__.copy()
-        state["_finalizer"] = None  # weakref.finalize is not picklable
+        state["_finalizer"] = None   # weakref.finalize is not picklable
         return state
 
     def __setstate__(self, state: dict) -> None:
@@ -1149,17 +944,10 @@ class URIPath:
 
 class URIPathType(click.ParamType):
     """Click parameter type that parses CLI args into ``URIPath`` objects."""
-
     name = "UniversalPath"
-
-    def __init__(
-        self,
-        exists: bool = False,
-        **storage_options: Any,
-    ):
+    def __init__(self, exists: bool = False, **storage_options: Any,):
         self.exists = exists
         self.storage_options = dict(storage_options)
-
     def convert(self, value, param, ctx):
         if isinstance(value, URIPath):
             obj = value
@@ -1204,7 +992,7 @@ class _SyncOnCloseFile:
         else:
             if self._fp and not self._fp.closed:
                 self._fp.close()
-            self._on_close = None  # discard sync — avoid uploading corrupt data
+            self._on_close = None   # discard sync — avoid uploading corrupt data
         return result
 
     def close(self):

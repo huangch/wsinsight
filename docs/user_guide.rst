@@ -122,6 +122,13 @@ Command                       Purpose
                               ``agg/<name>/`` graph-cache subgroup.  The name is selectable
                               in ``hplot`` via ``--base-by aggregate`` / ``--target-by
                               aggregate``.
+``wsinsight import``          Import spatial-transcriptomics (Xenium) gene expression onto
+                              WSInsight cells.  Maps each transcriptomics cell onto the
+                              registered H&E via the ST2WSI (SIFT affine + bUnwarpJ
+                              B-spline) transform, matches it to the nearest
+                              ``model-outputs-csv`` detection, and writes one AnnData
+                              ``.h5ad`` per slide under ``xenium-import/``.  ``--dry-run``
+                              reports the cell↔detection hit-rate only.
 ============================  ================================================================
 
 Pick ``run`` for one-shot processing. Switch to the explicit ``patch`` → ``infer`` flow
@@ -134,7 +141,38 @@ across a cohort (note: CME is cross-slide and cannot be parallelized across GPU 
 Use ``reg`` to enrich an earlier run with region-level
 probabilities without re-running inference. All commands share the same URI-aware options
 and support local folders, ``s3://`` buckets, ``gs://`` buckets, ``gdc-manifest://`` manifests, and
-``image-list://`` file lists.
+``image-list://`` file lists.  ``wsinsight import`` additionally accepts a two-column
+``sptx-list://`` manifest (``path``<TAB>``sample_id`` per line) for spatial-transcriptomics
+samples.
+
+
+Importing spatial-transcriptomics expression
+--------------------------------------------
+
+``wsinsight import`` (experimental) maps Xenium gene expression onto the H&E cells
+detected by ``infer``.  Provide a two-column ``sptx-list://`` manifest whose first column
+points at each Xenium sample directory (``cells.parquet`` + ``cell_feature_matrix.h5`` +
+``registration_params.json`` + ``direct_transf.txt``) and whose second column is the
+stable ``sample_id`` — this must equal the H&E / model-output stem, because Xenium
+exports reuse the same filenames across runs::
+
+   # samples.txt  (TAB-separated: path<TAB>sample_id)
+   /data/xenium/1956A_0007330	BLCA_S01
+   /data/xenium/1302A_0007311	BLCA_S02
+
+Then run (set ``WSINSIGHT_EXPERIMENTAL=1`` to enable the command)::
+
+   WSINSIGHT_EXPERIMENTAL=1 wsinsight import \
+     --sptx-dir  sptx-list:///data/samples.txt \
+     --wsi-dir   slides/ \
+     --results-dir results/ \
+     --transform affine+bspline
+
+One AnnData ``.h5ad`` per sample is written under ``results/xenium-import/`` (sparse
+expression in ``X``; the matched detection link and its ``prob_*`` columns in ``obs``;
+the ``model-outputs-csv/`` is never modified).  Add ``--dry-run`` to report only the
+cell↔detection hit-rate without writing anything — useful for confirming a manifest
+pairing or the registration before a full import.
 
 
 Model catalogs

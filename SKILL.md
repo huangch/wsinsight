@@ -197,11 +197,21 @@ wsinsight
 ```
 
 > Additional subcommands — `hplot`, `hplot-finalize`, `ecomp`, `tcomp`, `cme`,
-> `cme-profile` — are gated as **experimental**. They are hidden from `--help`
+> `cme-profile`, `import` — are gated as **experimental**. They are hidden from `--help`
 > and cannot be
 > executed unless `WSINSIGHT_EXPERIMENTAL=1` is exported. Their CLI flags,
 > output schemas, and metric definitions may change without notice. This
 > skill file documents only the stable surface.
+>
+> `import` (experimental) maps spatial-transcriptomics (Xenium) gene expression
+> onto WSInsight cells. It reads a two-column `sptx-list://` manifest
+> (`path`<TAB>`sample_id`, via `--sptx-dir`), transforms each transcriptomics
+> cell onto the registered H&E through the ST2WSI SIFT-affine + bUnwarpJ
+> B-spline transform, matches it to the nearest `model-outputs-csv` detection,
+> and writes one AnnData `.h5ad` per slide under `xenium-import/`
+> (`model-outputs-csv/` is never modified). Supports
+> `--transform affine|affine+bspline` (default), `--genes`, `--match-max-dist`,
+> and `--dry-run` (report the cell↔detection hit-rate only, writing nothing).
 
 ### 4.2 Global Options (All Commands)
 

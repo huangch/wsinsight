@@ -6,7 +6,7 @@ Command reference
 .. note::
 
    **Experimental commands.** ``hplot``, ``hplot-finalize``, ``cme``,
-   ``cme-profile``, ``ecomp``, and ``tcomp`` (together with their
+   ``cme-profile``, ``ecomp``, ``tcomp``, and ``import`` (together with their
    ``hplot-outputs.csv`` /
    ``hmetrics-outputs.csv`` / ``ecomp-outputs-csv/`` / ``tcomp-outputs-csv/``
    outputs) are research features under active development.  Their CLI flags,
@@ -67,6 +67,10 @@ file lists
 (a text file with one slide path per line; blank lines and ``#`` comments
 are ignored).  A plain local text file passed directly as ``--wsi-dir`` is
 rejected — prefix it with ``image-list://`` to pass a slide list.
+``sptx-list://`` is a two-column variant (``path``<TAB>``sample_id`` per line)
+used by ``wsinsight import`` to carry a stable ``sample_id`` alongside each
+spatial-transcriptomics sample, because transcriptomics exports (e.g. Xenium)
+frequently reuse the same filename across runs.
 
 Experimental commands
 ---------------------
@@ -110,6 +114,16 @@ Command                       Purpose
                               results directory.  Reads the per-cell labels from ``cme``.
                               Whole-slide H&E cohorts carry no transcriptome, so no
                               marker-gene table is produced.
+``wsinsight import``          Import spatial-transcriptomics (Xenium) gene expression onto
+                              WSInsight cells.  Maps each transcriptomics cell onto the
+                              registered H&E via the ST2WSI (SIFT affine + bUnwarpJ B-spline)
+                              transform, matches it to the nearest ``model-outputs-csv``
+                              detection, and writes one AnnData ``.h5ad`` per slide under
+                              ``xenium-import/`` (the ``model-outputs-csv/`` is never
+                              modified).  Reads a ``sptx-list://`` manifest via ``--sptx-dir``;
+                              supports ``--transform affine|affine+bspline`` (default),
+                              ``--genes``, ``--match-max-dist``, and ``--dry-run`` (report
+                              the cell↔detection hit-rate only, writing nothing).
 ============================  ================================================================
 
 
@@ -642,4 +656,4 @@ Export merged analytics to GeoJSON / OME-CSV::
 .. click:: wsinsight.cli.cli:cli
    :prog: wsinsight
    :nested: full
-   :commands: run, patch, infer, export, hplot, hplot_finalize_cmd, reg, ncomp, ecomp, tcomp, cme
+   :commands: run, patch, infer, export, hplot, hplot_finalize_cmd, reg, ncomp, ecomp, tcomp, cme, sptx_import

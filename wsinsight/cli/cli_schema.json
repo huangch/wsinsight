@@ -10,7 +10,7 @@
             "-i",
             "--wsi-dir"
           ],
-          "help": "Directory containing whole slide images.  Used only to enumerate slides and resolve \u00b5m-per-pixel spacing; images are not fully read during agg.",
+          "help": "Directory containing whole slide images.  Used only to enumerate slides and resolve µm-per-pixel spacing; images are not fully read during agg.",
           "is_flag": false,
           "kind": "string",
           "multiple": false,
@@ -63,7 +63,7 @@
           "flags": [
             "--agg-max-neighbor-distance"
           ],
-          "help": "Maximum distance (\u00b5m) between neighboring cells in the Delaunay graph.",
+          "help": "Maximum distance (µm) between neighboring cells in the Delaunay graph.",
           "is_flag": false,
           "kind": "float",
           "multiple": false,
@@ -293,7 +293,7 @@
             "-i",
             "--wsi-dir"
           ],
-          "help": "Directory containing whole slide images.  Used only to enumerate slides and to resolve \u00b5m-per-pixel spacing; images are not fully read during ecomp.",
+          "help": "Directory containing whole slide images.  Used only to enumerate slides and to resolve µm-per-pixel spacing; images are not fully read during ecomp.",
           "is_flag": false,
           "kind": "string",
           "multiple": false,
@@ -320,7 +320,7 @@
           "flags": [
             "--ecomp-max-edge"
           ],
-          "help": "Maximum Delaunay edge length (\u00b5m); longer edges are pruned before building the line graph.",
+          "help": "Maximum Delaunay edge length (µm); longer edges are pruned before building the line graph.",
           "is_flag": false,
           "kind": "float",
           "multiple": false,
@@ -383,7 +383,7 @@
       ]
     },
     "export": {
-      "help": "Merge all available per-cell analytics and export to GeoJSON / OME-CSV.\n\n    Reads whatever analysis outputs are present under RESULTS_DIR:\n\n    \b\n      model-outputs-csv/       \u2014 base inference probabilities (+ reg columns)\n      hplot-outputs-csv/cells/ \u2014 H-Plot per-cell layer features\n      ncomp-outputs-csv/       \u2014 node-level (cell) composition features\n\n    All per-cell sources above are left-joined into export-csv/, then\n    written to export-geojson/ and/or export-omecsv/ depending on the\n    flags provided.\n\n    Edge-level (``ecomp-outputs-csv/``) and triad-level\n    (``tcomp-outputs-csv/``) composition outputs are standalone\n    simplicial deliverables and are NOT merged into the per-cell\n    export (they have different primary keys).  Consume them\n    directly from their respective subdirectories.\n\n    At least one of --geojson or --omecsv must be supplied.\n\n    This command can be run at any time after inference \u2014 and optionally after\n    hplot / ncomp \u2014 without re-running the full inference pipeline.",
+      "help": "Merge all available per-cell analytics and export to GeoJSON / OME-CSV.\n\n    Reads whatever analysis outputs are present under RESULTS_DIR:\n\n    \b\n      model-outputs-csv/       — base inference probabilities (+ reg columns)\n      hplot-outputs-csv/cells/ — H-Plot per-cell layer features\n      ncomp-outputs-csv/       — node-level (cell) composition features\n\n    All per-cell sources above are left-joined into export-csv/, then\n    written to export-geojson/ and/or export-omecsv/ depending on the\n    flags provided.\n\n    Edge-level (``ecomp-outputs-csv/``) and triad-level\n    (``tcomp-outputs-csv/``) composition outputs are standalone\n    simplicial deliverables and are NOT merged into the per-cell\n    export (they have different primary keys).  Consume them\n    directly from their respective subdirectories.\n\n    At least one of --geojson or --omecsv must be supplied.\n\n    This command can be run at any time after inference — and optionally after\n    hplot / ncomp — without re-running the full inference pipeline.",
       "name": "export",
       "params": [
         {
@@ -732,7 +732,7 @@
       ]
     },
     "infer": {
-      "help": "Execute WSInsight inference and optional post-processing on prepared patches.\n\n    The command consumes an existing `results_dir` (typically produced by `wsinsight\n    patch` or `wsinsight run`) that already contains patch-level HDF5 data whose\n    metadata enumerates the processed slides. Depending on the arguments, it either\n    loads a registered model,\n    a custom config/model-path pair, or synthesizes a pseudo-model from QuPath\n    detections/annotations. After validating the requested patch geometry, the\n    selected model is run via `run_inference`, producing CSV outputs under\n    `model-outputs-csv`.\n\n    Optional switches then:\n        \u2022 synchronize metadata about the full session to `infer_metadata_*.json`.\n\n    Use ``wsinsight export`` to convert results to GeoJSON / OME-CSV.\n    Use ``wsinsight hplot`` / ``wsinsight ncomp`` for downstream spatial analytics.\n\n    The function treats all input/output paths as `URIPath` values, materializing\n    local copies only when dependencies such as pandas/geopandas require filesystem\n    paths. Usage mirrors the CLI: `wsinsight infer --results-dir ... [options]`.",
+      "help": "Execute WSInsight inference and optional post-processing on prepared patches.\n\n    The command consumes an existing `results_dir` (typically produced by `wsinsight\n    patch` or `wsinsight run`) that already contains patch-level HDF5 data whose\n    metadata enumerates the processed slides. Depending on the arguments, it either\n    loads a registered model,\n    a custom config/model-path pair, or synthesizes a pseudo-model from QuPath\n    detections/annotations. After validating the requested patch geometry, the\n    selected model is run via `run_inference`, producing CSV outputs under\n    `model-outputs-csv`.\n\n    Optional switches then:\n        • synchronize metadata about the full session to `infer_metadata_*.json`.\n\n    Use ``wsinsight export`` to convert results to GeoJSON / OME-CSV.\n    Use ``wsinsight hplot`` / ``wsinsight ncomp`` for downstream spatial analytics.\n\n    The function treats all input/output paths as `URIPath` values, materializing\n    local copies only when dependencies such as pandas/geopandas require filesystem\n    paths. Usage mirrors the CLI: `wsinsight infer --results-dir ... [options]`.",
       "name": "infer",
       "params": [
         {
@@ -795,7 +795,7 @@
           "flags": [
             "--qupath-measurement-detection-dir"
           ],
-          "help": "Directory of QuPath TSV detection-measurement exports (one <slide>.txt per slide containing 'Centroid X \u00b5m', 'Centroid Y \u00b5m', classification columns). Patches are extracted as fixed-size squares centered on each centroid. For GeoJSON detection exports, use --qupath-geojson-detection-dir instead.",
+          "help": "Directory of QuPath TSV detection-measurement exports (one <slide>.txt per slide containing 'Centroid X µm', 'Centroid Y µm', classification columns). Patches are extracted as fixed-size squares centered on each centroid. For GeoJSON detection exports, use --qupath-geojson-detection-dir instead.",
           "is_flag": false,
           "kind": "string",
           "multiple": false,
@@ -976,7 +976,7 @@
             "-n",
             "--num-workers"
           ],
-          "help": "Dataloader workers that feed patches to PyTorch (n=0 runs single-threaded). Default heuristics use min(2 \u00d7 GPU count, CPU count).",
+          "help": "Dataloader workers that feed patches to PyTorch (n=0 runs single-threaded). Default heuristics use min(2 × GPU count, CPU count).",
           "is_flag": false,
           "kind": "int",
           "multiple": false,
@@ -1061,7 +1061,7 @@
             "-i",
             "--wsi-dir"
           ],
-          "help": "Directory containing whole slide images.  Used only to enumerate slides and to resolve \u00b5m-per-pixel spacing; images are not fully read during ncomp.",
+          "help": "Directory containing whole slide images.  Used only to enumerate slides and to resolve µm-per-pixel spacing; images are not fully read during ncomp.",
           "is_flag": false,
           "kind": "string",
           "multiple": false,
@@ -1088,7 +1088,7 @@
           "flags": [
             "--ncomp-max-neighbor-distance"
           ],
-          "help": "Maximum distance (\u00b5m) between neighboring cells in the Delaunay graph.",
+          "help": "Maximum distance (µm) between neighboring cells in the Delaunay graph.",
           "is_flag": false,
           "kind": "float",
           "multiple": false,
@@ -1201,7 +1201,7 @@
           "flags": [
             "--qupath-measurement-detection-dir"
           ],
-          "help": "Directory of QuPath TSV detection-measurement exports (one <slide>.txt per slide containing 'Centroid X \u00b5m', 'Centroid Y \u00b5m', classification columns). Patches are extracted as fixed-size squares centered on each centroid. For GeoJSON detection exports, use --qupath-geojson-detection-dir instead.",
+          "help": "Directory of QuPath TSV detection-measurement exports (one <slide>.txt per slide containing 'Centroid X µm', 'Centroid Y µm', classification columns). Patches are extracted as fixed-size squares centered on each centroid. For GeoJSON detection exports, use --qupath-geojson-detection-dir instead.",
           "is_flag": false,
           "kind": "string",
           "multiple": false,
@@ -1714,7 +1714,7 @@
           "flags": [
             "--qupath-measurement-detection-dir"
           ],
-          "help": "Directory of QuPath TSV detection-measurement exports (one <slide>.txt per slide containing 'Centroid X \u00b5m', 'Centroid Y \u00b5m', classification columns). Patches are extracted as fixed-size squares centered on each centroid. For GeoJSON detection exports, use --qupath-geojson-detection-dir instead.",
+          "help": "Directory of QuPath TSV detection-measurement exports (one <slide>.txt per slide containing 'Centroid X µm', 'Centroid Y µm', classification columns). Patches are extracted as fixed-size squares centered on each centroid. For GeoJSON detection exports, use --qupath-geojson-detection-dir instead.",
           "is_flag": false,
           "kind": "string",
           "multiple": false,
@@ -2223,7 +2223,7 @@
           "flags": [
             "--ncomp-max-neighbor-distance"
           ],
-          "help": "Maximum distance (\u00b5m) between neighboring cells in the Delaunay graph for ncomp.",
+          "help": "Maximum distance (µm) between neighboring cells in the Delaunay graph for ncomp.",
           "is_flag": false,
           "kind": "float",
           "multiple": false,
@@ -2262,7 +2262,7 @@
           "flags": [
             "--ecomp-max-edge"
           ],
-          "help": "Maximum Delaunay edge length (\u00b5m) for ecomp; longer edges are pruned.",
+          "help": "Maximum Delaunay edge length (µm) for ecomp; longer edges are pruned.",
           "is_flag": false,
           "kind": "float",
           "multiple": false,
@@ -2301,7 +2301,7 @@
           "flags": [
             "--tcomp-max-edge"
           ],
-          "help": "Maximum Delaunay edge length (\u00b5m) for tcomp; triads with any longer edge are pruned.",
+          "help": "Maximum Delaunay edge length (µm) for tcomp; triads with any longer edge are pruned.",
           "is_flag": false,
           "kind": "float",
           "multiple": false,
@@ -2399,7 +2399,7 @@
             "-i",
             "--wsi-dir"
           ],
-          "help": "Directory containing whole slide images.  Used only to enumerate slides and to resolve \u00b5m-per-pixel spacing; images are not fully read during tcomp.",
+          "help": "Directory containing whole slide images.  Used only to enumerate slides and to resolve µm-per-pixel spacing; images are not fully read during tcomp.",
           "is_flag": false,
           "kind": "string",
           "multiple": false,
@@ -2426,7 +2426,7 @@
           "flags": [
             "--tcomp-max-edge"
           ],
-          "help": "Maximum triad edge length (\u00b5m); triads whose longest edge exceeds this are dropped.",
+          "help": "Maximum triad edge length (µm); triads whose longest edge exceeds this are dropped.",
           "is_flag": false,
           "kind": "float",
           "multiple": false,
@@ -2483,6 +2483,138 @@
           "kind": "bool",
           "multiple": false,
           "name": "no_neighborhood",
+          "param_type": "option",
+          "required": false
+        }
+      ]
+    },
+    "import": {
+      "help": "Import spatial-transcriptomics gene expression onto WSInsight cells.\n\n\b\nFor each sample in the sptx-list manifest:\n  • map Xenium centroids (µm) onto the H&E via the ST2WSI transform,\n  • match each cell to the nearest model-output detection,\n  • write one AnnData with sparse expression + the matched detection link.\n\n\b\nOutput written to <results-dir>/:\n  xenium-import/<sample_id>.h5ad",
+      "name": "import",
+      "params": [
+        {
+          "default": null,
+          "flags": [
+            "-i",
+            "--wsi-dir"
+          ],
+          "help": "Directory (or image-list://) of H&E slides. Matched to a sample by stem == manifest sample_id; provides the exact target dimensions used by the elastic (B-spline) transform.",
+          "is_flag": false,
+          "kind": "string",
+          "multiple": false,
+          "name": "wsi_dir",
+          "param_type": "option",
+          "required": true
+        },
+        {
+          "default": null,
+          "flags": [
+            "--sptx-dir"
+          ],
+          "help": "A sptx-list:// manifest (path<TAB>sample_id per line). The path points at each Xenium sample directory; sample_id is the stable id used to match the H&E / model-output (Xenium filenames collide across runs).",
+          "is_flag": false,
+          "kind": "string",
+          "multiple": false,
+          "name": "sptx_dir",
+          "param_type": "option",
+          "required": true
+        },
+        {
+          "default": null,
+          "flags": [
+            "-o",
+            "--results-dir"
+          ],
+          "help": "Directory holding WSInsight inference outputs (must contain model-outputs-csv/). xenium-import/ is written here.",
+          "is_flag": false,
+          "kind": "string",
+          "multiple": false,
+          "name": "results_dir",
+          "param_type": "option",
+          "required": true
+        },
+        {
+          "default": "xenium",
+          "flags": [
+            "--platform"
+          ],
+          "help": "Spatial-transcriptomics platform to import (xenium by default).",
+          "is_flag": false,
+          "kind": "choice",
+          "multiple": false,
+          "name": "platform",
+          "param_type": "option",
+          "required": false,
+          "choices": [
+            "xenium"
+          ]
+        },
+        {
+          "default": "affine+bspline",
+          "flags": [
+            "--transform"
+          ],
+          "help": "ST2WSI coordinate transform: SIFT affine only, or affine + bUnwarpJ elastic B-spline (default; requires the H&E target dimensions).",
+          "is_flag": false,
+          "kind": "choice",
+          "multiple": false,
+          "name": "transform",
+          "param_type": "option",
+          "required": false,
+          "choices": [
+            "affine",
+            "affine+bspline"
+          ]
+        },
+        {
+          "default": "all",
+          "flags": [
+            "--genes"
+          ],
+          "help": "'all' (full panel, Gene Expression features) or a comma-separated list of gene names to import.",
+          "is_flag": false,
+          "kind": "string",
+          "multiple": false,
+          "name": "genes",
+          "param_type": "option",
+          "required": false
+        },
+        {
+          "default": 0.0,
+          "flags": [
+            "--match-max-dist"
+          ],
+          "help": "Maximum H&E-pixel distance for a cell↔detection match (0 = no cap; match_dist_px is always recorded so matches can be filtered later).",
+          "is_flag": false,
+          "kind": "float",
+          "multiple": false,
+          "name": "match_max_dist",
+          "param_type": "option",
+          "required": false
+        },
+        {
+          "default": false,
+          "flags": [
+            "--overwrite"
+          ],
+          "help": "Recompute and overwrite existing per-slide imports.",
+          "is_flag": true,
+          "kind": "bool",
+          "multiple": false,
+          "name": "overwrite",
+          "param_type": "option",
+          "required": false
+        },
+        {
+          "default": false,
+          "flags": [
+            "--dry-run"
+          ],
+          "help": "QC only: compute and report the cell↔detection match hit-rate and median match distance per sample, without reading expression or writing any h5ad. Use it to check a manifest pairing / registration before a full import.",
+          "is_flag": true,
+          "kind": "bool",
+          "multiple": false,
+          "name": "dry_run",
           "param_type": "option",
           "required": false
         }

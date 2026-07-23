@@ -26,6 +26,7 @@ from .ncomp import ncomp
 from .patch import patch
 from .reg import reg
 from .run import run
+from .sptx_import import sptx_import
 from .tcomp import tcomp
 
 _logging_levels = ["debug", "info", "warning", "error", "critical"]
@@ -33,7 +34,7 @@ _logging_levels = ["debug", "info", "warning", "error", "critical"]
 # Subcommands hidden unless the user opts into experimental features by
 # setting the WSINSIGHT_EXPERIMENTAL environment variable. Keep this list in
 # sync with qupath-extension-wsinsight/commands/WSInsightCommands.EXPERIMENTAL.
-_EXPERIMENTAL_COMMANDS = ("hplot", "hplot-finalize", "cme", "tcomp", "ecomp", "agg")
+_EXPERIMENTAL_COMMANDS = ("hplot", "hplot-finalize", "cme", "tcomp", "ecomp", "agg", "import")
 
 
 def _experimental_enabled() -> bool:
@@ -98,6 +99,7 @@ cli.add_command(tcomp)
 cli.add_command(cme)
 cli.add_command(cme_profile_cmd)
 cli.add_command(agg)
+cli.add_command(sptx_import)
 
 # Hide experimental commands from --help unless WSINSIGHT_EXPERIMENTAL is set.
 # They remain registered so `describe` can emit the full schema; invocation is
