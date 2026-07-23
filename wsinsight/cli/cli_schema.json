@@ -2509,6 +2509,7 @@
         {
           "default": null,
           "flags": [
+            "-s",
             "--sptx-dir"
           ],
           "help": "A sptx-list:// manifest (path<TAB>sample_id per line). The path points at each Xenium sample directory; sample_id is the stable id used to match the H&E / model-output (Xenium filenames collide across runs).",

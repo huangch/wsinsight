@@ -205,7 +205,7 @@ wsinsight
 >
 > `import` (experimental) maps spatial-transcriptomics (Xenium) gene expression
 > onto WSInsight cells. It reads a two-column `sptx-list://` manifest
-> (`path`<TAB>`sample_id`, via `--sptx-dir`), transforms each transcriptomics
+> (`path`<TAB>`sample_id`, via `-s`/`--sptx-dir`), transforms each transcriptomics
 > cell onto the registered H&E through the ST2WSI SIFT-affine + bUnwarpJ
 > B-spline transform, matches it to the nearest `model-outputs-csv` detection,
 > and writes one AnnData `.h5ad` per slide under `xenium-import/`

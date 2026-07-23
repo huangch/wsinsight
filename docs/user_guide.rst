@@ -163,10 +163,13 @@ exports reuse the same filenames across runs::
 Then run (set ``WSINSIGHT_EXPERIMENTAL=1`` to enable the command)::
 
    WSINSIGHT_EXPERIMENTAL=1 wsinsight import \
-     --sptx-dir  sptx-list:///data/samples.txt \
-     --wsi-dir   slides/ \
-     --results-dir results/ \
+     -s  sptx-list:///data/samples.txt \
+     -i  slides/ \
+     -o  results/ \
      --transform affine+bspline
+
+(``-s`` / ``-i`` / ``-o`` are short aliases for ``--sptx-dir`` / ``--wsi-dir`` /
+``--results-dir``.)
 
 One AnnData ``.h5ad`` per sample is written under ``results/xenium-import/`` (sparse
 expression in ``X``; the matched detection link and its ``prob_*`` columns in ``obs``;

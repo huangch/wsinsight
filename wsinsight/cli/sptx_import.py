@@ -231,7 +231,7 @@ def _write_h5ad(adata, out_path: URIPath) -> None:
          "by the elastic (B-spline) transform.",
 )
 @click.option(
-    "--sptx-dir",
+    "-s", "--sptx-dir",
     type=URIPathType(exists=True, **_STORAGE_KWARGS),
     required=True,
     help="A sptx-list:// manifest (path<TAB>sample_id per line). The path points "
