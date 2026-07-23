@@ -115,10 +115,13 @@ def test_import_affine_alignment_and_link(tmp_path):
     X = np.asarray(X.todense()).ravel() if hasattr(X, "todense") else np.asarray(X).ravel()
     np.testing.assert_allclose(X, [4, 5, 6])
 
-    # link columns present + the matched detection's neoplastic prob carried over
-    for c in ["matched_box", "match_dist_px", "he_prob_neoplastic", "he_minx"]:
+    # link columns present + EVERY model-output-csv column carried over (wsi_ prefix)
+    for c in ["matched_box", "match_dist_px", "wsi_prob_neoplastic", "wsi_minx",
+              "wsi_cell_id"]:
         assert c in a.obs.columns
     assert (a.obs["matched_box"] >= 0).all()
+    # self-contained link id == "<sample_id>-<matched_box>"
+    assert (a.obs["wsi_cell_id"] == "S1-" + a.obs["matched_box"].astype(int).astype(str)).all()
     assert a.uns["wsinsight_import"]["transform"] == "affine"
 
 
@@ -143,3 +146,29 @@ def test_import_match_distance_cap(tmp_path):
     assert info["hit_rate_pct"] == 100.0
     a = anndata.read_h5ad(str(out_path.materialize()))
     assert np.nanmax(a.obs["match_dist_px"].to_numpy()) <= 0.5
+
+
+def test_import_unmatched_cell_leaves_wsi_fields_null(tmp_path):
+    import anndata
+
+    xdir, model_csv, out_path, ids = _make_sample(tmp_path)
+    # Move c3 far from every detection box; with a tight cap it stays unmatched.
+    cells = pd.read_parquet(xdir / "cells.parquet")
+    cells.loc[cells.index[-1], ["x_centroid", "y_centroid"]] = [10_000.0, 10_000.0]
+    cells.to_parquet(xdir / "cells.parquet")
+
+    info = _process_sample("S1", xdir, None, model_csv, out_path,
+                           transform="affine", want_genes=None, match_max_dist=5.0)
+    assert info["hit_rate_pct"] == 75.0  # 3 of 4 cells matched
+
+    a = anndata.read_h5ad(str(out_path.materialize()))
+    row = a.obs.loc["c3"]
+    assert int(row["matched_box"]) == -1
+    assert np.isnan(row["match_dist_px"])
+    # every carried model-output column is null for the unmatched cell
+    assert np.isnan(row["wsi_minx"])
+    assert np.isnan(row["wsi_prob_neoplastic"])
+    assert pd.isna(row["wsi_cell_id"])
+    # matched cells still carry a concrete link id
+    assert (a.obs.loc[["c0", "c1", "c2"], "matched_box"] >= 0).all()
+

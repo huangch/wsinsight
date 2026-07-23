@@ -180,12 +180,18 @@ def _process_sample(sample_id: str, xdir: Path, wsi_path: Optional[URIPath],
         "matched_box": matched,
         "match_dist_px": dist,
     })
-    prob_cols = [c for c in md.columns if c.startswith("prob_")]
-    m = matched >= 0
-    for c in ["minx", "miny", "width", "height", *prob_cols]:
-        vals = np.full(len(obs), np.nan)
-        vals[m] = md[c].to_numpy(float)[matched[m]]
-        obs["he_" + c] = vals
+    # Carry EVERY model-output-csv column onto its matched cell so the h5ad is
+    # self-contained (no need to re-open the CSV).  Columns are prefixed ``wsi_``.
+    # ``md`` keeps its default 0..n-1 RangeIndex, so the positional ``matched``
+    # index doubles as the row label; unmatched cells (matched_box == -1) look up
+    # label -1, which is absent -> an all-NaN row for every wsi_ field.
+    wsi_rows = md.reindex(matched)
+    wsi_rows.columns = [f"wsi_{c}" for c in wsi_rows.columns]
+    wsi_rows.index = obs.index
+    obs = pd.concat([obs, wsi_rows], axis=1)
+    # Explicit link id == WSInsight's own export-h5ad obs index (<slide>-<row>);
+    # None for cells with no matched detection.
+    obs["wsi_cell_id"] = [f"{sample_id}-{int(b)}" if b >= 0 else None for b in matched]
     obs.index = obs["cell_id"].astype(str)
 
     adata = AnnData(X=X, obs=obs, var=var)
@@ -309,7 +315,10 @@ def sptx_import(
     For each sample in the sptx-list manifest:
       • map Xenium centroids (µm) onto the H&E via the ST2WSI transform,
       • match each cell to the nearest model-output detection,
-      • write one AnnData with sparse expression + the matched detection link.
+      • write one AnnData whose obs carries EVERY model-output-csv column of the
+        matched detection (prefixed ``wsi_``, NaN when a cell has no match) plus
+        ``wsi_cell_id`` (== WSInsight's export-h5ad obs index), so the h5ad is
+        self-contained and needs no join back to the CSV.
 
     \b
     Output written to <results-dir>/:

@@ -172,10 +172,15 @@ Then run (set ``WSINSIGHT_EXPERIMENTAL=1`` to enable the command)::
 ``--results-dir``.)
 
 One AnnData ``.h5ad`` per sample is written under ``results/xenium-import/`` (sparse
-expression in ``X``; the matched detection link and its ``prob_*`` columns in ``obs``;
-the ``model-outputs-csv/`` is never modified).  Add ``--dry-run`` to report only the
-cell↔detection hit-rate without writing anything — useful for confirming a manifest
-pairing or the registration before a full import.
+expression in ``X``; the Xenium centroid in µm and H&E pixels, and **every**
+``model-outputs-csv`` column of the matched detection copied into ``obs`` with a
+``wsi_`` prefix — ``wsi_minx``, ``wsi_prob_*``, any ``wsi_cme_*``/``wsi_feature_*``
+sidecar columns, etc. — plus ``wsi_cell_id`` linking to WSInsight's own export;
+unmatched cells leave every ``wsi_`` field ``NaN``.  The h5ad is therefore
+self-contained and needs no join back to the CSV, and the ``model-outputs-csv/`` is
+never modified).  Add ``--dry-run`` to report only the cell↔detection hit-rate without
+writing anything — useful for confirming a manifest pairing or the registration before
+a full import.
 
 
 Model catalogs
