@@ -209,9 +209,14 @@ wsinsight
 > cell onto the registered H&E through the ST2WSI SIFT-affine + bUnwarpJ
 > B-spline transform, matches it to the nearest `model-outputs-csv` detection,
 > and writes one AnnData `.h5ad` per slide under `xenium-import/`
-> (`model-outputs-csv/` is never modified). Supports
-> `--transform affine|affine+bspline` (default), `--genes`, `--match-max-dist`,
-> and `--dry-run` (report the cell↔detection hit-rate only, writing nothing).
+> (`model-outputs-csv/` is never modified). Every matched `model-outputs-csv`
+> column is carried onto the cell under a `model_` prefix (plus `model_cell_id`);
+> optional per-cell sidecars requested with `--include cme,hplot,ncomp` are
+> merged the same way under their own `cme_` / `hplot_` / `ncomp_` prefixes
+> (`model` is always imported and need not be listed). Supports
+> `--transform affine|affine+bspline` (default), `--genes`, `--include`,
+> `--match-max-dist`, and `--dry-run` (report the cell↔detection hit-rate only,
+> writing nothing).
 
 ### 4.2 Global Options (All Commands)
 

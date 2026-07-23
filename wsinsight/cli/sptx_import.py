@@ -41,6 +41,19 @@ _STORAGE_KWARGS = default_storage_kwargs()
 _WSI_EXTS = (".svs", ".tif", ".tiff", ".ndpi", ".scn", ".mrxs", ".vms", ".vmu",
              ".bif", ".dcm", ".qptiff")
 
+# Optional per-cell add-on sources for ``--include``. Each maps to a sidecar CSV
+# that is row-aligned 1:1 with ``model-outputs-csv/<sid>.csv`` (all are derived
+# from the same model detections, in the same order), so it is joined onto each
+# cell by the SAME matched row index used for the model output — no extra
+# spatial join. Value = (obs prefix, relative directory parts under results-dir).
+# ``model`` is always imported (mandatory, canonical owner of the geometry and
+# ``prob_*`` columns) and is intentionally NOT listed here.
+_ADDON_SOURCES: dict[str, tuple[str, tuple[str, ...]]] = {
+    "cme":   ("cme_",   ("cme-outputs-csv", "cells")),
+    "hplot": ("hplot_", ("hplot-outputs-csv", "cells")),
+    "ncomp": ("ncomp_", ("ncomp-outputs-csv",)),
+}
+
 
 # ---------------------------------------------------------------------------
 # Readers
@@ -113,7 +126,9 @@ def _read_expression_h5(h5_path: Path, want_genes: Optional[set[str]]):
 def _process_sample(sample_id: str, xdir: Path, wsi_path: Optional[URIPath],
                     model_csv: URIPath, out_path: URIPath, transform: str,
                     want_genes: Optional[set[str]], match_max_dist: float,
-                    dry_run: bool = False) -> dict:
+                    dry_run: bool = False, *,
+                    include: tuple[str, ...] = (),
+                    results_dir: Optional[URIPath] = None) -> dict:
     import numpy as np
     import pandas as pd
     from anndata import AnnData
@@ -181,17 +196,39 @@ def _process_sample(sample_id: str, xdir: Path, wsi_path: Optional[URIPath],
         "match_dist_px": dist,
     })
     # Carry EVERY model-output-csv column onto its matched cell so the h5ad is
-    # self-contained (no need to re-open the CSV).  Columns are prefixed ``wsi_``.
+    # self-contained (no need to re-open the CSV).  Columns are prefixed
+    # ``model_`` — the prefix names the producing subcommand (``model`` is the
+    # mandatory, canonical source that owns the geometry and ``prob_*`` columns).
     # ``md`` keeps its default 0..n-1 RangeIndex, so the positional ``matched``
     # index doubles as the row label; unmatched cells (matched_box == -1) look up
-    # label -1, which is absent -> an all-NaN row for every wsi_ field.
-    wsi_rows = md.reindex(matched)
-    wsi_rows.columns = [f"wsi_{c}" for c in wsi_rows.columns]
-    wsi_rows.index = obs.index
-    obs = pd.concat([obs, wsi_rows], axis=1)
+    # label -1, which is absent -> an all-NaN row for every model_ field.
+    model_rows = md.reindex(matched)
+    model_rows.columns = [f"model_{c}" for c in model_rows.columns]
+    model_rows.index = obs.index
+    obs = pd.concat([obs, model_rows], axis=1)
+    # ``claimed`` tracks ORIGINAL (unprefixed) column names already emitted, so
+    # optional add-on sources that echo the model geometry (cme/hplot re-list
+    # ``minx``, ``prob_*`` …) don't duplicate them; model is the canonical owner.
+    claimed: set[str] = set(md.columns)
     # Explicit link id == WSInsight's own export-h5ad obs index (<slide>-<row>);
     # None for cells with no matched detection.
-    obs["wsi_cell_id"] = [f"{sample_id}-{int(b)}" if b >= 0 else None for b in matched]
+    obs["model_cell_id"] = [f"{sample_id}-{int(b)}" if b >= 0 else None for b in matched]
+
+    # ---- optional per-cell add-on sources (--include) ----
+    sources = ["model"]
+    if include and results_dir is not None:
+        for key in include:
+            prefix, rel = _ADDON_SOURCES[key]
+            src_csv = results_dir
+            for part in rel:
+                src_csv = src_csv / part
+            src_csv = src_csv / f"{sample_id}.csv"
+            if not src_csv.exists():
+                continue
+            src_df = pd.read_csv(os.fspath(src_csv))
+            obs = _merge_source(obs, src_df, matched, prefix, claimed)
+            sources.append(key)
+
     obs.index = obs["cell_id"].astype(str)
 
     adata = AnnData(X=X, obs=obs, var=var)
@@ -200,6 +237,7 @@ def _process_sample(sample_id: str, xdir: Path, wsi_path: Optional[URIPath],
         "sample_id": sample_id,
         "platform": "xenium",
         "transform": transform,
+        "sources": sources,
         "target_wh": list(target_wh) if target_wh else None,
         "n_cells": int(len(obs)),
         "n_genes": int(adata.n_vars),
@@ -210,6 +248,30 @@ def _process_sample(sample_id: str, xdir: Path, wsi_path: Optional[URIPath],
     return {"sample_id": sample_id, "n_cells": int(len(obs)),
             "n_genes": int(adata.n_vars), "hit_rate_pct": round(hit_rate, 2),
             "median_dist_px": round(float(np.nanmedian(dist)), 2) if len(dist) else None}
+
+
+def _merge_source(obs, src_df, matched, prefix: str, claimed: set[str]):
+    """Merge one row-aligned per-cell sidecar onto ``obs`` under ``prefix``.
+
+    ``src_df`` is 1:1 with ``model-outputs-csv`` (default RangeIndex), so it is
+    reindexed by the same positional ``matched`` array (unmatched -> NaN row).
+    Only columns not already claimed by an earlier source are added; a column
+    that already starts with ``prefix`` is kept verbatim (no double-prefix).
+    """
+    import pandas as pd
+
+    src_rows = src_df.reindex(matched)
+    src_rows.index = obs.index
+    add: dict[str, object] = {}
+    for c in src_df.columns:
+        if c in claimed:
+            continue
+        col = c if c.startswith(prefix) else f"{prefix}{c}"
+        add[col] = src_rows[c].to_numpy()
+        claimed.add(c)
+    if add:
+        obs = pd.concat([obs, pd.DataFrame(add, index=obs.index)], axis=1)
+    return obs
 
 
 def _write_h5ad(adata, out_path: URIPath) -> None:
@@ -274,6 +336,15 @@ def _write_h5ad(adata, out_path: URIPath) -> None:
          "list of gene names to import.",
 )
 @click.option(
+    "--include",
+    default="",
+    show_default=True,
+    help="Comma-separated optional per-cell sources to merge into obs, each "
+         "under its own prefix: cme (cme_), hplot (hplot_), ncomp (ncomp_). "
+         "The mandatory 'model' source (model_*) is always imported and need "
+         "not be listed. Empty = model only. Example: --include cme,hplot",
+)
+@click.option(
     "--match-max-dist",
     type=click.FloatRange(min=0),
     default=0.0,
@@ -305,6 +376,7 @@ def sptx_import(
     platform: str = "xenium",
     transform: str = "affine+bspline",
     genes: str = "all",
+    include: str = "",
     match_max_dist: float = 0.0,
     overwrite: bool = False,
     dry_run: bool = False,
@@ -316,9 +388,11 @@ def sptx_import(
       • map Xenium centroids (µm) onto the H&E via the ST2WSI transform,
       • match each cell to the nearest model-output detection,
       • write one AnnData whose obs carries EVERY model-output-csv column of the
-        matched detection (prefixed ``wsi_``, NaN when a cell has no match) plus
-        ``wsi_cell_id`` (== WSInsight's export-h5ad obs index), so the h5ad is
-        self-contained and needs no join back to the CSV.
+        matched detection (prefixed ``model_``, NaN when a cell has no match) plus
+        ``model_cell_id`` (== WSInsight's export-h5ad obs index), so the h5ad is
+        self-contained and needs no join back to the CSV. Optional per-cell
+        sources requested via ``--include`` are merged the same way under their
+        own prefixes (``cme_`` / ``hplot_`` / ``ncomp_``).
 
     \b
     Output written to <results-dir>/:
@@ -328,6 +402,23 @@ def sptx_import(
 
     ensure_input_directory(wsi_dir, "--wsi-dir")
     ensure_input_directory(results_dir, "--results-dir")
+
+    include_sources = tuple(
+        s for s in (t.strip() for t in include.replace(",", " ").split()) if s
+    )
+    bad = [s for s in include_sources if s not in _ADDON_SOURCES]
+    if bad:
+        raise click.ClickException(
+            f"--include: unknown source(s) {', '.join(bad)}. "
+            f"Valid optional sources: {', '.join(_ADDON_SOURCES)} "
+            "('model' is always included)."
+        )
+    # De-duplicate while preserving order; drop a stray 'model' (always on).
+    seen: set[str] = set()
+    include_sources = tuple(
+        s for s in include_sources
+        if s != "model" and not (s in seen or seen.add(s))
+    )
 
     # ---- H&E slides indexed by stem ----
     wsi_dir = wsi_dir.coerce_image_list()
@@ -357,7 +448,9 @@ def sptx_import(
         raise click.ClickException(f"No samples found in --sptx-dir manifest: {sptx_dir}")
 
     click.secho(f"\nImporting {platform} expression for {len(samples)} sample(s) "
-                f"(transform={transform}{', dry-run' if dry_run else ''}).\n", fg="green")
+                f"(transform={transform}"
+                f"{', +' + ','.join(include_sources) if include_sources else ''}"
+                f"{', dry-run' if dry_run else ''}).\n", fg="green")
 
     done, skipped, failed = [], [], []
     for child in samples:
@@ -382,7 +475,8 @@ def sptx_import(
         wsi_path = wsi_by_id.get(sid)
         try:
             info = _process_sample(sid, xdir, wsi_path, model_csv, out_path,
-                                   transform, want_genes, match_max_dist, dry_run)
+                                   transform, want_genes, match_max_dist, dry_run,
+                                   include=include_sources, results_dir=results_dir)
             _tag = "dry" if dry_run else "ok"
             _genes = "" if info["n_genes"] is None else f"× {info['n_genes']} genes "
             click.secho(
@@ -413,6 +507,7 @@ def sptx_import(
         "import",
         {
             "platform": platform, "transform": transform, "genes": genes,
+            "include": list(include_sources),
             "match_max_dist": match_max_dist, "dry_run": dry_run,
             "n_ok": len(done), "n_skipped": len(skipped), "n_failed": len(failed),
             "samples": done,

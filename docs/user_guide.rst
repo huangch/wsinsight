@@ -166,21 +166,31 @@ Then run (set ``WSINSIGHT_EXPERIMENTAL=1`` to enable the command)::
      -s  sptx-list:///data/samples.txt \
      -i  slides/ \
      -o  results/ \
-     --transform affine+bspline
+     --transform affine+bspline \
+     --include cme,hplot
 
 (``-s`` / ``-i`` / ``-o`` are short aliases for ``--sptx-dir`` / ``--wsi-dir`` /
 ``--results-dir``.)
 
 One AnnData ``.h5ad`` per sample is written under ``results/xenium-import/`` (sparse
 expression in ``X``; the Xenium centroid in µm and H&E pixels, and **every**
-``model-outputs-csv`` column of the matched detection copied into ``obs`` with a
-``wsi_`` prefix — ``wsi_minx``, ``wsi_prob_*``, any ``wsi_cme_*``/``wsi_feature_*``
-sidecar columns, etc. — plus ``wsi_cell_id`` linking to WSInsight's own export;
-unmatched cells leave every ``wsi_`` field ``NaN``.  The h5ad is therefore
-self-contained and needs no join back to the CSV, and the ``model-outputs-csv/`` is
-never modified).  Add ``--dry-run`` to report only the cell↔detection hit-rate without
-writing anything — useful for confirming a manifest pairing or the registration before
-a full import.
+``model-outputs-csv`` column of the matched detection copied into ``obs`` under a
+``model_`` prefix — ``model_minx``, ``model_prob_*``, … — plus ``model_cell_id``
+linking to WSInsight's own export).  The ``model`` source is always imported and owns
+the geometry / ``prob_*`` columns; optional per-cell sidecars requested with
+``--include`` are merged the same way, each under its own prefix:
+
+* ``cme``   → ``cme_*`` (from ``cme-outputs-csv/cells/``),
+* ``hplot`` → ``hplot_*`` including ``hplot_distance_to_border`` (from ``hplot-outputs-csv/cells/``),
+* ``ncomp`` → ``ncomp_*`` (from ``ncomp-outputs-csv/``).
+
+Columns a sidecar echoes from the model output (e.g. ``minx``) are not duplicated —
+``model`` is the canonical owner — and a column already carrying its own prefix
+(e.g. ``cme_0``) is kept verbatim.  Unmatched cells leave every merged field ``NaN``.
+The h5ad is therefore self-contained and needs no join back to the CSVs, and
+``model-outputs-csv/`` is never modified.  Add ``--dry-run`` to report only the
+cell↔detection hit-rate without writing anything — useful for confirming a manifest
+pairing or the registration before a full import.
 
 
 Model catalogs

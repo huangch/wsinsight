@@ -115,14 +115,15 @@ def test_import_affine_alignment_and_link(tmp_path):
     X = np.asarray(X.todense()).ravel() if hasattr(X, "todense") else np.asarray(X).ravel()
     np.testing.assert_allclose(X, [4, 5, 6])
 
-    # link columns present + EVERY model-output-csv column carried over (wsi_ prefix)
-    for c in ["matched_box", "match_dist_px", "wsi_prob_neoplastic", "wsi_minx",
-              "wsi_cell_id"]:
+    # link columns present + EVERY model-output-csv column carried over (model_ prefix)
+    for c in ["matched_box", "match_dist_px", "model_prob_neoplastic", "model_minx",
+              "model_cell_id"]:
         assert c in a.obs.columns
     assert (a.obs["matched_box"] >= 0).all()
     # self-contained link id == "<sample_id>-<matched_box>"
-    assert (a.obs["wsi_cell_id"] == "S1-" + a.obs["matched_box"].astype(int).astype(str)).all()
+    assert (a.obs["model_cell_id"] == "S1-" + a.obs["matched_box"].astype(int).astype(str)).all()
     assert a.uns["wsinsight_import"]["transform"] == "affine"
+    assert list(a.uns["wsinsight_import"]["sources"]) == ["model"]
 
 
 def test_import_gene_subset(tmp_path):
@@ -166,9 +167,42 @@ def test_import_unmatched_cell_leaves_wsi_fields_null(tmp_path):
     assert int(row["matched_box"]) == -1
     assert np.isnan(row["match_dist_px"])
     # every carried model-output column is null for the unmatched cell
-    assert np.isnan(row["wsi_minx"])
-    assert np.isnan(row["wsi_prob_neoplastic"])
-    assert pd.isna(row["wsi_cell_id"])
+    assert np.isnan(row["model_minx"])
+    assert np.isnan(row["model_prob_neoplastic"])
+    assert pd.isna(row["model_cell_id"])
     # matched cells still carry a concrete link id
     assert (a.obs.loc[["c0", "c1", "c2"], "matched_box"] >= 0).all()
+
+
+def test_import_include_cme_prefixes_and_dedup(tmp_path):
+    import anndata
+
+    xdir, model_csv, out_path, ids = _make_sample(tmp_path)
+    # cme cells sidecar: row-aligned 1:1 with model-outputs-csv/S1.csv (4 rows),
+    # echoing the model geometry (minx) plus genuinely new cme_* / feature_* cols.
+    results_dir = URIPath(str(tmp_path / "results"))
+    cme_cells = tmp_path / "results" / "cme-outputs-csv" / "cells"
+    cme_cells.mkdir(parents=True)
+    pd.DataFrame({
+        "minx": [9.0, 19.0, 29.0, 39.0],          # echoes model geometry -> deduped
+        "cme_0": [0.1, 0.2, 0.3, 0.4],
+        "cme_1": [0.9, 0.8, 0.7, 0.6],            # already cme_-prefixed -> kept verbatim
+        "feature_raw_k0_x": [1.0, 2.0, 3.0, 4.0],  # -> cme_feature_raw_k0_x
+    }).to_csv(cme_cells / "S1.csv", index=False)
+
+    _process_sample("S1", xdir, None, model_csv, out_path,
+                    transform="affine", want_genes=None, match_max_dist=0.0,
+                    include=("cme",), results_dir=results_dir)
+
+    a = anndata.read_h5ad(str(out_path.materialize()))
+    assert list(a.uns["wsinsight_import"]["sources"]) == ["model", "cme"]
+    # new cme columns present under cme_ prefix (no double-prefix on cme_1)
+    for c in ["cme_0", "cme_1", "cme_feature_raw_k0_x"]:
+        assert c in a.obs.columns
+    # geometry echoed by cme is NOT duplicated: model owns minx, cme_minx absent
+    assert "cme_minx" not in a.obs.columns
+    assert "model_minx" in a.obs.columns
+    # values aligned by matched row index (c0 -> row 0)
+    assert float(a.obs.loc["c0", "cme_0"]) == 0.1
+    assert float(a.obs.loc["c3", "cme_feature_raw_k0_x"]) == 4.0
 

@@ -277,7 +277,10 @@ def _worker(
     nodes_df = calculate_distance_to_border(nodes_df, {}, A_sparse=A_sparse)
     _step("layer dists")
 
-    _drop_cols = ["is_base_region", "is_base_border", "distance_to_border"]
+    # ``distance_to_border`` is retained so ``wsinsight import --include hplot``
+    # can carry it per cell (as ``hplot_distance_to_border``). The two boolean
+    # base-region flags remain internal scaffolding and are still dropped.
+    _drop_cols = ["is_base_region", "is_base_border"]
     with critical_section(f"saving hplot outputs for {slide_id}"):
         with cells_csv.open("w", encoding="utf-8", newline="") as fp:
             nodes_df.drop(

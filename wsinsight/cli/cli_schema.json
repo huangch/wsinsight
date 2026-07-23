@@ -1,2626 +1,2639 @@
 {
-  "commands": {
-    "agg": {
-      "help": "Detect cell-type aggregates (e.g. TLS) and write namespaced outputs.\n\n    \b\n    Outputs written to <results-dir>/:\n      model-outputs-csv/<slide>.csv      gains object_<name>_prob_<name> column\n      agg-<name>-outputs-csv/<slide>.csv  one row per aggregate (hplot-consumable)\n      graphs/<slide>.h5                   gains an agg/<name>/ quotient-graph group",
-      "name": "agg",
-      "params": [
-        {
-          "default": null,
-          "flags": [
-            "-i",
-            "--wsi-dir"
-          ],
-          "help": "Directory containing whole slide images.  Used only to enumerate slides and resolve µm-per-pixel spacing; images are not fully read during agg.",
-          "is_flag": false,
-          "kind": "string",
-          "multiple": false,
-          "name": "wsi_dir",
-          "param_type": "option",
-          "required": true
-        },
-        {
-          "default": null,
-          "flags": [
-            "-o",
-            "--results-dir"
-          ],
-          "help": "Directory holding WSInsight inference outputs.  Must contain a ``model-outputs-csv/`` subdirectory produced by ``wsinsight infer`` or ``wsinsight run``.",
-          "is_flag": false,
-          "kind": "string",
-          "multiple": false,
-          "name": "results_dir",
-          "param_type": "option",
-          "required": true
-        },
-        {
-          "default": null,
-          "flags": [
-            "--agg-name"
-          ],
-          "help": "Product label for this aggregate (lower-case [a-z0-9_]+), e.g. 'tls'.  Namespaces every artifact (object_<name>_prob_<name> column, agg-<name>-outputs-csv/, agg/<name>/ in the graph cache) and is usable as a type in `wsinsight hplot --target-by aggregate`.",
-          "is_flag": false,
-          "kind": "string",
-          "multiple": false,
-          "name": "agg_name",
-          "param_type": "option",
-          "required": true
-        },
-        {
-          "default": null,
-          "flags": [
-            "--agg-types"
-          ],
-          "help": "Comma-separated ingredient cell types that may join the aggregate, e.g. 't_cell,b_cell'.",
-          "is_flag": false,
-          "kind": "string",
-          "multiple": false,
-          "name": "agg_types",
-          "param_type": "option",
-          "required": true
-        },
-        {
-          "default": 25.0,
-          "flags": [
-            "--agg-max-neighbor-distance"
-          ],
-          "help": "Maximum distance (µm) between neighboring cells in the Delaunay graph.",
-          "is_flag": false,
-          "kind": "float",
-          "multiple": false,
-          "name": "agg_max_neighbor_distance",
-          "param_type": "option",
-          "required": false
-        },
-        {
-          "default": 2,
-          "flags": [
-            "--agg-k"
-          ],
-          "help": "k-hop neighborhood radius for the density gate.",
-          "is_flag": false,
-          "kind": "int",
-          "multiple": false,
-          "name": "agg_k",
-          "param_type": "option",
-          "required": false
-        },
-        {
-          "default": 8,
-          "flags": [
-            "--agg-n"
-          ],
-          "help": "Minimum neighborhood size for a cell to be inside an aggregate region.",
-          "is_flag": false,
-          "kind": "int",
-          "multiple": false,
-          "name": "agg_n",
-          "param_type": "option",
-          "required": false
-        },
-        {
-          "default": 0.5,
-          "flags": [
-            "--agg-r"
-          ],
-          "help": "Minimum fraction of ingredient cells in the neighborhood (density gate).",
-          "is_flag": false,
-          "kind": "float",
-          "multiple": false,
-          "name": "agg_r",
-          "param_type": "option",
-          "required": false
-        },
-        {
-          "default": 10,
-          "flags": [
-            "--agg-min-size"
-          ],
-          "help": "Drop aggregates with fewer than this many cells.",
-          "is_flag": false,
-          "kind": "int",
-          "multiple": false,
-          "name": "agg_min_size",
-          "param_type": "option",
-          "required": false
-        },
-        {
-          "default": false,
-          "flags": [
-            "--overwrite"
-          ],
-          "help": "Recompute and overwrite existing per-slide agg outputs for this name.",
-          "is_flag": true,
-          "kind": "bool",
-          "multiple": false,
-          "name": "overwrite",
-          "param_type": "option",
-          "required": false
-        },
-        {
-          "default": 8,
-          "flags": [
-            "--num-workers"
-          ],
-          "help": "Number of slides to process concurrently.",
-          "is_flag": false,
-          "kind": "int",
-          "multiple": false,
-          "name": "num_workers",
-          "param_type": "option",
-          "required": false
-        }
-      ]
+ "commands": {
+  "agg": {
+   "help": "Detect cell-type aggregates (e.g. TLS) and write namespaced outputs.\n\n    \b\n    Outputs written to <results-dir>/:\n      model-outputs-csv/<slide>.csv      gains object_<name>_prob_<name> column\n      agg-<name>-outputs-csv/<slide>.csv  one row per aggregate (hplot-consumable)\n      graphs/<slide>.h5                   gains an agg/<name>/ quotient-graph group",
+   "name": "agg",
+   "params": [
+    {
+     "default": null,
+     "flags": [
+      "-i",
+      "--wsi-dir"
+     ],
+     "help": "Directory containing whole slide images.  Used only to enumerate slides and resolve µm-per-pixel spacing; images are not fully read during agg.",
+     "is_flag": false,
+     "kind": "string",
+     "multiple": false,
+     "name": "wsi_dir",
+     "param_type": "option",
+     "required": true
     },
-    "cme": {
-      "help": "Discover cellular microenvironments (CMEs) across a cohort of slides.\n\n    Builds per-slide Delaunay cell graphs, trains a global Deep Graph Infomax\n    (DGI) encoder across all slides, clusters the resulting embeddings, and\n    writes per-cell CME labels and annotation-level region merges.\n\n    \b\n    Outputs written to <results-dir>/:\n      cme-outputs-csv/cells/<slide>.csv   per-cell CME labels + features\n      cme-outputs-csv/cmes/<slide>.csv    annotation-level merged CME regions\n      cme-outputs-geojson/cells/          GeoJSON cell detections with CME labels\n      cme-outputs-geojson/cmes/           GeoJSON CME region annotations",
-      "name": "cme",
-      "params": [
-        {
-          "default": null,
-          "flags": [
-            "-i",
-            "--wsi-dir"
-          ],
-          "help": "Directory containing whole slide images.  Used for slide enumeration and um-per-pixel resolution; images are read only when --cme-hoptimus is set.",
-          "is_flag": false,
-          "kind": "string",
-          "multiple": false,
-          "name": "wsi_dir",
-          "param_type": "option",
-          "required": true
-        },
-        {
-          "default": null,
-          "flags": [
-            "-o",
-            "--results-dir"
-          ],
-          "help": "Directory holding WSInsight inference outputs.  Must contain a model-outputs-csv/ subdirectory produced by wsinsight infer or wsinsight run.",
-          "is_flag": false,
-          "kind": "string",
-          "multiple": false,
-          "name": "results_dir",
-          "param_type": "option",
-          "required": true
-        },
-        {
-          "default": false,
-          "flags": [
-            "--cme-hoptimus"
-          ],
-          "help": "Enable H-Optimus tissue morphology features in addition to k-hop cell-type composition.  Requires a GPU and the timm package.",
-          "is_flag": true,
-          "kind": "bool",
-          "multiple": false,
-          "name": "cme_hoptimus",
-          "param_type": "option",
-          "required": false
-        },
-        {
-          "default": null,
-          "flags": [
-            "--cme-clusters"
-          ],
-          "help": "Number of microenvironment clusters (KMeans).  When omitted, the optimal number is determined automatically via a Leiden community-detection sweep.",
-          "is_flag": false,
-          "kind": "int",
-          "multiple": false,
-          "name": "cme_clusters",
-          "param_type": "option",
-          "required": false
-        },
-        {
-          "default": false,
-          "flags": [
-            "--overwrite"
-          ],
-          "help": "Delete cached checkpoints and recompute all CME outputs from scratch.",
-          "is_flag": true,
-          "kind": "bool",
-          "multiple": false,
-          "name": "overwrite",
-          "param_type": "option",
-          "required": false
-        },
-        {
-          "default": 8,
-          "flags": [
-            "--num-workers"
-          ],
-          "help": "Number of workers for GeoJSON export at the end of the run.",
-          "is_flag": false,
-          "kind": "int",
-          "multiple": false,
-          "name": "num_workers",
-          "param_type": "option",
-          "required": false
-        }
-      ]
+    {
+     "default": null,
+     "flags": [
+      "-o",
+      "--results-dir"
+     ],
+     "help": "Directory holding WSInsight inference outputs.  Must contain a ``model-outputs-csv/`` subdirectory produced by ``wsinsight infer`` or ``wsinsight run``.",
+     "is_flag": false,
+     "kind": "string",
+     "multiple": false,
+     "name": "results_dir",
+     "param_type": "option",
+     "required": true
     },
-    "cme-profile": {
-      "help": "Summarise each CME's cell composition (and marker genes, if any) to help name niches.",
-      "name": "cme-profile",
-      "params": [
-        {
-          "default": null,
-          "flags": [
-            "-o",
-            "--results-dir"
-          ],
-          "help": "Results directory containing cme-outputs-csv/cells/ from `wsinsight cme`.",
-          "is_flag": false,
-          "kind": "string",
-          "multiple": false,
-          "name": "results_dir",
-          "param_type": "option",
-          "required": true
-        },
-        {
-          "default": 10,
-          "flags": [
-            "--top-genes"
-          ],
-          "help": "Number of top enriched marker genes to report per CME (if expr_ columns exist).",
-          "is_flag": false,
-          "kind": "int",
-          "multiple": false,
-          "name": "top_genes",
-          "param_type": "option",
-          "required": false
-        },
-        {
-          "default": 5,
-          "flags": [
-            "--top-types"
-          ],
-          "help": "Number of top cell types to summarise per CME.",
-          "is_flag": false,
-          "kind": "int",
-          "multiple": false,
-          "name": "top_types",
-          "param_type": "option",
-          "required": false
-        }
-      ]
+    {
+     "default": null,
+     "flags": [
+      "--agg-name"
+     ],
+     "help": "Product label for this aggregate (lower-case [a-z0-9_]+), e.g. 'tls'.  Namespaces every artifact (object_<name>_prob_<name> column, agg-<name>-outputs-csv/, agg/<name>/ in the graph cache) and is usable as a type in `wsinsight hplot --target-by aggregate`.",
+     "is_flag": false,
+     "kind": "string",
+     "multiple": false,
+     "name": "agg_name",
+     "param_type": "option",
+     "required": true
     },
-    "ecomp": {
-      "help": "Compute edge-level neighborhood composition for WSInsight inference outputs.\n\n    For every Delaunay edge (two cells connected in the triangulation), the\n    k-hop neighboring edges are collected from the line graph and the\n    proportion of each edge type in that neighborhood is recorded.\n\n    \b\n    Outputs written to <results-dir>/:\n      ecomp-outputs-csv/<slide_id>.csv   per-edge neighborhood composition",
-      "name": "ecomp",
-      "params": [
-        {
-          "default": null,
-          "flags": [
-            "-i",
-            "--wsi-dir"
-          ],
-          "help": "Directory containing whole slide images.  Used only to enumerate slides and to resolve µm-per-pixel spacing; images are not fully read during ecomp.",
-          "is_flag": false,
-          "kind": "string",
-          "multiple": false,
-          "name": "wsi_dir",
-          "param_type": "option",
-          "required": true
-        },
-        {
-          "default": null,
-          "flags": [
-            "-o",
-            "--results-dir"
-          ],
-          "help": "Directory holding WSInsight inference outputs.  Must contain a ``model-outputs-csv/`` subdirectory produced by ``wsinsight infer`` or ``wsinsight run``.",
-          "is_flag": false,
-          "kind": "string",
-          "multiple": false,
-          "name": "results_dir",
-          "param_type": "option",
-          "required": true
-        },
-        {
-          "default": 25.0,
-          "flags": [
-            "--ecomp-max-edge"
-          ],
-          "help": "Maximum Delaunay edge length (µm); longer edges are pruned before building the line graph.",
-          "is_flag": false,
-          "kind": "float",
-          "multiple": false,
-          "name": "ecomp_max_edge",
-          "param_type": "option",
-          "required": false
-        },
-        {
-          "default": 2,
-          "flags": [
-            "--ecomp-k"
-          ],
-          "help": "Number of hops that define the edge-level neighborhood radius (k-hop on the line graph).",
-          "is_flag": false,
-          "kind": "int",
-          "multiple": false,
-          "name": "ecomp_k",
-          "param_type": "option",
-          "required": false
-        },
-        {
-          "default": false,
-          "flags": [
-            "--overwrite"
-          ],
-          "help": "Recompute and overwrite existing per-slide ecomp outputs.",
-          "is_flag": true,
-          "kind": "bool",
-          "multiple": false,
-          "name": "overwrite",
-          "param_type": "option",
-          "required": false
-        },
-        {
-          "default": 8,
-          "flags": [
-            "--num-workers"
-          ],
-          "help": "Number of slides to process concurrently.",
-          "is_flag": false,
-          "kind": "int",
-          "multiple": false,
-          "name": "num_workers",
-          "param_type": "option",
-          "required": false
-        },
-        {
-          "default": false,
-          "flags": [
-            "--no-neighborhood"
-          ],
-          "help": "Skip line-graph construction and k-hop aggregation.  Output one row per Delaunay edge with geometry, cell types, edge type, and a ``center_region`` column (derived from per-vertex ``region_prob_*`` columns).  Much faster; no ``neighborhood_*`` columns are written.",
-          "is_flag": true,
-          "kind": "bool",
-          "multiple": false,
-          "name": "no_neighborhood",
-          "param_type": "option",
-          "required": false
-        }
-      ]
+    {
+     "default": null,
+     "flags": [
+      "--agg-types"
+     ],
+     "help": "Comma-separated ingredient cell types that may join the aggregate, e.g. 't_cell,b_cell'.",
+     "is_flag": false,
+     "kind": "string",
+     "multiple": false,
+     "name": "agg_types",
+     "param_type": "option",
+     "required": true
     },
-    "export": {
-      "help": "Merge all available per-cell analytics and export to GeoJSON / OME-CSV.\n\n    Reads whatever analysis outputs are present under RESULTS_DIR:\n\n    \b\n      model-outputs-csv/       — base inference probabilities (+ reg columns)\n      hplot-outputs-csv/cells/ — H-Plot per-cell layer features\n      ncomp-outputs-csv/       — node-level (cell) composition features\n\n    All per-cell sources above are left-joined into export-csv/, then\n    written to export-geojson/ and/or export-omecsv/ depending on the\n    flags provided.\n\n    Edge-level (``ecomp-outputs-csv/``) and triad-level\n    (``tcomp-outputs-csv/``) composition outputs are standalone\n    simplicial deliverables and are NOT merged into the per-cell\n    export (they have different primary keys).  Consume them\n    directly from their respective subdirectories.\n\n    At least one of --geojson or --omecsv must be supplied.\n\n    This command can be run at any time after inference — and optionally after\n    hplot / ncomp — without re-running the full inference pipeline.",
-      "name": "export",
-      "params": [
-        {
-          "default": null,
-          "flags": [
-            "-o",
-            "--results-dir"
-          ],
-          "help": "Results directory produced by a prior wsinsight run / infer / hplot / ncomp invocation.  Must contain a model-outputs-csv/ subfolder.",
-          "is_flag": false,
-          "kind": "string",
-          "multiple": false,
-          "name": "results_dir",
-          "param_type": "option",
-          "required": true
-        },
-        {
-          "default": false,
-          "flags": [
-            "--geojson"
-          ],
-          "help": "Export per-cell data to GeoJSON files (export-geojson/).",
-          "is_flag": true,
-          "kind": "bool",
-          "multiple": false,
-          "name": "geojson",
-          "param_type": "option",
-          "required": false
-        },
-        {
-          "default": false,
-          "flags": [
-            "--omecsv"
-          ],
-          "help": "Export per-cell data to compressed OME-CSV files (export-omecsv/).  Compatible with QuPath and OMERO+.",
-          "is_flag": true,
-          "kind": "bool",
-          "multiple": false,
-          "name": "omecsv",
-          "param_type": "option",
-          "required": false
-        },
-        {
-          "default": 0.0,
-          "flags": [
-            "--patch-overlap-ratio"
-          ],
-          "help": "Overlap ratio used during inference (must match the original run). Controls the tile-box shrinkage written into each exported feature.",
-          "is_flag": false,
-          "kind": "float",
-          "multiple": false,
-          "name": "patch_overlap_ratio",
-          "param_type": "option",
-          "required": false
-        },
-        {
-          "choices": [
-            "tile",
-            "detection",
-            "annotation"
-          ],
-          "default": "detection",
-          "flags": [
-            "--object-type"
-          ],
-          "help": "QuPath object-type label embedded in each exported GeoJSON / OME-CSV feature.",
-          "is_flag": false,
-          "kind": "choice",
-          "multiple": false,
-          "name": "object_type",
-          "param_type": "option",
-          "required": false
-        },
-        {
-          "default": 4,
-          "flags": [
-            "--export-workers"
-          ],
-          "help": "Worker processes used for parallel GeoJSON / OME-CSV serialisation.",
-          "is_flag": false,
-          "kind": "int",
-          "multiple": false,
-          "name": "export_workers",
-          "param_type": "option",
-          "required": false
-        },
-        {
-          "default": false,
-          "flags": [
-            "--overwrite"
-          ],
-          "help": "Re-build export CSVs even when export-csv/ already contains up-to-date files.  Useful after re-running hplot or ncomp.",
-          "is_flag": true,
-          "kind": "bool",
-          "multiple": false,
-          "name": "overwrite",
-          "param_type": "option",
-          "required": false
-        }
-      ]
+    {
+     "default": 25.0,
+     "flags": [
+      "--agg-max-neighbor-distance"
+     ],
+     "help": "Maximum distance (µm) between neighboring cells in the Delaunay graph.",
+     "is_flag": false,
+     "kind": "float",
+     "multiple": false,
+     "name": "agg_max_neighbor_distance",
+     "param_type": "option",
+     "required": false
     },
-    "hplot": {
-      "help": "Run H-Plot analysis on inference outputs held inside ``results_dir``.",
-      "name": "hplot",
-      "params": [
-        {
-          "default": null,
-          "flags": [
-            "-i",
-            "--wsi-dir"
-          ],
-          "help": "Directory containing whole slide images. This directory can *only* contain whole slide images.",
-          "is_flag": false,
-          "kind": "string",
-          "multiple": false,
-          "name": "wsi_dir",
-          "param_type": "option",
-          "required": true
-        },
-        {
-          "default": null,
-          "flags": [
-            "-o",
-            "--results-dir"
-          ],
-          "help": "Directory to store results. If directory exists, will skip whole slides for which outputs exist.",
-          "is_flag": false,
-          "kind": "string",
-          "multiple": false,
-          "name": "results_dir",
-          "param_type": "option",
-          "required": true
-        },
-        {
-          "default": 25.0,
-          "flags": [
-            "--hplot-max-neighbor-distance"
-          ],
-          "help": "A parameter of float value determining maximal distance (um) to a neighboring cell.",
-          "is_flag": false,
-          "kind": "float",
-          "multiple": false,
-          "name": "hplot_max_neighbor_distance",
-          "param_type": "option",
-          "required": false
-        },
-        {
-          "default": null,
-          "flags": [
-            "--hplot-base-types"
-          ],
-          "help": "Base cell type or cell type list that form(s) the cell cluster(s), e.g., tumor cells.",
-          "is_flag": false,
-          "kind": "string",
-          "multiple": false,
-          "name": "hplot_base_types",
-          "param_type": "option",
-          "required": false
-        },
-        {
-          "default": null,
-          "flags": [
-            "--hplot-target-types"
-          ],
-          "help": "Target cell type or cell type list whose layer-wise proportion is computed, e.g., lymphocytes.",
-          "is_flag": false,
-          "kind": "string",
-          "multiple": false,
-          "name": "hplot_target_types",
-          "param_type": "option",
-          "required": false
-        },
-        {
-          "choices": [
-            "celltype",
-            "cme",
-            "aggregate"
-          ],
-          "default": "celltype",
-          "flags": [
-            "--base-by"
-          ],
-          "help": "Interpret --hplot-base-types as cell types, CME (niche) ids, or aggregate names.",
-          "is_flag": false,
-          "kind": "choice",
-          "multiple": false,
-          "name": "base_by",
-          "param_type": "option",
-          "required": false
-        },
-        {
-          "choices": [
-            "celltype",
-            "cme",
-            "aggregate"
-          ],
-          "default": "celltype",
-          "flags": [
-            "--target-by"
-          ],
-          "help": "Interpret --hplot-target-types as cell types, CME (niche) ids, or aggregate names. Use 'cme' for a niche's layer-wise fraction (requires `wsinsight cme`); use 'aggregate' for an aggregate's member-cell fraction (requires `wsinsight agg`).",
-          "is_flag": false,
-          "kind": "choice",
-          "multiple": false,
-          "name": "target_by",
-          "param_type": "option",
-          "required": false
-        },
-        {
-          "default": 2,
-          "flags": [
-            "--hplot-k"
-          ],
-          "help": "The maximal edge distance for defining the neighborhood of a cell.",
-          "is_flag": false,
-          "kind": "int",
-          "multiple": false,
-          "name": "hplot_k",
-          "param_type": "option",
-          "required": false
-        },
-        {
-          "default": 8,
-          "flags": [
-            "--hplot-n"
-          ],
-          "help": "The minimal neighborhood size for a cell to be computed for determining tumor regions.",
-          "is_flag": false,
-          "kind": "int",
-          "multiple": false,
-          "name": "hplot_n",
-          "param_type": "option",
-          "required": false
-        },
-        {
-          "default": 0.5,
-          "flags": [
-            "--hplot-r"
-          ],
-          "help": "The minimal ratio of tumor cells in the neighborhood of a cell, determining is this cell included in a tumor region.",
-          "is_flag": false,
-          "kind": "float",
-          "multiple": false,
-          "name": "hplot_r",
-          "param_type": "option",
-          "required": false
-        },
-        {
-          "default": null,
-          "flags": [
-            "--hplot-range-max"
-          ],
-          "help": "The maximal layer index toward OUTSIDE of tumors for the range window of H-Plot.",
-          "is_flag": false,
-          "kind": "int",
-          "multiple": false,
-          "name": "hplot_range_max",
-          "param_type": "option",
-          "required": false
-        },
-        {
-          "default": null,
-          "flags": [
-            "--hplot-range-min"
-          ],
-          "help": "The minimal layer index toward INSIDE of tumors for the range window of H-Plot.",
-          "is_flag": false,
-          "kind": "int",
-          "multiple": false,
-          "name": "hplot_range_min",
-          "param_type": "option",
-          "required": false
-        },
-        {
-          "default": false,
-          "flags": [
-            "--hplot-samples-with-valid-range-only"
-          ],
-          "help": "H-Plot computing uses only samples with valid range of cellular-wise layers.",
-          "is_flag": true,
-          "kind": "bool",
-          "multiple": false,
-          "name": "hplot_samples_with_valid_range_only",
-          "param_type": "option",
-          "required": false
-        },
-        {
-          "default": false,
-          "flags": [
-            "--overwrite"
-          ],
-          "help": "Overwrite existing H-Plot results instead of skipping slides that already have outputs.",
-          "is_flag": true,
-          "kind": "bool",
-          "multiple": false,
-          "name": "overwrite",
-          "param_type": "option",
-          "required": false
-        },
-        {
-          "default": 8,
-          "flags": [
-            "--num-workers"
-          ],
-          "help": "Number of slides to process concurrently.",
-          "is_flag": false,
-          "kind": "int",
-          "multiple": false,
-          "name": "num_workers",
-          "param_type": "option",
-          "required": false
-        }
-      ]
+    {
+     "default": 2,
+     "flags": [
+      "--agg-k"
+     ],
+     "help": "k-hop neighborhood radius for the density gate.",
+     "is_flag": false,
+     "kind": "int",
+     "multiple": false,
+     "name": "agg_k",
+     "param_type": "option",
+     "required": false
     },
-    "hplot-finalize": {
-      "help": "Rebuild hplot-outputs.csv from per-slide intermediates.\n\n    Use this after running parallel ``hplot`` jobs that share the same\n    ``--results-dir``. Each worker writes its per-slide files; this command\n    assembles the final aggregated CSV from all of them.",
-      "name": "hplot-finalize",
-      "params": [
-        {
-          "default": null,
-          "flags": [
-            "-o",
-            "--results-dir"
-          ],
-          "help": "Results directory containing hplot per-slide outputs. The aggregated hplot-outputs.csv will be written here.",
-          "is_flag": false,
-          "kind": "string",
-          "multiple": false,
-          "name": "results_dir",
-          "param_type": "option",
-          "required": true
-        },
-        {
-          "default": false,
-          "flags": [
-            "--overwrite"
-          ],
-          "help": "Overwrite existing hplot-outputs.csv if it already exists.",
-          "is_flag": true,
-          "kind": "bool",
-          "multiple": false,
-          "name": "overwrite",
-          "param_type": "option",
-          "required": false
-        }
-      ]
+    {
+     "default": 8,
+     "flags": [
+      "--agg-n"
+     ],
+     "help": "Minimum neighborhood size for a cell to be inside an aggregate region.",
+     "is_flag": false,
+     "kind": "int",
+     "multiple": false,
+     "name": "agg_n",
+     "param_type": "option",
+     "required": false
     },
-    "infer": {
-      "help": "Execute WSInsight inference and optional post-processing on prepared patches.\n\n    The command consumes an existing `results_dir` (typically produced by `wsinsight\n    patch` or `wsinsight run`) that already contains patch-level HDF5 data whose\n    metadata enumerates the processed slides. Depending on the arguments, it either\n    loads a registered model,\n    a custom config/model-path pair, or synthesizes a pseudo-model from QuPath\n    detections/annotations. After validating the requested patch geometry, the\n    selected model is run via `run_inference`, producing CSV outputs under\n    `model-outputs-csv`.\n\n    Optional switches then:\n        • synchronize metadata about the full session to `infer_metadata_*.json`.\n\n    Use ``wsinsight export`` to convert results to GeoJSON / OME-CSV.\n    Use ``wsinsight hplot`` / ``wsinsight ncomp`` for downstream spatial analytics.\n\n    The function treats all input/output paths as `URIPath` values, materializing\n    local copies only when dependencies such as pandas/geopandas require filesystem\n    paths. Usage mirrors the CLI: `wsinsight infer --results-dir ... [options]`.",
-      "name": "infer",
-      "params": [
-        {
-          "default": null,
-          "flags": [
-            "-i",
-            "--wsi-dir"
-          ],
-          "help": "Optional directory containing whole slide images; inferred patches remain the primary input.",
-          "is_flag": false,
-          "kind": "string",
-          "multiple": false,
-          "name": "wsi_dir",
-          "param_type": "option",
-          "required": false
-        },
-        {
-          "default": null,
-          "flags": [
-            "--slide-path"
-          ],
-          "help": "Hidden argument for orchestrators to pass explicit slide paths alongside cached patches.",
-          "is_flag": false,
-          "kind": "string",
-          "multiple": true,
-          "name": "slide_paths",
-          "param_type": "option",
-          "required": false
-        },
-        {
-          "default": null,
-          "flags": [
-            "-o",
-            "--results-dir"
-          ],
-          "help": "Directory to store results. If directory exists, will skip whole slides for which outputs exist.",
-          "is_flag": false,
-          "kind": "string",
-          "multiple": false,
-          "name": "results_dir",
-          "param_type": "option",
-          "required": true
-        },
-        {
-          "default": null,
-          "flags": [
-            "-r",
-            "--region-inference-dir"
-          ],
-          "help": "Results directory from a prior region-level (patch-based) wsinsight run containing a model-outputs-csv/ folder. Requires --object-based: each detected object is matched to its enclosing region and the region's class probabilities are added as region_prob_* columns in the output.",
-          "is_flag": false,
-          "kind": "string",
-          "multiple": false,
-          "name": "region_inference_dir",
-          "param_type": "option",
-          "required": false
-        },
-        {
-          "default": null,
-          "flags": [
-            "--qupath-measurement-detection-dir"
-          ],
-          "help": "Directory of QuPath TSV detection-measurement exports (one <slide>.txt per slide containing 'Centroid X µm', 'Centroid Y µm', classification columns). Patches are extracted as fixed-size squares centered on each centroid. For GeoJSON detection exports, use --qupath-geojson-detection-dir instead.",
-          "is_flag": false,
-          "kind": "string",
-          "multiple": false,
-          "name": "qupath_measurement_detection_dir",
-          "param_type": "option",
-          "required": false
-        },
-        {
-          "default": null,
-          "flags": [
-            "--qupath-geojson-detection-dir"
-          ],
-          "help": "Directory containing geojson files generated by QuPath. The detection in the geojson files will be used.",
-          "is_flag": false,
-          "kind": "string",
-          "multiple": false,
-          "name": "qupath_geojson_detection_dir",
-          "param_type": "option",
-          "required": false
-        },
-        {
-          "default": null,
-          "flags": [
-            "--qupath-geojson-annotation-dir"
-          ],
-          "help": "Directory containing QuPath annotation geojson files; their region labels seed the pseudo-model.",
-          "is_flag": false,
-          "kind": "string",
-          "multiple": false,
-          "name": "qupath_geojson_annotation_dir",
-          "param_type": "option",
-          "required": false
-        },
-        {
-          "default": 56,
-          "flags": [
-            "--qupath-detection-patch-size"
-          ],
-          "help": "The patch size of the pseudo model generated using QuPath detection files.",
-          "is_flag": false,
-          "kind": "int",
-          "multiple": false,
-          "name": "qupath_detection_patch_size",
-          "param_type": "option",
-          "required": false
-        },
-        {
-          "default": 224,
-          "flags": [
-            "--qupath-annotation-patch-size"
-          ],
-          "help": "The patch size of the pseudo model generated using QuPath annotation files.",
-          "is_flag": false,
-          "kind": "int",
-          "multiple": false,
-          "name": "qupath_annotation_patch_size",
-          "param_type": "option",
-          "required": false
-        },
-        {
-          "default": 0.5,
-          "flags": [
-            "--qupath-spacing-um-px"
-          ],
-          "help": "The spacing um/px of the pseudo model generated using QuPath annotation/detection files.",
-          "is_flag": false,
-          "kind": "float",
-          "multiple": false,
-          "name": "qupath_spacing_um_px",
-          "param_type": "option",
-          "required": false
-        },
-        {
-          "default": false,
-          "flags": [
-            "--qupath-name-as-class"
-          ],
-          "help": "Use QuPath 'name' fields as classes instead of the default Classification column when ingesting detection/annotation data.",
-          "is_flag": true,
-          "kind": "bool",
-          "multiple": false,
-          "name": "qupath_name_as_class",
-          "param_type": "option",
-          "required": false
-        },
-        {
-          "choices": [
-            "breast-tumor-resnet34.tcga-brca",
-            "colorectal-resnet34.penn",
-            "colorectal-tiatoolbox-resnet50.kather100k",
-            "lung-tumor-resnet34.tcga-luad",
-            "lymphnodes-tiatoolbox-resnet50.patchcamelyon",
-            "pancancer-lymphocytes-inceptionv4.tcga",
-            "pancreas-tumor-preactresnet34.tcga-paad",
-            "prostate-tumor-resnet34.tcga-prad"
-          ],
-          "default": null,
-          "flags": [
-            "-m",
-            "--model"
-          ],
-          "help": "Name of the model to use from WSInsight Model Zoo. Mutually exclusive with --config.",
-          "is_flag": false,
-          "kind": "choice",
-          "multiple": false,
-          "name": "model_name",
-          "param_type": "option",
-          "required": false
-        },
-        {
-          "default": null,
-          "flags": [
-            "-c",
-            "--config"
-          ],
-          "help": "Path to configuration for the trained model. Use this option if the model weights are not registered in wsinsight. Mutually exclusive with--model",
-          "is_flag": false,
-          "kind": "path",
-          "multiple": false,
-          "name": "config",
-          "param_type": "option",
-          "path_dir_okay": false,
-          "path_exists": true,
-          "path_file_okay": true,
-          "required": false
-        },
-        {
-          "default": null,
-          "flags": [
-            "-p",
-            "--model-path"
-          ],
-          "help": "Path to the pretrained model. Use only when --config is passed. Mutually exclusive with --model.",
-          "is_flag": false,
-          "kind": "path",
-          "multiple": false,
-          "name": "model_path",
-          "param_type": "option",
-          "path_dir_okay": false,
-          "path_exists": true,
-          "path_file_okay": true,
-          "required": false
-        },
-        {
-          "default": null,
-          "flags": [
-            "-z",
-            "--zoo-model-dir"
-          ],
-          "help": "Path to a folder containing config.json and torchscript_model.pt. Shorthand for --config + --model-path. Mutually exclusive with --model, --config, and --model-path.",
-          "is_flag": false,
-          "kind": "path",
-          "multiple": false,
-          "name": "zoo_model_dir",
-          "param_type": "option",
-          "path_dir_okay": true,
-          "path_exists": true,
-          "path_file_okay": false,
-          "required": false
-        },
-        {
-          "default": 32,
-          "flags": [
-            "-b",
-            "--batch-size"
-          ],
-          "help": "Batch size during model inference. If using multiple GPUs, increase the batch size.",
-          "is_flag": false,
-          "kind": "int",
-          "multiple": false,
-          "name": "batch_size",
-          "param_type": "option",
-          "required": false
-        },
-        {
-          "default": 4,
-          "flags": [
-            "-n",
-            "--num-workers"
-          ],
-          "help": "Dataloader workers that feed patches to PyTorch (n=0 runs single-threaded). Default heuristics use min(2 × GPU count, CPU count).",
-          "is_flag": false,
-          "kind": "int",
-          "multiple": false,
-          "name": "num_workers",
-          "param_type": "option",
-          "required": false
-        },
-        {
-          "default": 8,
-          "flags": [
-            "--stitch-workers"
-          ],
-          "help": "Thread pool size used when TileFuse stitches object-based detections.",
-          "is_flag": false,
-          "kind": "int",
-          "multiple": false,
-          "name": "stitch_workers",
-          "param_type": "option",
-          "required": false
-        },
-        {
-          "default": 0.0,
-          "flags": [
-            "--patch-overlap-ratio"
-          ],
-          "help": "The ratio of overlap among patches. The default value of 0 produces non-overlapping patches. A value in (0, 1) will produce overlapping patches. Negative values will add space between patches. A value of -1 would skip every other patch. A value of 0.5 will provide 50%% of overlap between patches. Values must be in (-inf, 1).",
-          "is_flag": false,
-          "kind": "float",
-          "multiple": false,
-          "name": "patch_overlap_ratio",
-          "param_type": "option",
-          "required": false
-        },
-        {
-          "default": 0.0,
-          "flags": [
-            "--patch-size-um"
-          ],
-          "help": "The size of patch in um. The default value of 0 produces full patch size of the chosen model.",
-          "is_flag": false,
-          "kind": "float",
-          "multiple": false,
-          "name": "patch_size_um",
-          "param_type": "option",
-          "required": false
-        },
-        {
-          "default": 0,
-          "flags": [
-            "--patch-size-px"
-          ],
-          "help": "The size of patch in pixel. The default value of 0 produces full patch size of the chosen model.",
-          "is_flag": false,
-          "kind": "float",
-          "multiple": false,
-          "name": "patch_size_px",
-          "param_type": "option",
-          "required": false
-        },
-        {
-          "default": false,
-          "flags": [
-            "--overwrite"
-          ],
-          "help": "Overwrite existing outputs instead of skipping slides that already have results.  Currently controls region_* column replacement when --region-inference-dir is used.",
-          "is_flag": true,
-          "kind": "bool",
-          "multiple": false,
-          "name": "overwrite",
-          "param_type": "option",
-          "required": false
-        }
-      ]
+    {
+     "default": 0.5,
+     "flags": [
+      "--agg-r"
+     ],
+     "help": "Minimum fraction of ingredient cells in the neighborhood (density gate).",
+     "is_flag": false,
+     "kind": "float",
+     "multiple": false,
+     "name": "agg_r",
+     "param_type": "option",
+     "required": false
     },
-    "ncomp": {
-      "help": "Compute neighborhood composition for each cell in WSInsight inference outputs.\n\n    For every cell (cell type determined by the highest ``prob_*`` score),\n    the k-hop Delaunay graph neighbors are collected and the proportion of each\n    cell type in that neighborhood is recorded.\n\n    \b\n    Outputs written to <results-dir>/:\n      ncomp-outputs-csv/<slide_id>.csv   per-cell neighborhood composition",
-      "name": "ncomp",
-      "params": [
-        {
-          "default": null,
-          "flags": [
-            "-i",
-            "--wsi-dir"
-          ],
-          "help": "Directory containing whole slide images.  Used only to enumerate slides and to resolve µm-per-pixel spacing; images are not fully read during ncomp.",
-          "is_flag": false,
-          "kind": "string",
-          "multiple": false,
-          "name": "wsi_dir",
-          "param_type": "option",
-          "required": true
-        },
-        {
-          "default": null,
-          "flags": [
-            "-o",
-            "--results-dir"
-          ],
-          "help": "Directory holding WSInsight inference outputs.  Must contain a ``model-outputs-csv/`` subdirectory produced by ``wsinsight infer`` or ``wsinsight run``.",
-          "is_flag": false,
-          "kind": "string",
-          "multiple": false,
-          "name": "results_dir",
-          "param_type": "option",
-          "required": true
-        },
-        {
-          "default": 25.0,
-          "flags": [
-            "--ncomp-max-neighbor-distance"
-          ],
-          "help": "Maximum distance (µm) between neighboring cells in the Delaunay graph.",
-          "is_flag": false,
-          "kind": "float",
-          "multiple": false,
-          "name": "ncomp_max_neighbor_distance",
-          "param_type": "option",
-          "required": false
-        },
-        {
-          "default": 2,
-          "flags": [
-            "--ncomp-k"
-          ],
-          "help": "Number of hops that define the neighborhood radius (k-hop).",
-          "is_flag": false,
-          "kind": "int",
-          "multiple": false,
-          "name": "ncomp_k",
-          "param_type": "option",
-          "required": false
-        },
-        {
-          "default": false,
-          "flags": [
-            "--overwrite"
-          ],
-          "help": "Recompute and overwrite existing per-slide ncomp outputs.",
-          "is_flag": true,
-          "kind": "bool",
-          "multiple": false,
-          "name": "overwrite",
-          "param_type": "option",
-          "required": false
-        },
-        {
-          "default": 8,
-          "flags": [
-            "--num-workers"
-          ],
-          "help": "Number of slides to process concurrently.",
-          "is_flag": false,
-          "kind": "int",
-          "multiple": false,
-          "name": "num_workers",
-          "param_type": "option",
-          "required": false
-        }
-      ]
+    {
+     "default": 10,
+     "flags": [
+      "--agg-min-size"
+     ],
+     "help": "Drop aggregates with fewer than this many cells.",
+     "is_flag": false,
+     "kind": "int",
+     "multiple": false,
+     "name": "agg_min_size",
+     "param_type": "option",
+     "required": false
     },
-    "patch": {
-      "help": "Segment tissue and generate patch coordinates for a WSI directory.\n\n    The command validates slide availability, loads either a registered model,\n    user-supplied weights, or QuPath-derived pseudo-models, then runs tissue\n    segmentation and patch enumeration. Outputs land under\n    `RESULTS_DIR/model-outputs-*` for downstream inference.",
-      "name": "patch",
-      "params": [
-        {
-          "default": null,
-          "flags": [
-            "-i",
-            "--wsi-dir"
-          ],
-          "help": "Directory containing whole slide images. This directory can *only* contain whole slide images.",
-          "is_flag": false,
-          "kind": "string",
-          "multiple": false,
-          "name": "wsi_dir",
-          "param_type": "option",
-          "required": true
-        },
-        {
-          "default": null,
-          "flags": [
-            "--slide-path"
-          ],
-          "help": "Hidden argument allowing orchestrators to pass explicit slide paths.",
-          "is_flag": false,
-          "kind": "string",
-          "multiple": true,
-          "name": "slide_paths",
-          "param_type": "option",
-          "required": false
-        },
-        {
-          "default": null,
-          "flags": [
-            "-o",
-            "--results-dir"
-          ],
-          "help": "Directory to store results. If directory exists, will skip whole slides for which outputs exist.",
-          "is_flag": false,
-          "kind": "string",
-          "multiple": false,
-          "name": "results_dir",
-          "param_type": "option",
-          "required": true
-        },
-        {
-          "default": null,
-          "flags": [
-            "-r",
-            "--region-inference-dir"
-          ],
-          "help": "Results directory from a prior region-level (patch-based) wsinsight run containing a model-outputs-csv/ folder. Requires --object-based: each detected object is matched to its enclosing region and the region's class probabilities are added as region_prob_* columns in the output.",
-          "is_flag": false,
-          "kind": "string",
-          "multiple": false,
-          "name": "region_inference_dir",
-          "param_type": "option",
-          "required": false
-        },
-        {
-          "default": null,
-          "flags": [
-            "--qupath-measurement-detection-dir"
-          ],
-          "help": "Directory of QuPath TSV detection-measurement exports (one <slide>.txt per slide containing 'Centroid X µm', 'Centroid Y µm', classification columns). Patches are extracted as fixed-size squares centered on each centroid. For GeoJSON detection exports, use --qupath-geojson-detection-dir instead.",
-          "is_flag": false,
-          "kind": "string",
-          "multiple": false,
-          "name": "qupath_measurement_detection_dir",
-          "param_type": "option",
-          "required": false
-        },
-        {
-          "default": null,
-          "flags": [
-            "--qupath-geojson-detection-dir"
-          ],
-          "help": "Directory containing geojson files generated by QuPath. The detection in the geojson files will be used.",
-          "is_flag": false,
-          "kind": "string",
-          "multiple": false,
-          "name": "qupath_geojson_detection_dir",
-          "param_type": "option",
-          "required": false
-        },
-        {
-          "default": null,
-          "flags": [
-            "--qupath-geojson-annotation-dir"
-          ],
-          "help": "Directory containing geojson files generated by QuPath. The annotation in the geojson files will be used.",
-          "is_flag": false,
-          "kind": "string",
-          "multiple": false,
-          "name": "qupath_geojson_annotation_dir",
-          "param_type": "option",
-          "required": false
-        },
-        {
-          "default": 56,
-          "flags": [
-            "--qupath-detection-patch-size"
-          ],
-          "help": "The patch size of the pseudo model generated using QuPath detection files.",
-          "is_flag": false,
-          "kind": "int",
-          "multiple": false,
-          "name": "qupath_detection_patch_size",
-          "param_type": "option",
-          "required": false
-        },
-        {
-          "default": 224,
-          "flags": [
-            "--qupath-annotation-patch-size"
-          ],
-          "help": "The patch size of the pseudo model generated using QuPath annotation files.",
-          "is_flag": false,
-          "kind": "int",
-          "multiple": false,
-          "name": "qupath_annotation_patch_size",
-          "param_type": "option",
-          "required": false
-        },
-        {
-          "default": 0.5,
-          "flags": [
-            "--qupath-spacing-um-px"
-          ],
-          "help": "The spacing um/px of the pseudo model generated using QuPath annotation/detection files.",
-          "is_flag": false,
-          "kind": "float",
-          "multiple": false,
-          "name": "qupath_spacing_um_px",
-          "param_type": "option",
-          "required": false
-        },
-        {
-          "default": false,
-          "flags": [
-            "--qupath-name-as-class"
-          ],
-          "help": "When operating QuPath geojson/detection data, using name as class.",
-          "is_flag": true,
-          "kind": "bool",
-          "multiple": false,
-          "name": "qupath_name_as_class",
-          "param_type": "option",
-          "required": false
-        },
-        {
-          "choices": [
-            "breast-tumor-resnet34.tcga-brca",
-            "colorectal-resnet34.penn",
-            "colorectal-tiatoolbox-resnet50.kather100k",
-            "lung-tumor-resnet34.tcga-luad",
-            "lymphnodes-tiatoolbox-resnet50.patchcamelyon",
-            "pancancer-lymphocytes-inceptionv4.tcga",
-            "pancreas-tumor-preactresnet34.tcga-paad",
-            "prostate-tumor-resnet34.tcga-prad"
-          ],
-          "default": null,
-          "flags": [
-            "-m",
-            "--model"
-          ],
-          "help": "Name of the model to use from WSInsight Model Zoo. Mutually exclusive with --config.",
-          "is_flag": false,
-          "kind": "choice",
-          "multiple": false,
-          "name": "model_name",
-          "param_type": "option",
-          "required": false
-        },
-        {
-          "default": null,
-          "flags": [
-            "-c",
-            "--config"
-          ],
-          "help": "Path to configuration for the trained model. Use this option if the model weights are not registered in wsinsight. Mutually exclusive with--model",
-          "is_flag": false,
-          "kind": "path",
-          "multiple": false,
-          "name": "config",
-          "param_type": "option",
-          "path_dir_okay": false,
-          "path_exists": true,
-          "path_file_okay": true,
-          "required": false
-        },
-        {
-          "default": null,
-          "flags": [
-            "-p",
-            "--model-path"
-          ],
-          "help": "Path to the pretrained model. Use only when --config is passed. Mutually exclusive with --model.",
-          "is_flag": false,
-          "kind": "path",
-          "multiple": false,
-          "name": "model_path",
-          "param_type": "option",
-          "path_dir_okay": false,
-          "path_exists": true,
-          "path_file_okay": true,
-          "required": false
-        },
-        {
-          "default": null,
-          "flags": [
-            "-z",
-            "--zoo-model-dir"
-          ],
-          "help": "Path to a folder containing config.json and torchscript_model.pt. Shorthand for --config + --model-path. Mutually exclusive with --model, --config, and --model-path.",
-          "is_flag": false,
-          "kind": "path",
-          "multiple": false,
-          "name": "zoo_model_dir",
-          "param_type": "option",
-          "path_dir_okay": true,
-          "path_exists": true,
-          "path_file_okay": false,
-          "required": false
-        },
-        {
-          "default": false,
-          "flags": [
-            "--cache-image-patches"
-          ],
-          "help": "Extract image patches and save to hdf5.",
-          "is_flag": true,
-          "kind": "bool",
-          "multiple": false,
-          "name": "cache_image_patches",
-          "param_type": "option",
-          "required": false
-        },
-        {
-          "default": null,
-          "flags": [
-            "--histoqc-dir"
-          ],
-          "help": "Directory containing histoqc outcomes.",
-          "is_flag": false,
-          "kind": "string",
-          "multiple": false,
-          "name": "histoqc_dir",
-          "param_type": "option",
-          "required": false
-        },
-        {
-          "default": [
-            2048,
-            2048
-          ],
-          "flags": [
-            "--seg-thumbsize"
-          ],
-          "help": "The size of the slide thumbnail (in pixels) used for tissue segmentation. The aspect ratio is preserved, and the longest side will have length max(thumbsize).",
-          "is_flag": false,
-          "kind": "string",
-          "multiple": false,
-          "name": "seg_thumbsize",
-          "param_type": "option",
-          "required": false
-        },
-        {
-          "default": 7,
-          "flags": [
-            "--seg-median-filter-size"
-          ],
-          "help": "The kernel size for median filtering. Must be greater than 1 and odd.",
-          "is_flag": false,
-          "kind": "int",
-          "multiple": false,
-          "name": "seg_median_filter_size",
-          "param_type": "option",
-          "required": false
-        },
-        {
-          "default": 7,
-          "flags": [
-            "--seg-binary-threshold"
-          ],
-          "help": "The threshold for image binarization.",
-          "is_flag": false,
-          "kind": "int",
-          "multiple": false,
-          "name": "seg_binary_threshold",
-          "param_type": "option",
-          "required": false
-        },
-        {
-          "default": 6,
-          "flags": [
-            "--seg-closing-kernel-size"
-          ],
-          "help": "The kernel size for binary closing (morphological operation).",
-          "is_flag": false,
-          "kind": "int",
-          "multiple": false,
-          "name": "seg_closing_kernel_size",
-          "param_type": "option",
-          "required": false
-        },
-        {
-          "default": 40000,
-          "flags": [
-            "--seg-min-object-size-um2"
-          ],
-          "help": "The minimum size of an object to keep during tissue detection. If a contiguous object is smaller than this area, it replaced with background. The default is 200um x 200um. The units of this argument are microns squared.",
-          "is_flag": false,
-          "kind": "float",
-          "multiple": false,
-          "name": "seg_min_object_size_um2",
-          "param_type": "option",
-          "required": false
-        },
-        {
-          "default": 36100,
-          "flags": [
-            "--seg-min-hole-size-um2"
-          ],
-          "help": "The minimum size of a hole to keep as a hole. If a hole is smaller than this area, it is filled with foreground. The default is 190um x 190um. The units of this argument are microns squared.",
-          "is_flag": false,
-          "kind": "float",
-          "multiple": false,
-          "name": "seg_min_hole_size_um2",
-          "param_type": "option",
-          "required": false
-        },
-        {
-          "default": 0.0,
-          "flags": [
-            "--patch-overlap-ratio"
-          ],
-          "help": "The ratio of overlap among patches. The default value of 0 produces non-overlapping patches. A value in (0, 1) will produce overlapping patches. Negative values will add space between patches. A value of -1 would skip every other patch. A value of 0.5 will provide 50%% of overlap between patches. Values must be in (-inf, 1).",
-          "is_flag": false,
-          "kind": "float",
-          "multiple": false,
-          "name": "patch_overlap_ratio",
-          "param_type": "option",
-          "required": false
-        },
-        {
-          "default": 0.0,
-          "flags": [
-            "--patch-size-um"
-          ],
-          "help": "The size of patch in um. The default value of 0 produces full patch size of the chosen model.",
-          "is_flag": false,
-          "kind": "float",
-          "multiple": false,
-          "name": "patch_size_um",
-          "param_type": "option",
-          "required": false
-        },
-        {
-          "default": 0,
-          "flags": [
-            "--patch-size-px"
-          ],
-          "help": "The size of patch in pixel. The default value of 0 produces full patch size of the chosen model.",
-          "is_flag": false,
-          "kind": "float",
-          "multiple": false,
-          "name": "patch_size_px",
-          "param_type": "option",
-          "required": false
-        }
-      ]
+    {
+     "default": false,
+     "flags": [
+      "--overwrite"
+     ],
+     "help": "Recompute and overwrite existing per-slide agg outputs for this name.",
+     "is_flag": true,
+     "kind": "bool",
+     "multiple": false,
+     "name": "overwrite",
+     "param_type": "option",
+     "required": false
     },
-    "reg": {
-      "help": "Register a primary object-CSV against a secondary inference.\n\n    The secondary inference may be a region-level run (``-r``) or another\n    object-level run (``-c``); exactly one must be supplied.  Region matching\n    uses point-in-bbox containment; object matching uses nearest-neighbour\n    KD-tree lookup within ``--radius-um``.  Matched secondary class\n    probabilities are appended in-place to the primary CSVs under\n    ``region_<tag>_prob_*`` or ``object_<tag>_prob_*`` columns.\n\n    With ``--geojson`` or ``--omecsv``, all probability prefix groups present\n    in the registered CSVs are exported, one subfolder per group.",
-      "name": "reg",
-      "params": [
-        {
-          "default": null,
-          "flags": [
-            "-i",
-            "--wsi-dir"
-          ],
-          "help": "If provided, only slides whose filename stem matches a file in this directory are processed.  Image files are not opened; the directory is used for name enumeration only.  Mirrors --wsi-dir in run/infer/hplot for consistent sharding.",
-          "is_flag": false,
-          "kind": "string",
-          "multiple": false,
-          "name": "wsi_dir",
-          "param_type": "option",
-          "required": false
-        },
-        {
-          "default": null,
-          "flags": [
-            "-o",
-            "--results-dir"
-          ],
-          "help": "Results directory from a prior object-based wsinsight run containing a model-outputs-csv/ folder.",
-          "is_flag": false,
-          "kind": "string",
-          "multiple": false,
-          "name": "results_dir",
-          "param_type": "option",
-          "required": true
-        },
-        {
-          "default": null,
-          "flags": [
-            "-r",
-            "--region-inference-dir"
-          ],
-          "help": "Results directory from a prior region-level (patch-based) wsinsight run containing a model-outputs-csv/ folder.  Each detected object is matched to its enclosing region and the region's class probabilities are added as region_<tag>_prob_* columns in the object CSVs.  Mutually exclusive with -c.",
-          "is_flag": false,
-          "kind": "string",
-          "multiple": false,
-          "name": "region_inference_dir",
-          "param_type": "option",
-          "required": false
-        },
-        {
-          "default": null,
-          "flags": [
-            "-c",
-            "--object-inference-dir"
-          ],
-          "help": "Results directory from a prior object-level (cell-based) wsinsight run containing a model-outputs-csv/ folder.  Each primary object is matched to its nearest secondary object within --radius-um and that object's class probabilities are added as object_<tag>_prob_* columns in the primary CSVs.  Mutually exclusive with -r.",
-          "is_flag": false,
-          "kind": "string",
-          "multiple": false,
-          "name": "object_inference_dir",
-          "param_type": "option",
-          "required": false
-        },
-        {
-          "default": "",
-          "flags": [
-            "--tag"
-          ],
-          "help": "Optional namespace inserted between the kind and 'prob' in the output column names: -r --tag X writes region_X_prob_*; -c --tag X writes object_X_prob_*.  Must match [a-z0-9_]+.  When omitted, the bare default (region_prob_* / object_prob_*) is used; if the bare default already exists, the smallest free integer suffix is auto-picked (region_1_prob_*, object_2_prob_*, ...) unless --overwrite is given.",
-          "is_flag": false,
-          "kind": "string",
-          "multiple": false,
-          "name": "tag",
-          "param_type": "option",
-          "required": false
-        },
-        {
-          "default": 5.0,
-          "flags": [
-            "--radius-um"
-          ],
-          "help": "Maximum object-to-object match radius in micrometres.  Only consulted when -c is set.",
-          "is_flag": false,
-          "kind": "float",
-          "multiple": false,
-          "name": "radius_um",
-          "param_type": "option",
-          "required": false
-        },
-        {
-          "default": 0.25,
-          "flags": [
-            "--spacing-um-px"
-          ],
-          "help": "Slide pixel size in micrometres-per-pixel, used to convert --radius-um into pixel space.  Only consulted when -c is set.  When -i/--wsi-dir is supplied, this value is treated as a fallback: each slide's MPP is read from the WSI metadata (OpenSlide / TiffSlide / tifffile / Aperio AppMag table) and used in preference; --spacing-um-px is only used for slides whose MPP cannot be read.",
-          "is_flag": false,
-          "kind": "float",
-          "multiple": false,
-          "name": "spacing_um_px",
-          "param_type": "option",
-          "required": false
-        },
-        {
-          "default": false,
-          "flags": [
-            "--geojson"
-          ],
-          "help": "Export registered object CSVs to GeoJSON files.  One subfolder is written per discovered probability prefix (prob, region_*_prob, object_*_prob) under model-outputs-geojson/.",
-          "is_flag": true,
-          "kind": "bool",
-          "multiple": false,
-          "name": "geojson",
-          "param_type": "option",
-          "required": false
-        },
-        {
-          "default": false,
-          "flags": [
-            "--omecsv"
-          ],
-          "help": "Export registered object CSVs to OME-CSV files.  One subfolder is written per discovered probability prefix under model-outputs-omecsv/.",
-          "is_flag": true,
-          "kind": "bool",
-          "multiple": false,
-          "name": "omecsv",
-          "param_type": "option",
-          "required": false
-        },
-        {
-          "default": 4,
-          "flags": [
-            "--export-workers"
-          ],
-          "help": "Worker processes for GeoJSON/OME-CSV export.",
-          "is_flag": false,
-          "kind": "int",
-          "multiple": false,
-          "name": "export_workers",
-          "param_type": "option",
-          "required": false
-        },
-        {
-          "default": false,
-          "flags": [
-            "--overwrite"
-          ],
-          "help": "Overwrite existing columns under the resolved prefix.  Without this flag, slides whose CSV already contains the resolved prefix are skipped with a warning (for explicit --tag) or auto-bumped to the next free integer suffix (for empty --tag).",
-          "is_flag": true,
-          "kind": "bool",
-          "multiple": false,
-          "name": "overwrite",
-          "param_type": "option",
-          "required": false
-        }
-      ]
-    },
-    "run": {
-      "help": "Run both patch extraction and inference workflows for a slide directory.\n\n    The command enumerates slides once, caches the list, and feeds identical\n    arguments into the standalone `patch` and `infer` commands. Optional QuPath\n    project generation reuses the combined results directory.",
-      "name": "run",
-      "params": [
-        {
-          "default": null,
-          "flags": [
-            "-i",
-            "--wsi-dir"
-          ],
-          "help": "Directory containing whole slide images, or an image-list:///path/to/filelist.txt URI pointing to a text file with one slide path per line (blank lines and # comments ignored).",
-          "is_flag": false,
-          "kind": "string",
-          "multiple": false,
-          "name": "wsi_dir",
-          "param_type": "option",
-          "required": true
-        },
-        {
-          "default": null,
-          "flags": [
-            "-o",
-            "--results-dir"
-          ],
-          "help": "Directory to store results. If directory exists, will skip whole slides for which outputs exist.",
-          "is_flag": false,
-          "kind": "string",
-          "multiple": false,
-          "name": "results_dir",
-          "param_type": "option",
-          "required": true
-        },
-        {
-          "default": null,
-          "flags": [
-            "-r",
-            "--region-inference-dir"
-          ],
-          "help": "Results directory from a prior region-level (patch-based) wsinsight run containing a model-outputs-csv/ folder. Requires --object-based: each detected object is matched to its enclosing region and the region's class probabilities are added as region_prob_* columns in the output.",
-          "is_flag": false,
-          "kind": "string",
-          "multiple": false,
-          "name": "region_inference_dir",
-          "param_type": "option",
-          "required": false
-        },
-        {
-          "default": null,
-          "flags": [
-            "--qupath-measurement-detection-dir"
-          ],
-          "help": "Directory of QuPath TSV detection-measurement exports (one <slide>.txt per slide containing 'Centroid X µm', 'Centroid Y µm', classification columns). Patches are extracted as fixed-size squares centered on each centroid. For GeoJSON detection exports, use --qupath-geojson-detection-dir instead.",
-          "is_flag": false,
-          "kind": "string",
-          "multiple": false,
-          "name": "qupath_measurement_detection_dir",
-          "param_type": "option",
-          "required": false
-        },
-        {
-          "default": null,
-          "flags": [
-            "--qupath-geojson-detection-dir"
-          ],
-          "help": "Directory containing geojson files generated by QuPath. The detection in the geojson files will be used.",
-          "is_flag": false,
-          "kind": "string",
-          "multiple": false,
-          "name": "qupath_geojson_detection_dir",
-          "param_type": "option",
-          "required": false
-        },
-        {
-          "default": null,
-          "flags": [
-            "--qupath-geojson-annotation-dir"
-          ],
-          "help": "Directory containing QuPath annotation geojson files; their region labels seed the pseudo-model.",
-          "is_flag": false,
-          "kind": "string",
-          "multiple": false,
-          "name": "qupath_geojson_annotation_dir",
-          "param_type": "option",
-          "required": false
-        },
-        {
-          "default": 56,
-          "flags": [
-            "--qupath-detection-patch-size"
-          ],
-          "help": "The patch size of the pseudo model generated using QuPath detection files.",
-          "is_flag": false,
-          "kind": "int",
-          "multiple": false,
-          "name": "qupath_detection_patch_size",
-          "param_type": "option",
-          "required": false
-        },
-        {
-          "default": 224,
-          "flags": [
-            "--qupath-annotation-patch-size"
-          ],
-          "help": "The patch size of the pseudo model generated using QuPath annotation files.",
-          "is_flag": false,
-          "kind": "int",
-          "multiple": false,
-          "name": "qupath_annotation_patch_size",
-          "param_type": "option",
-          "required": false
-        },
-        {
-          "default": 0.5,
-          "flags": [
-            "--qupath-spacing-um-px"
-          ],
-          "help": "The spacing um/px of the pseudo model generated using QuPath annotation/detection files.",
-          "is_flag": false,
-          "kind": "float",
-          "multiple": false,
-          "name": "qupath_spacing_um_px",
-          "param_type": "option",
-          "required": false
-        },
-        {
-          "default": false,
-          "flags": [
-            "--qupath-name-as-class"
-          ],
-          "help": "When operating QuPath geojson/detection data, using name as class.",
-          "is_flag": true,
-          "kind": "bool",
-          "multiple": false,
-          "name": "qupath_name_as_class",
-          "param_type": "option",
-          "required": false
-        },
-        {
-          "choices": [
-            "breast-tumor-resnet34.tcga-brca",
-            "colorectal-resnet34.penn",
-            "colorectal-tiatoolbox-resnet50.kather100k",
-            "lung-tumor-resnet34.tcga-luad",
-            "lymphnodes-tiatoolbox-resnet50.patchcamelyon",
-            "pancancer-lymphocytes-inceptionv4.tcga",
-            "pancreas-tumor-preactresnet34.tcga-paad",
-            "prostate-tumor-resnet34.tcga-prad"
-          ],
-          "default": null,
-          "flags": [
-            "-m",
-            "--model"
-          ],
-          "help": "Name of the model to use from WSInsight Model Zoo. Mutually exclusive with --config.",
-          "is_flag": false,
-          "kind": "choice",
-          "multiple": false,
-          "name": "model_name",
-          "param_type": "option",
-          "required": false
-        },
-        {
-          "default": null,
-          "flags": [
-            "-c",
-            "--config"
-          ],
-          "help": "Path to configuration for the trained model. Use this option if the model weights are not registered in wsinsight. Mutually exclusive with--model",
-          "is_flag": false,
-          "kind": "path",
-          "multiple": false,
-          "name": "config",
-          "param_type": "option",
-          "path_dir_okay": false,
-          "path_exists": true,
-          "path_file_okay": true,
-          "required": false
-        },
-        {
-          "default": null,
-          "flags": [
-            "-p",
-            "--model-path"
-          ],
-          "help": "Path to the pretrained model. Use only when --config is passed. Mutually exclusive with --model.",
-          "is_flag": false,
-          "kind": "path",
-          "multiple": false,
-          "name": "model_path",
-          "param_type": "option",
-          "path_dir_okay": false,
-          "path_exists": true,
-          "path_file_okay": true,
-          "required": false
-        },
-        {
-          "default": null,
-          "flags": [
-            "-z",
-            "--zoo-model-dir"
-          ],
-          "help": "Path to a folder containing config.json and torchscript_model.pt. Shorthand for --config + --model-path. Mutually exclusive with --model, --config, and --model-path.",
-          "is_flag": false,
-          "kind": "path",
-          "multiple": false,
-          "name": "zoo_model_dir",
-          "param_type": "option",
-          "path_dir_okay": true,
-          "path_exists": true,
-          "path_file_okay": false,
-          "required": false
-        },
-        {
-          "default": 32,
-          "flags": [
-            "-b",
-            "--batch-size"
-          ],
-          "help": "Batch size during model inference. If using multiple GPUs, increase the batch size.",
-          "is_flag": false,
-          "kind": "int",
-          "multiple": false,
-          "name": "batch_size",
-          "param_type": "option",
-          "required": false
-        },
-        {
-          "default": 8,
-          "flags": [
-            "-n",
-            "--num-workers"
-          ],
-          "help": "Number of workers to use for data loading during model inference (n=0 for single thread). Set this to the number of cores on your machine or lower.",
-          "is_flag": false,
-          "kind": "int",
-          "multiple": false,
-          "name": "num_workers",
-          "param_type": "option",
-          "required": false
-        },
-        {
-          "default": false,
-          "flags": [
-            "--cache-image-patches"
-          ],
-          "help": "Extract image patches and save to hdf5.",
-          "is_flag": true,
-          "kind": "bool",
-          "multiple": false,
-          "name": "cache_image_patches",
-          "param_type": "option",
-          "required": false
-        },
-        {
-          "default": false,
-          "flags": [
-            "--qupath"
-          ],
-          "help": "Create a QuPath project containing the inference results",
-          "is_flag": true,
-          "kind": "bool",
-          "multiple": false,
-          "name": "qupath",
-          "param_type": "option",
-          "required": false
-        },
-        {
-          "default": null,
-          "flags": [
-            "--histoqc-dir"
-          ],
-          "help": "Directory containing histoqc outcomes.",
-          "is_flag": false,
-          "kind": "string",
-          "multiple": false,
-          "name": "histoqc_dir",
-          "param_type": "option",
-          "required": false
-        },
-        {
-          "default": [
-            2048,
-            2048
-          ],
-          "flags": [
-            "--seg-thumbsize"
-          ],
-          "help": "The size of the slide thumbnail (in pixels) used for tissue segmentation. The aspect ratio is preserved, and the longest side will have length max(thumbsize).",
-          "is_flag": false,
-          "kind": "string",
-          "multiple": false,
-          "name": "seg_thumbsize",
-          "param_type": "option",
-          "required": false
-        },
-        {
-          "default": 7,
-          "flags": [
-            "--seg-median-filter-size"
-          ],
-          "help": "The kernel size for median filtering. Must be greater than 1 and odd.",
-          "is_flag": false,
-          "kind": "int",
-          "multiple": false,
-          "name": "seg_median_filter_size",
-          "param_type": "option",
-          "required": false
-        },
-        {
-          "default": 7,
-          "flags": [
-            "--seg-binary-threshold"
-          ],
-          "help": "The threshold for image binarization.",
-          "is_flag": false,
-          "kind": "int",
-          "multiple": false,
-          "name": "seg_binary_threshold",
-          "param_type": "option",
-          "required": false
-        },
-        {
-          "default": 6,
-          "flags": [
-            "--seg-closing-kernel-size"
-          ],
-          "help": "The kernel size for binary closing (morphological operation).",
-          "is_flag": false,
-          "kind": "int",
-          "multiple": false,
-          "name": "seg_closing_kernel_size",
-          "param_type": "option",
-          "required": false
-        },
-        {
-          "default": 40000,
-          "flags": [
-            "--seg-min-object-size-um2"
-          ],
-          "help": "The minimum size of an object to keep during tissue detection. If a contiguous object is smaller than this area, it replaced with background. The default is 200um x 200um. The units of this argument are microns squared.",
-          "is_flag": false,
-          "kind": "float",
-          "multiple": false,
-          "name": "seg_min_object_size_um2",
-          "param_type": "option",
-          "required": false
-        },
-        {
-          "default": 36100,
-          "flags": [
-            "--seg-min-hole-size-um2"
-          ],
-          "help": "The minimum size of a hole to keep as a hole. If a hole is smaller than this area, it is filled with foreground. The default is 190um x 190um. The units of this argument are microns squared.",
-          "is_flag": false,
-          "kind": "float",
-          "multiple": false,
-          "name": "seg_min_hole_size_um2",
-          "param_type": "option",
-          "required": false
-        },
-        {
-          "default": 0.0,
-          "flags": [
-            "--patch-overlap-ratio"
-          ],
-          "help": "The ratio of overlap among patches. The default value of 0 produces non-overlapping patches. A value in (0, 1) will produce overlapping patches. Negative values will add space between patches. A value of -1 would skip every other patch. A value of 0.5 will provide 50%% of overlap between patches. Values must be in (-inf, 1).",
-          "is_flag": false,
-          "kind": "float",
-          "multiple": false,
-          "name": "patch_overlap_ratio",
-          "param_type": "option",
-          "required": false
-        },
-        {
-          "default": 0.0,
-          "flags": [
-            "--patch-size-um"
-          ],
-          "help": "The size of patch in um. The default value of 0 produces full patch size of the chosen model.",
-          "is_flag": false,
-          "kind": "float",
-          "multiple": false,
-          "name": "patch_size_um",
-          "param_type": "option",
-          "required": false
-        },
-        {
-          "default": 0,
-          "flags": [
-            "--patch-size-px"
-          ],
-          "help": "The size of patch in pixel. The default value of 0 produces full patch size of the chosen model.",
-          "is_flag": false,
-          "kind": "float",
-          "multiple": false,
-          "name": "patch_size_px",
-          "param_type": "option",
-          "required": false
-        },
-        {
-          "default": false,
-          "flags": [
-            "--hplot"
-          ],
-          "help": "Run H-Plot analysis.",
-          "is_flag": true,
-          "kind": "bool",
-          "multiple": false,
-          "name": "hplot",
-          "param_type": "option",
-          "required": false
-        },
-        {
-          "default": 25.0,
-          "flags": [
-            "--hplot-max-neighbor-distance"
-          ],
-          "help": "A parameter of float value determining maximal distance (um) to a neighboring cell.",
-          "is_flag": false,
-          "kind": "float",
-          "multiple": false,
-          "name": "hplot_max_neighbor_distance",
-          "param_type": "option",
-          "required": false
-        },
-        {
-          "default": null,
-          "flags": [
-            "--hplot-base-types"
-          ],
-          "help": "Base cell type or cell type list that form(s) the cell cluster(s), e.g., tumor cells.",
-          "is_flag": false,
-          "kind": "string",
-          "multiple": false,
-          "name": "hplot_base_types",
-          "param_type": "option",
-          "required": false
-        },
-        {
-          "default": null,
-          "flags": [
-            "--hplot-target-types"
-          ],
-          "help": "Target cell type or cell type list whose layer-wise proportion is computed, e.g., lymphocytes.",
-          "is_flag": false,
-          "kind": "string",
-          "multiple": false,
-          "name": "hplot_target_types",
-          "param_type": "option",
-          "required": false
-        },
-        {
-          "default": 2,
-          "flags": [
-            "--hplot-k"
-          ],
-          "help": "The maximal edge distance for defining the neighborhood of a cell.",
-          "is_flag": false,
-          "kind": "int",
-          "multiple": false,
-          "name": "hplot_k",
-          "param_type": "option",
-          "required": false
-        },
-        {
-          "default": 8,
-          "flags": [
-            "--hplot-n"
-          ],
-          "help": "The minimal neighborhood size for a cell to be computed for determining tumor regions.",
-          "is_flag": false,
-          "kind": "int",
-          "multiple": false,
-          "name": "hplot_n",
-          "param_type": "option",
-          "required": false
-        },
-        {
-          "default": 0.5,
-          "flags": [
-            "--hplot-r"
-          ],
-          "help": "The minimal ratio of tumor cells in the neighborhood of a cell, determining is this cell included in a tumor region.",
-          "is_flag": false,
-          "kind": "float",
-          "multiple": false,
-          "name": "hplot_r",
-          "param_type": "option",
-          "required": false
-        },
-        {
-          "default": null,
-          "flags": [
-            "--hplot-range-max"
-          ],
-          "help": "The maximal layer index toward OUTSIDE of tumors for the range window of H-Plot.",
-          "is_flag": false,
-          "kind": "int",
-          "multiple": false,
-          "name": "hplot_range_max",
-          "param_type": "option",
-          "required": false
-        },
-        {
-          "default": null,
-          "flags": [
-            "--hplot-range-min"
-          ],
-          "help": "The minimal layer index toward INSIDE of tumors for the range window of H-Plot.",
-          "is_flag": false,
-          "kind": "int",
-          "multiple": false,
-          "name": "hplot_range_min",
-          "param_type": "option",
-          "required": false
-        },
-        {
-          "default": false,
-          "flags": [
-            "--hplot-samples-with-valid-range-only"
-          ],
-          "help": "H-Plot computing uses only samples with valid range of cellular-wise layers.",
-          "is_flag": true,
-          "kind": "bool",
-          "multiple": false,
-          "name": "hplot_samples_with_valid_range_only",
-          "param_type": "option",
-          "required": false
-        },
-        {
-          "default": false,
-          "flags": [
-            "--overwrite"
-          ],
-          "help": "Overwrite existing outputs in all stages instead of skipping slides that already have results.",
-          "is_flag": true,
-          "kind": "bool",
-          "multiple": false,
-          "name": "overwrite",
-          "param_type": "option",
-          "required": false
-        },
-        {
-          "default": false,
-          "flags": [
-            "--ncomp"
-          ],
-          "help": "Run neighborhood composition (ncomp) analysis after inference.",
-          "is_flag": true,
-          "kind": "bool",
-          "multiple": false,
-          "name": "ncomp",
-          "param_type": "option",
-          "required": false
-        },
-        {
-          "default": 25.0,
-          "flags": [
-            "--ncomp-max-neighbor-distance"
-          ],
-          "help": "Maximum distance (µm) between neighboring cells in the Delaunay graph for ncomp.",
-          "is_flag": false,
-          "kind": "float",
-          "multiple": false,
-          "name": "ncomp_max_neighbor_distance",
-          "param_type": "option",
-          "required": false
-        },
-        {
-          "default": 2,
-          "flags": [
-            "--ncomp-k"
-          ],
-          "help": "Number of hops defining the ncomp neighborhood radius.",
-          "is_flag": false,
-          "kind": "int",
-          "multiple": false,
-          "name": "ncomp_k",
-          "param_type": "option",
-          "required": false
-        },
-        {
-          "default": false,
-          "flags": [
-            "--ecomp"
-          ],
-          "help": "Run edge-level composition (ecomp) analysis after ncomp.",
-          "is_flag": true,
-          "kind": "bool",
-          "multiple": false,
-          "name": "ecomp",
-          "param_type": "option",
-          "required": false
-        },
-        {
-          "default": 25.0,
-          "flags": [
-            "--ecomp-max-edge"
-          ],
-          "help": "Maximum Delaunay edge length (µm) for ecomp; longer edges are pruned.",
-          "is_flag": false,
-          "kind": "float",
-          "multiple": false,
-          "name": "ecomp_max_edge",
-          "param_type": "option",
-          "required": false
-        },
-        {
-          "default": 2,
-          "flags": [
-            "--ecomp-k"
-          ],
-          "help": "Number of hops defining the ecomp neighborhood radius (k-hop on the line graph).",
-          "is_flag": false,
-          "kind": "int",
-          "multiple": false,
-          "name": "ecomp_k",
-          "param_type": "option",
-          "required": false
-        },
-        {
-          "default": false,
-          "flags": [
-            "--tcomp"
-          ],
-          "help": "Run triad-level composition (tcomp) analysis after ecomp.",
-          "is_flag": true,
-          "kind": "bool",
-          "multiple": false,
-          "name": "tcomp",
-          "param_type": "option",
-          "required": false
-        },
-        {
-          "default": 25.0,
-          "flags": [
-            "--tcomp-max-edge"
-          ],
-          "help": "Maximum Delaunay edge length (µm) for tcomp; triads with any longer edge are pruned.",
-          "is_flag": false,
-          "kind": "float",
-          "multiple": false,
-          "name": "tcomp_max_edge",
-          "param_type": "option",
-          "required": false
-        },
-        {
-          "default": 2,
-          "flags": [
-            "--tcomp-k"
-          ],
-          "help": "Number of hops defining the tcomp neighborhood radius (k-hop on the dual graph).",
-          "is_flag": false,
-          "kind": "int",
-          "multiple": false,
-          "name": "tcomp_k",
-          "param_type": "option",
-          "required": false
-        },
-        {
-          "default": false,
-          "flags": [
-            "--cme"
-          ],
-          "help": "Run cellular microenvironment (CME) analysis after inference.",
-          "is_flag": true,
-          "kind": "bool",
-          "multiple": false,
-          "name": "cme",
-          "param_type": "option",
-          "required": false
-        },
-        {
-          "default": false,
-          "flags": [
-            "--cme-hoptimus"
-          ],
-          "help": "Enable H-Optimus tissue morphology features for CME.  Requires a GPU and the timm package.  Ignored unless --cme is set.",
-          "is_flag": true,
-          "kind": "bool",
-          "multiple": false,
-          "name": "cme_hoptimus",
-          "param_type": "option",
-          "required": false
-        },
-        {
-          "default": null,
-          "flags": [
-            "--cme-clusters"
-          ],
-          "help": "Number of CME clusters (KMeans).  When omitted, determined automatically via Leiden community detection.  Ignored unless --cme is set.",
-          "is_flag": false,
-          "kind": "int",
-          "multiple": false,
-          "name": "cme_clusters",
-          "param_type": "option",
-          "required": false
-        },
-        {
-          "default": false,
-          "flags": [
-            "--export-geojson"
-          ],
-          "help": "After inference, merge all per-cell analytics and export to GeoJSON files (export-geojson/).  Equivalent to running 'wsinsight export --geojson'.",
-          "is_flag": true,
-          "kind": "bool",
-          "multiple": false,
-          "name": "export_geojson",
-          "param_type": "option",
-          "required": false
-        },
-        {
-          "default": false,
-          "flags": [
-            "--export-omecsv"
-          ],
-          "help": "After inference, merge all per-cell analytics and export to compressed OME-CSV files (export-omecsv/).  Equivalent to running 'wsinsight export --omecsv'.",
-          "is_flag": true,
-          "kind": "bool",
-          "multiple": false,
-          "name": "export_omecsv",
-          "param_type": "option",
-          "required": false
-        }
-      ]
-    },
-    "tcomp": {
-      "help": "Compute triad-level neighborhood composition for WSInsight inference outputs.\n\n    For every Delaunay triad (triangle of three cells), the k-hop neighboring\n    triads are collected from the dual graph and the proportion of each triad\n    type in that neighborhood is recorded, together with per-triad geometric\n    features (area, perimeter, regularity, max edge length).\n\n    \b\n    Outputs written to <results-dir>/:\n      tcomp-outputs-csv/<slide_id>.csv   per-triad neighborhood composition",
-      "name": "tcomp",
-      "params": [
-        {
-          "default": null,
-          "flags": [
-            "-i",
-            "--wsi-dir"
-          ],
-          "help": "Directory containing whole slide images.  Used only to enumerate slides and to resolve µm-per-pixel spacing; images are not fully read during tcomp.",
-          "is_flag": false,
-          "kind": "string",
-          "multiple": false,
-          "name": "wsi_dir",
-          "param_type": "option",
-          "required": true
-        },
-        {
-          "default": null,
-          "flags": [
-            "-o",
-            "--results-dir"
-          ],
-          "help": "Directory holding WSInsight inference outputs.  Must contain a ``model-outputs-csv/`` subdirectory produced by ``wsinsight infer`` or ``wsinsight run``.",
-          "is_flag": false,
-          "kind": "string",
-          "multiple": false,
-          "name": "results_dir",
-          "param_type": "option",
-          "required": true
-        },
-        {
-          "default": 25.0,
-          "flags": [
-            "--tcomp-max-edge"
-          ],
-          "help": "Maximum triad edge length (µm); triads whose longest edge exceeds this are dropped.",
-          "is_flag": false,
-          "kind": "float",
-          "multiple": false,
-          "name": "tcomp_max_edge",
-          "param_type": "option",
-          "required": false
-        },
-        {
-          "default": 2,
-          "flags": [
-            "--tcomp-k"
-          ],
-          "help": "Number of hops that define the triad-level neighborhood radius (k-hop on the dual graph).",
-          "is_flag": false,
-          "kind": "int",
-          "multiple": false,
-          "name": "tcomp_k",
-          "param_type": "option",
-          "required": false
-        },
-        {
-          "default": false,
-          "flags": [
-            "--overwrite"
-          ],
-          "help": "Recompute and overwrite existing per-slide tcomp outputs.",
-          "is_flag": true,
-          "kind": "bool",
-          "multiple": false,
-          "name": "overwrite",
-          "param_type": "option",
-          "required": false
-        },
-        {
-          "default": 8,
-          "flags": [
-            "--num-workers"
-          ],
-          "help": "Number of slides to process concurrently.",
-          "is_flag": false,
-          "kind": "int",
-          "multiple": false,
-          "name": "num_workers",
-          "param_type": "option",
-          "required": false
-        },
-        {
-          "default": false,
-          "flags": [
-            "--no-neighborhood"
-          ],
-          "help": "Skip dual-graph construction and k-hop aggregation.  Output one row per Delaunay triad with geometry, cell types, triad type, and a ``centroid_region`` column (derived from per-vertex ``region_prob_*`` columns).  Much faster; no ``neighborhood_*`` columns are written.",
-          "is_flag": true,
-          "kind": "bool",
-          "multiple": false,
-          "name": "no_neighborhood",
-          "param_type": "option",
-          "required": false
-        }
-      ]
-    },
-    "import": {
-      "help": "Import spatial-transcriptomics gene expression onto WSInsight cells.\n\n\b\nFor each sample in the sptx-list manifest:\n  • map Xenium centroids (µm) onto the H&E via the ST2WSI transform,\n  • match each cell to the nearest model-output detection,\n  • write one AnnData with sparse expression + the matched detection link.\n\n\b\nOutput written to <results-dir>/:\n  xenium-import/<sample_id>.h5ad",
-      "name": "import",
-      "params": [
-        {
-          "default": null,
-          "flags": [
-            "-i",
-            "--wsi-dir"
-          ],
-          "help": "Directory (or image-list://) of H&E slides. Matched to a sample by stem == manifest sample_id; provides the exact target dimensions used by the elastic (B-spline) transform.",
-          "is_flag": false,
-          "kind": "string",
-          "multiple": false,
-          "name": "wsi_dir",
-          "param_type": "option",
-          "required": true
-        },
-        {
-          "default": null,
-          "flags": [
-            "-s",
-            "--sptx-dir"
-          ],
-          "help": "A sptx-list:// manifest (path<TAB>sample_id per line). The path points at each Xenium sample directory; sample_id is the stable id used to match the H&E / model-output (Xenium filenames collide across runs).",
-          "is_flag": false,
-          "kind": "string",
-          "multiple": false,
-          "name": "sptx_dir",
-          "param_type": "option",
-          "required": true
-        },
-        {
-          "default": null,
-          "flags": [
-            "-o",
-            "--results-dir"
-          ],
-          "help": "Directory holding WSInsight inference outputs (must contain model-outputs-csv/). xenium-import/ is written here.",
-          "is_flag": false,
-          "kind": "string",
-          "multiple": false,
-          "name": "results_dir",
-          "param_type": "option",
-          "required": true
-        },
-        {
-          "default": "xenium",
-          "flags": [
-            "--platform"
-          ],
-          "help": "Spatial-transcriptomics platform to import (xenium by default).",
-          "is_flag": false,
-          "kind": "choice",
-          "multiple": false,
-          "name": "platform",
-          "param_type": "option",
-          "required": false,
-          "choices": [
-            "xenium"
-          ]
-        },
-        {
-          "default": "affine+bspline",
-          "flags": [
-            "--transform"
-          ],
-          "help": "ST2WSI coordinate transform: SIFT affine only, or affine + bUnwarpJ elastic B-spline (default; requires the H&E target dimensions).",
-          "is_flag": false,
-          "kind": "choice",
-          "multiple": false,
-          "name": "transform",
-          "param_type": "option",
-          "required": false,
-          "choices": [
-            "affine",
-            "affine+bspline"
-          ]
-        },
-        {
-          "default": "all",
-          "flags": [
-            "--genes"
-          ],
-          "help": "'all' (full panel, Gene Expression features) or a comma-separated list of gene names to import.",
-          "is_flag": false,
-          "kind": "string",
-          "multiple": false,
-          "name": "genes",
-          "param_type": "option",
-          "required": false
-        },
-        {
-          "default": 0.0,
-          "flags": [
-            "--match-max-dist"
-          ],
-          "help": "Maximum H&E-pixel distance for a cell↔detection match (0 = no cap; match_dist_px is always recorded so matches can be filtered later).",
-          "is_flag": false,
-          "kind": "float",
-          "multiple": false,
-          "name": "match_max_dist",
-          "param_type": "option",
-          "required": false
-        },
-        {
-          "default": false,
-          "flags": [
-            "--overwrite"
-          ],
-          "help": "Recompute and overwrite existing per-slide imports.",
-          "is_flag": true,
-          "kind": "bool",
-          "multiple": false,
-          "name": "overwrite",
-          "param_type": "option",
-          "required": false
-        },
-        {
-          "default": false,
-          "flags": [
-            "--dry-run"
-          ],
-          "help": "QC only: compute and report the cell↔detection match hit-rate and median match distance per sample, without reading expression or writing any h5ad. Use it to check a manifest pairing / registration before a full import.",
-          "is_flag": true,
-          "kind": "bool",
-          "multiple": false,
-          "name": "dry_run",
-          "param_type": "option",
-          "required": false
-        }
-      ]
+    {
+     "default": 8,
+     "flags": [
+      "--num-workers"
+     ],
+     "help": "Number of slides to process concurrently.",
+     "is_flag": false,
+     "kind": "int",
+     "multiple": false,
+     "name": "num_workers",
+     "param_type": "option",
+     "required": false
     }
+   ]
   },
-  "schema_version": 1
+  "cme": {
+   "help": "Discover cellular microenvironments (CMEs) across a cohort of slides.\n\n    Builds per-slide Delaunay cell graphs, trains a global Deep Graph Infomax\n    (DGI) encoder across all slides, clusters the resulting embeddings, and\n    writes per-cell CME labels and annotation-level region merges.\n\n    \b\n    Outputs written to <results-dir>/:\n      cme-outputs-csv/cells/<slide>.csv   per-cell CME labels + features\n      cme-outputs-csv/cmes/<slide>.csv    annotation-level merged CME regions\n      cme-outputs-geojson/cells/          GeoJSON cell detections with CME labels\n      cme-outputs-geojson/cmes/           GeoJSON CME region annotations",
+   "name": "cme",
+   "params": [
+    {
+     "default": null,
+     "flags": [
+      "-i",
+      "--wsi-dir"
+     ],
+     "help": "Directory containing whole slide images.  Used for slide enumeration and um-per-pixel resolution; images are read only when --cme-hoptimus is set.",
+     "is_flag": false,
+     "kind": "string",
+     "multiple": false,
+     "name": "wsi_dir",
+     "param_type": "option",
+     "required": true
+    },
+    {
+     "default": null,
+     "flags": [
+      "-o",
+      "--results-dir"
+     ],
+     "help": "Directory holding WSInsight inference outputs.  Must contain a model-outputs-csv/ subdirectory produced by wsinsight infer or wsinsight run.",
+     "is_flag": false,
+     "kind": "string",
+     "multiple": false,
+     "name": "results_dir",
+     "param_type": "option",
+     "required": true
+    },
+    {
+     "default": false,
+     "flags": [
+      "--cme-hoptimus"
+     ],
+     "help": "Enable H-Optimus tissue morphology features in addition to k-hop cell-type composition.  Requires a GPU and the timm package.",
+     "is_flag": true,
+     "kind": "bool",
+     "multiple": false,
+     "name": "cme_hoptimus",
+     "param_type": "option",
+     "required": false
+    },
+    {
+     "default": null,
+     "flags": [
+      "--cme-clusters"
+     ],
+     "help": "Number of microenvironment clusters (KMeans).  When omitted, the optimal number is determined automatically via a Leiden community-detection sweep.",
+     "is_flag": false,
+     "kind": "int",
+     "multiple": false,
+     "name": "cme_clusters",
+     "param_type": "option",
+     "required": false
+    },
+    {
+     "default": false,
+     "flags": [
+      "--overwrite"
+     ],
+     "help": "Delete cached checkpoints and recompute all CME outputs from scratch.",
+     "is_flag": true,
+     "kind": "bool",
+     "multiple": false,
+     "name": "overwrite",
+     "param_type": "option",
+     "required": false
+    },
+    {
+     "default": 8,
+     "flags": [
+      "--num-workers"
+     ],
+     "help": "Number of workers for GeoJSON export at the end of the run.",
+     "is_flag": false,
+     "kind": "int",
+     "multiple": false,
+     "name": "num_workers",
+     "param_type": "option",
+     "required": false
+    }
+   ]
+  },
+  "cme-profile": {
+   "help": "Summarise each CME's cell composition (and marker genes, if any) to help name niches.",
+   "name": "cme-profile",
+   "params": [
+    {
+     "default": null,
+     "flags": [
+      "-o",
+      "--results-dir"
+     ],
+     "help": "Results directory containing cme-outputs-csv/cells/ from `wsinsight cme`.",
+     "is_flag": false,
+     "kind": "string",
+     "multiple": false,
+     "name": "results_dir",
+     "param_type": "option",
+     "required": true
+    },
+    {
+     "default": 10,
+     "flags": [
+      "--top-genes"
+     ],
+     "help": "Number of top enriched marker genes to report per CME (if expr_ columns exist).",
+     "is_flag": false,
+     "kind": "int",
+     "multiple": false,
+     "name": "top_genes",
+     "param_type": "option",
+     "required": false
+    },
+    {
+     "default": 5,
+     "flags": [
+      "--top-types"
+     ],
+     "help": "Number of top cell types to summarise per CME.",
+     "is_flag": false,
+     "kind": "int",
+     "multiple": false,
+     "name": "top_types",
+     "param_type": "option",
+     "required": false
+    }
+   ]
+  },
+  "ecomp": {
+   "help": "Compute edge-level neighborhood composition for WSInsight inference outputs.\n\n    For every Delaunay edge (two cells connected in the triangulation), the\n    k-hop neighboring edges are collected from the line graph and the\n    proportion of each edge type in that neighborhood is recorded.\n\n    \b\n    Outputs written to <results-dir>/:\n      ecomp-outputs-csv/<slide_id>.csv   per-edge neighborhood composition",
+   "name": "ecomp",
+   "params": [
+    {
+     "default": null,
+     "flags": [
+      "-i",
+      "--wsi-dir"
+     ],
+     "help": "Directory containing whole slide images.  Used only to enumerate slides and to resolve µm-per-pixel spacing; images are not fully read during ecomp.",
+     "is_flag": false,
+     "kind": "string",
+     "multiple": false,
+     "name": "wsi_dir",
+     "param_type": "option",
+     "required": true
+    },
+    {
+     "default": null,
+     "flags": [
+      "-o",
+      "--results-dir"
+     ],
+     "help": "Directory holding WSInsight inference outputs.  Must contain a ``model-outputs-csv/`` subdirectory produced by ``wsinsight infer`` or ``wsinsight run``.",
+     "is_flag": false,
+     "kind": "string",
+     "multiple": false,
+     "name": "results_dir",
+     "param_type": "option",
+     "required": true
+    },
+    {
+     "default": 25.0,
+     "flags": [
+      "--ecomp-max-edge"
+     ],
+     "help": "Maximum Delaunay edge length (µm); longer edges are pruned before building the line graph.",
+     "is_flag": false,
+     "kind": "float",
+     "multiple": false,
+     "name": "ecomp_max_edge",
+     "param_type": "option",
+     "required": false
+    },
+    {
+     "default": 2,
+     "flags": [
+      "--ecomp-k"
+     ],
+     "help": "Number of hops that define the edge-level neighborhood radius (k-hop on the line graph).",
+     "is_flag": false,
+     "kind": "int",
+     "multiple": false,
+     "name": "ecomp_k",
+     "param_type": "option",
+     "required": false
+    },
+    {
+     "default": false,
+     "flags": [
+      "--overwrite"
+     ],
+     "help": "Recompute and overwrite existing per-slide ecomp outputs.",
+     "is_flag": true,
+     "kind": "bool",
+     "multiple": false,
+     "name": "overwrite",
+     "param_type": "option",
+     "required": false
+    },
+    {
+     "default": 8,
+     "flags": [
+      "--num-workers"
+     ],
+     "help": "Number of slides to process concurrently.",
+     "is_flag": false,
+     "kind": "int",
+     "multiple": false,
+     "name": "num_workers",
+     "param_type": "option",
+     "required": false
+    },
+    {
+     "default": false,
+     "flags": [
+      "--no-neighborhood"
+     ],
+     "help": "Skip line-graph construction and k-hop aggregation.  Output one row per Delaunay edge with geometry, cell types, edge type, and a ``center_region`` column (derived from per-vertex ``region_prob_*`` columns).  Much faster; no ``neighborhood_*`` columns are written.",
+     "is_flag": true,
+     "kind": "bool",
+     "multiple": false,
+     "name": "no_neighborhood",
+     "param_type": "option",
+     "required": false
+    }
+   ]
+  },
+  "export": {
+   "help": "Merge all available per-cell analytics and export to GeoJSON / OME-CSV.\n\n    Reads whatever analysis outputs are present under RESULTS_DIR:\n\n    \b\n      model-outputs-csv/       — base inference probabilities (+ reg columns)\n      hplot-outputs-csv/cells/ — H-Plot per-cell layer features\n      ncomp-outputs-csv/       — node-level (cell) composition features\n\n    All per-cell sources above are left-joined into export-csv/, then\n    written to export-geojson/ and/or export-omecsv/ depending on the\n    flags provided.\n\n    Edge-level (``ecomp-outputs-csv/``) and triad-level\n    (``tcomp-outputs-csv/``) composition outputs are standalone\n    simplicial deliverables and are NOT merged into the per-cell\n    export (they have different primary keys).  Consume them\n    directly from their respective subdirectories.\n\n    At least one of --geojson or --omecsv must be supplied.\n\n    This command can be run at any time after inference — and optionally after\n    hplot / ncomp — without re-running the full inference pipeline.",
+   "name": "export",
+   "params": [
+    {
+     "default": null,
+     "flags": [
+      "-o",
+      "--results-dir"
+     ],
+     "help": "Results directory produced by a prior wsinsight run / infer / hplot / ncomp invocation.  Must contain a model-outputs-csv/ subfolder.",
+     "is_flag": false,
+     "kind": "string",
+     "multiple": false,
+     "name": "results_dir",
+     "param_type": "option",
+     "required": true
+    },
+    {
+     "default": false,
+     "flags": [
+      "--geojson"
+     ],
+     "help": "Export per-cell data to GeoJSON files (export-geojson/).",
+     "is_flag": true,
+     "kind": "bool",
+     "multiple": false,
+     "name": "geojson",
+     "param_type": "option",
+     "required": false
+    },
+    {
+     "default": false,
+     "flags": [
+      "--omecsv"
+     ],
+     "help": "Export per-cell data to compressed OME-CSV files (export-omecsv/).  Compatible with QuPath and OMERO+.",
+     "is_flag": true,
+     "kind": "bool",
+     "multiple": false,
+     "name": "omecsv",
+     "param_type": "option",
+     "required": false
+    },
+    {
+     "default": 0.0,
+     "flags": [
+      "--patch-overlap-ratio"
+     ],
+     "help": "Overlap ratio used during inference (must match the original run). Controls the tile-box shrinkage written into each exported feature.",
+     "is_flag": false,
+     "kind": "float",
+     "multiple": false,
+     "name": "patch_overlap_ratio",
+     "param_type": "option",
+     "required": false
+    },
+    {
+     "choices": [
+      "tile",
+      "detection",
+      "annotation"
+     ],
+     "default": "detection",
+     "flags": [
+      "--object-type"
+     ],
+     "help": "QuPath object-type label embedded in each exported GeoJSON / OME-CSV feature.",
+     "is_flag": false,
+     "kind": "choice",
+     "multiple": false,
+     "name": "object_type",
+     "param_type": "option",
+     "required": false
+    },
+    {
+     "default": 4,
+     "flags": [
+      "--export-workers"
+     ],
+     "help": "Worker processes used for parallel GeoJSON / OME-CSV serialisation.",
+     "is_flag": false,
+     "kind": "int",
+     "multiple": false,
+     "name": "export_workers",
+     "param_type": "option",
+     "required": false
+    },
+    {
+     "default": false,
+     "flags": [
+      "--overwrite"
+     ],
+     "help": "Re-build export CSVs even when export-csv/ already contains up-to-date files.  Useful after re-running hplot or ncomp.",
+     "is_flag": true,
+     "kind": "bool",
+     "multiple": false,
+     "name": "overwrite",
+     "param_type": "option",
+     "required": false
+    }
+   ]
+  },
+  "hplot": {
+   "help": "Run H-Plot analysis on inference outputs held inside ``results_dir``.",
+   "name": "hplot",
+   "params": [
+    {
+     "default": null,
+     "flags": [
+      "-i",
+      "--wsi-dir"
+     ],
+     "help": "Directory containing whole slide images. This directory can *only* contain whole slide images.",
+     "is_flag": false,
+     "kind": "string",
+     "multiple": false,
+     "name": "wsi_dir",
+     "param_type": "option",
+     "required": true
+    },
+    {
+     "default": null,
+     "flags": [
+      "-o",
+      "--results-dir"
+     ],
+     "help": "Directory to store results. If directory exists, will skip whole slides for which outputs exist.",
+     "is_flag": false,
+     "kind": "string",
+     "multiple": false,
+     "name": "results_dir",
+     "param_type": "option",
+     "required": true
+    },
+    {
+     "default": 25.0,
+     "flags": [
+      "--hplot-max-neighbor-distance"
+     ],
+     "help": "A parameter of float value determining maximal distance (um) to a neighboring cell.",
+     "is_flag": false,
+     "kind": "float",
+     "multiple": false,
+     "name": "hplot_max_neighbor_distance",
+     "param_type": "option",
+     "required": false
+    },
+    {
+     "default": null,
+     "flags": [
+      "--hplot-base-types"
+     ],
+     "help": "Base cell type or cell type list that form(s) the cell cluster(s), e.g., tumor cells.",
+     "is_flag": false,
+     "kind": "string",
+     "multiple": false,
+     "name": "hplot_base_types",
+     "param_type": "option",
+     "required": false
+    },
+    {
+     "default": null,
+     "flags": [
+      "--hplot-target-types"
+     ],
+     "help": "Target cell type or cell type list whose layer-wise proportion is computed, e.g., lymphocytes.",
+     "is_flag": false,
+     "kind": "string",
+     "multiple": false,
+     "name": "hplot_target_types",
+     "param_type": "option",
+     "required": false
+    },
+    {
+     "choices": [
+      "celltype",
+      "cme",
+      "aggregate"
+     ],
+     "default": "celltype",
+     "flags": [
+      "--base-by"
+     ],
+     "help": "Interpret --hplot-base-types as cell types, CME (niche) ids, or aggregate names.",
+     "is_flag": false,
+     "kind": "choice",
+     "multiple": false,
+     "name": "base_by",
+     "param_type": "option",
+     "required": false
+    },
+    {
+     "choices": [
+      "celltype",
+      "cme",
+      "aggregate"
+     ],
+     "default": "celltype",
+     "flags": [
+      "--target-by"
+     ],
+     "help": "Interpret --hplot-target-types as cell types, CME (niche) ids, or aggregate names. Use 'cme' for a niche's layer-wise fraction (requires `wsinsight cme`); use 'aggregate' for an aggregate's member-cell fraction (requires `wsinsight agg`).",
+     "is_flag": false,
+     "kind": "choice",
+     "multiple": false,
+     "name": "target_by",
+     "param_type": "option",
+     "required": false
+    },
+    {
+     "default": 2,
+     "flags": [
+      "--hplot-k"
+     ],
+     "help": "The maximal edge distance for defining the neighborhood of a cell.",
+     "is_flag": false,
+     "kind": "int",
+     "multiple": false,
+     "name": "hplot_k",
+     "param_type": "option",
+     "required": false
+    },
+    {
+     "default": 8,
+     "flags": [
+      "--hplot-n"
+     ],
+     "help": "The minimal neighborhood size for a cell to be computed for determining tumor regions.",
+     "is_flag": false,
+     "kind": "int",
+     "multiple": false,
+     "name": "hplot_n",
+     "param_type": "option",
+     "required": false
+    },
+    {
+     "default": 0.5,
+     "flags": [
+      "--hplot-r"
+     ],
+     "help": "The minimal ratio of tumor cells in the neighborhood of a cell, determining is this cell included in a tumor region.",
+     "is_flag": false,
+     "kind": "float",
+     "multiple": false,
+     "name": "hplot_r",
+     "param_type": "option",
+     "required": false
+    },
+    {
+     "default": null,
+     "flags": [
+      "--hplot-range-max"
+     ],
+     "help": "The maximal layer index toward OUTSIDE of tumors for the range window of H-Plot.",
+     "is_flag": false,
+     "kind": "int",
+     "multiple": false,
+     "name": "hplot_range_max",
+     "param_type": "option",
+     "required": false
+    },
+    {
+     "default": null,
+     "flags": [
+      "--hplot-range-min"
+     ],
+     "help": "The minimal layer index toward INSIDE of tumors for the range window of H-Plot.",
+     "is_flag": false,
+     "kind": "int",
+     "multiple": false,
+     "name": "hplot_range_min",
+     "param_type": "option",
+     "required": false
+    },
+    {
+     "default": false,
+     "flags": [
+      "--hplot-samples-with-valid-range-only"
+     ],
+     "help": "H-Plot computing uses only samples with valid range of cellular-wise layers.",
+     "is_flag": true,
+     "kind": "bool",
+     "multiple": false,
+     "name": "hplot_samples_with_valid_range_only",
+     "param_type": "option",
+     "required": false
+    },
+    {
+     "default": false,
+     "flags": [
+      "--overwrite"
+     ],
+     "help": "Overwrite existing H-Plot results instead of skipping slides that already have outputs.",
+     "is_flag": true,
+     "kind": "bool",
+     "multiple": false,
+     "name": "overwrite",
+     "param_type": "option",
+     "required": false
+    },
+    {
+     "default": 8,
+     "flags": [
+      "--num-workers"
+     ],
+     "help": "Number of slides to process concurrently.",
+     "is_flag": false,
+     "kind": "int",
+     "multiple": false,
+     "name": "num_workers",
+     "param_type": "option",
+     "required": false
+    }
+   ]
+  },
+  "hplot-finalize": {
+   "help": "Rebuild hplot-outputs.csv from per-slide intermediates.\n\n    Use this after running parallel ``hplot`` jobs that share the same\n    ``--results-dir``. Each worker writes its per-slide files; this command\n    assembles the final aggregated CSV from all of them.",
+   "name": "hplot-finalize",
+   "params": [
+    {
+     "default": null,
+     "flags": [
+      "-o",
+      "--results-dir"
+     ],
+     "help": "Results directory containing hplot per-slide outputs. The aggregated hplot-outputs.csv will be written here.",
+     "is_flag": false,
+     "kind": "string",
+     "multiple": false,
+     "name": "results_dir",
+     "param_type": "option",
+     "required": true
+    },
+    {
+     "default": false,
+     "flags": [
+      "--overwrite"
+     ],
+     "help": "Overwrite existing hplot-outputs.csv if it already exists.",
+     "is_flag": true,
+     "kind": "bool",
+     "multiple": false,
+     "name": "overwrite",
+     "param_type": "option",
+     "required": false
+    }
+   ]
+  },
+  "infer": {
+   "help": "Execute WSInsight inference and optional post-processing on prepared patches.\n\n    The command consumes an existing `results_dir` (typically produced by `wsinsight\n    patch` or `wsinsight run`) that already contains patch-level HDF5 data whose\n    metadata enumerates the processed slides. Depending on the arguments, it either\n    loads a registered model,\n    a custom config/model-path pair, or synthesizes a pseudo-model from QuPath\n    detections/annotations. After validating the requested patch geometry, the\n    selected model is run via `run_inference`, producing CSV outputs under\n    `model-outputs-csv`.\n\n    Optional switches then:\n        • synchronize metadata about the full session to `infer_metadata_*.json`.\n\n    Use ``wsinsight export`` to convert results to GeoJSON / OME-CSV.\n    Use ``wsinsight hplot`` / ``wsinsight ncomp`` for downstream spatial analytics.\n\n    The function treats all input/output paths as `URIPath` values, materializing\n    local copies only when dependencies such as pandas/geopandas require filesystem\n    paths. Usage mirrors the CLI: `wsinsight infer --results-dir ... [options]`.",
+   "name": "infer",
+   "params": [
+    {
+     "default": null,
+     "flags": [
+      "-i",
+      "--wsi-dir"
+     ],
+     "help": "Optional directory containing whole slide images; inferred patches remain the primary input.",
+     "is_flag": false,
+     "kind": "string",
+     "multiple": false,
+     "name": "wsi_dir",
+     "param_type": "option",
+     "required": false
+    },
+    {
+     "default": null,
+     "flags": [
+      "--slide-path"
+     ],
+     "help": "Hidden argument for orchestrators to pass explicit slide paths alongside cached patches.",
+     "is_flag": false,
+     "kind": "string",
+     "multiple": true,
+     "name": "slide_paths",
+     "param_type": "option",
+     "required": false
+    },
+    {
+     "default": null,
+     "flags": [
+      "-o",
+      "--results-dir"
+     ],
+     "help": "Directory to store results. If directory exists, will skip whole slides for which outputs exist.",
+     "is_flag": false,
+     "kind": "string",
+     "multiple": false,
+     "name": "results_dir",
+     "param_type": "option",
+     "required": true
+    },
+    {
+     "default": null,
+     "flags": [
+      "-r",
+      "--region-inference-dir"
+     ],
+     "help": "Results directory from a prior region-level (patch-based) wsinsight run containing a model-outputs-csv/ folder. Requires --object-based: each detected object is matched to its enclosing region and the region's class probabilities are added as region_prob_* columns in the output.",
+     "is_flag": false,
+     "kind": "string",
+     "multiple": false,
+     "name": "region_inference_dir",
+     "param_type": "option",
+     "required": false
+    },
+    {
+     "default": null,
+     "flags": [
+      "--qupath-measurement-detection-dir"
+     ],
+     "help": "Directory of QuPath TSV detection-measurement exports (one <slide>.txt per slide containing 'Centroid X µm', 'Centroid Y µm', classification columns). Patches are extracted as fixed-size squares centered on each centroid. For GeoJSON detection exports, use --qupath-geojson-detection-dir instead.",
+     "is_flag": false,
+     "kind": "string",
+     "multiple": false,
+     "name": "qupath_measurement_detection_dir",
+     "param_type": "option",
+     "required": false
+    },
+    {
+     "default": null,
+     "flags": [
+      "--qupath-geojson-detection-dir"
+     ],
+     "help": "Directory containing geojson files generated by QuPath. The detection in the geojson files will be used.",
+     "is_flag": false,
+     "kind": "string",
+     "multiple": false,
+     "name": "qupath_geojson_detection_dir",
+     "param_type": "option",
+     "required": false
+    },
+    {
+     "default": null,
+     "flags": [
+      "--qupath-geojson-annotation-dir"
+     ],
+     "help": "Directory containing QuPath annotation geojson files; their region labels seed the pseudo-model.",
+     "is_flag": false,
+     "kind": "string",
+     "multiple": false,
+     "name": "qupath_geojson_annotation_dir",
+     "param_type": "option",
+     "required": false
+    },
+    {
+     "default": 56,
+     "flags": [
+      "--qupath-detection-patch-size"
+     ],
+     "help": "The patch size of the pseudo model generated using QuPath detection files.",
+     "is_flag": false,
+     "kind": "int",
+     "multiple": false,
+     "name": "qupath_detection_patch_size",
+     "param_type": "option",
+     "required": false
+    },
+    {
+     "default": 224,
+     "flags": [
+      "--qupath-annotation-patch-size"
+     ],
+     "help": "The patch size of the pseudo model generated using QuPath annotation files.",
+     "is_flag": false,
+     "kind": "int",
+     "multiple": false,
+     "name": "qupath_annotation_patch_size",
+     "param_type": "option",
+     "required": false
+    },
+    {
+     "default": 0.5,
+     "flags": [
+      "--qupath-spacing-um-px"
+     ],
+     "help": "The spacing um/px of the pseudo model generated using QuPath annotation/detection files.",
+     "is_flag": false,
+     "kind": "float",
+     "multiple": false,
+     "name": "qupath_spacing_um_px",
+     "param_type": "option",
+     "required": false
+    },
+    {
+     "default": false,
+     "flags": [
+      "--qupath-name-as-class"
+     ],
+     "help": "Use QuPath 'name' fields as classes instead of the default Classification column when ingesting detection/annotation data.",
+     "is_flag": true,
+     "kind": "bool",
+     "multiple": false,
+     "name": "qupath_name_as_class",
+     "param_type": "option",
+     "required": false
+    },
+    {
+     "choices": [
+      "breast-tumor-resnet34.tcga-brca",
+      "colorectal-resnet34.penn",
+      "colorectal-tiatoolbox-resnet50.kather100k",
+      "lung-tumor-resnet34.tcga-luad",
+      "lymphnodes-tiatoolbox-resnet50.patchcamelyon",
+      "pancancer-lymphocytes-inceptionv4.tcga",
+      "pancreas-tumor-preactresnet34.tcga-paad",
+      "prostate-tumor-resnet34.tcga-prad"
+     ],
+     "default": null,
+     "flags": [
+      "-m",
+      "--model"
+     ],
+     "help": "Name of the model to use from WSInsight Model Zoo. Mutually exclusive with --config.",
+     "is_flag": false,
+     "kind": "choice",
+     "multiple": false,
+     "name": "model_name",
+     "param_type": "option",
+     "required": false
+    },
+    {
+     "default": null,
+     "flags": [
+      "-c",
+      "--config"
+     ],
+     "help": "Path to configuration for the trained model. Use this option if the model weights are not registered in wsinsight. Mutually exclusive with--model",
+     "is_flag": false,
+     "kind": "path",
+     "multiple": false,
+     "name": "config",
+     "param_type": "option",
+     "path_dir_okay": false,
+     "path_exists": true,
+     "path_file_okay": true,
+     "required": false
+    },
+    {
+     "default": null,
+     "flags": [
+      "-p",
+      "--model-path"
+     ],
+     "help": "Path to the pretrained model. Use only when --config is passed. Mutually exclusive with --model.",
+     "is_flag": false,
+     "kind": "path",
+     "multiple": false,
+     "name": "model_path",
+     "param_type": "option",
+     "path_dir_okay": false,
+     "path_exists": true,
+     "path_file_okay": true,
+     "required": false
+    },
+    {
+     "default": null,
+     "flags": [
+      "-z",
+      "--zoo-model-dir"
+     ],
+     "help": "Path to a folder containing config.json and torchscript_model.pt. Shorthand for --config + --model-path. Mutually exclusive with --model, --config, and --model-path.",
+     "is_flag": false,
+     "kind": "path",
+     "multiple": false,
+     "name": "zoo_model_dir",
+     "param_type": "option",
+     "path_dir_okay": true,
+     "path_exists": true,
+     "path_file_okay": false,
+     "required": false
+    },
+    {
+     "default": 32,
+     "flags": [
+      "-b",
+      "--batch-size"
+     ],
+     "help": "Batch size during model inference. If using multiple GPUs, increase the batch size.",
+     "is_flag": false,
+     "kind": "int",
+     "multiple": false,
+     "name": "batch_size",
+     "param_type": "option",
+     "required": false
+    },
+    {
+     "default": 4,
+     "flags": [
+      "-n",
+      "--num-workers"
+     ],
+     "help": "Dataloader workers that feed patches to PyTorch (n=0 runs single-threaded). Default heuristics use min(2 × GPU count, CPU count).",
+     "is_flag": false,
+     "kind": "int",
+     "multiple": false,
+     "name": "num_workers",
+     "param_type": "option",
+     "required": false
+    },
+    {
+     "default": 8,
+     "flags": [
+      "--stitch-workers"
+     ],
+     "help": "Thread pool size used when TileFuse stitches object-based detections.",
+     "is_flag": false,
+     "kind": "int",
+     "multiple": false,
+     "name": "stitch_workers",
+     "param_type": "option",
+     "required": false
+    },
+    {
+     "default": 0.0,
+     "flags": [
+      "--patch-overlap-ratio"
+     ],
+     "help": "The ratio of overlap among patches. The default value of 0 produces non-overlapping patches. A value in (0, 1) will produce overlapping patches. Negative values will add space between patches. A value of -1 would skip every other patch. A value of 0.5 will provide 50%% of overlap between patches. Values must be in (-inf, 1).",
+     "is_flag": false,
+     "kind": "float",
+     "multiple": false,
+     "name": "patch_overlap_ratio",
+     "param_type": "option",
+     "required": false
+    },
+    {
+     "default": 0.0,
+     "flags": [
+      "--patch-size-um"
+     ],
+     "help": "The size of patch in um. The default value of 0 produces full patch size of the chosen model.",
+     "is_flag": false,
+     "kind": "float",
+     "multiple": false,
+     "name": "patch_size_um",
+     "param_type": "option",
+     "required": false
+    },
+    {
+     "default": 0,
+     "flags": [
+      "--patch-size-px"
+     ],
+     "help": "The size of patch in pixel. The default value of 0 produces full patch size of the chosen model.",
+     "is_flag": false,
+     "kind": "float",
+     "multiple": false,
+     "name": "patch_size_px",
+     "param_type": "option",
+     "required": false
+    },
+    {
+     "default": false,
+     "flags": [
+      "--overwrite"
+     ],
+     "help": "Overwrite existing outputs instead of skipping slides that already have results.  Currently controls region_* column replacement when --region-inference-dir is used.",
+     "is_flag": true,
+     "kind": "bool",
+     "multiple": false,
+     "name": "overwrite",
+     "param_type": "option",
+     "required": false
+    }
+   ]
+  },
+  "ncomp": {
+   "help": "Compute neighborhood composition for each cell in WSInsight inference outputs.\n\n    For every cell (cell type determined by the highest ``prob_*`` score),\n    the k-hop Delaunay graph neighbors are collected and the proportion of each\n    cell type in that neighborhood is recorded.\n\n    \b\n    Outputs written to <results-dir>/:\n      ncomp-outputs-csv/<slide_id>.csv   per-cell neighborhood composition",
+   "name": "ncomp",
+   "params": [
+    {
+     "default": null,
+     "flags": [
+      "-i",
+      "--wsi-dir"
+     ],
+     "help": "Directory containing whole slide images.  Used only to enumerate slides and to resolve µm-per-pixel spacing; images are not fully read during ncomp.",
+     "is_flag": false,
+     "kind": "string",
+     "multiple": false,
+     "name": "wsi_dir",
+     "param_type": "option",
+     "required": true
+    },
+    {
+     "default": null,
+     "flags": [
+      "-o",
+      "--results-dir"
+     ],
+     "help": "Directory holding WSInsight inference outputs.  Must contain a ``model-outputs-csv/`` subdirectory produced by ``wsinsight infer`` or ``wsinsight run``.",
+     "is_flag": false,
+     "kind": "string",
+     "multiple": false,
+     "name": "results_dir",
+     "param_type": "option",
+     "required": true
+    },
+    {
+     "default": 25.0,
+     "flags": [
+      "--ncomp-max-neighbor-distance"
+     ],
+     "help": "Maximum distance (µm) between neighboring cells in the Delaunay graph.",
+     "is_flag": false,
+     "kind": "float",
+     "multiple": false,
+     "name": "ncomp_max_neighbor_distance",
+     "param_type": "option",
+     "required": false
+    },
+    {
+     "default": 2,
+     "flags": [
+      "--ncomp-k"
+     ],
+     "help": "Number of hops that define the neighborhood radius (k-hop).",
+     "is_flag": false,
+     "kind": "int",
+     "multiple": false,
+     "name": "ncomp_k",
+     "param_type": "option",
+     "required": false
+    },
+    {
+     "default": false,
+     "flags": [
+      "--overwrite"
+     ],
+     "help": "Recompute and overwrite existing per-slide ncomp outputs.",
+     "is_flag": true,
+     "kind": "bool",
+     "multiple": false,
+     "name": "overwrite",
+     "param_type": "option",
+     "required": false
+    },
+    {
+     "default": 8,
+     "flags": [
+      "--num-workers"
+     ],
+     "help": "Number of slides to process concurrently.",
+     "is_flag": false,
+     "kind": "int",
+     "multiple": false,
+     "name": "num_workers",
+     "param_type": "option",
+     "required": false
+    }
+   ]
+  },
+  "patch": {
+   "help": "Segment tissue and generate patch coordinates for a WSI directory.\n\n    The command validates slide availability, loads either a registered model,\n    user-supplied weights, or QuPath-derived pseudo-models, then runs tissue\n    segmentation and patch enumeration. Outputs land under\n    `RESULTS_DIR/model-outputs-*` for downstream inference.",
+   "name": "patch",
+   "params": [
+    {
+     "default": null,
+     "flags": [
+      "-i",
+      "--wsi-dir"
+     ],
+     "help": "Directory containing whole slide images. This directory can *only* contain whole slide images.",
+     "is_flag": false,
+     "kind": "string",
+     "multiple": false,
+     "name": "wsi_dir",
+     "param_type": "option",
+     "required": true
+    },
+    {
+     "default": null,
+     "flags": [
+      "--slide-path"
+     ],
+     "help": "Hidden argument allowing orchestrators to pass explicit slide paths.",
+     "is_flag": false,
+     "kind": "string",
+     "multiple": true,
+     "name": "slide_paths",
+     "param_type": "option",
+     "required": false
+    },
+    {
+     "default": null,
+     "flags": [
+      "-o",
+      "--results-dir"
+     ],
+     "help": "Directory to store results. If directory exists, will skip whole slides for which outputs exist.",
+     "is_flag": false,
+     "kind": "string",
+     "multiple": false,
+     "name": "results_dir",
+     "param_type": "option",
+     "required": true
+    },
+    {
+     "default": null,
+     "flags": [
+      "-r",
+      "--region-inference-dir"
+     ],
+     "help": "Results directory from a prior region-level (patch-based) wsinsight run containing a model-outputs-csv/ folder. Requires --object-based: each detected object is matched to its enclosing region and the region's class probabilities are added as region_prob_* columns in the output.",
+     "is_flag": false,
+     "kind": "string",
+     "multiple": false,
+     "name": "region_inference_dir",
+     "param_type": "option",
+     "required": false
+    },
+    {
+     "default": null,
+     "flags": [
+      "--qupath-measurement-detection-dir"
+     ],
+     "help": "Directory of QuPath TSV detection-measurement exports (one <slide>.txt per slide containing 'Centroid X µm', 'Centroid Y µm', classification columns). Patches are extracted as fixed-size squares centered on each centroid. For GeoJSON detection exports, use --qupath-geojson-detection-dir instead.",
+     "is_flag": false,
+     "kind": "string",
+     "multiple": false,
+     "name": "qupath_measurement_detection_dir",
+     "param_type": "option",
+     "required": false
+    },
+    {
+     "default": null,
+     "flags": [
+      "--qupath-geojson-detection-dir"
+     ],
+     "help": "Directory containing geojson files generated by QuPath. The detection in the geojson files will be used.",
+     "is_flag": false,
+     "kind": "string",
+     "multiple": false,
+     "name": "qupath_geojson_detection_dir",
+     "param_type": "option",
+     "required": false
+    },
+    {
+     "default": null,
+     "flags": [
+      "--qupath-geojson-annotation-dir"
+     ],
+     "help": "Directory containing geojson files generated by QuPath. The annotation in the geojson files will be used.",
+     "is_flag": false,
+     "kind": "string",
+     "multiple": false,
+     "name": "qupath_geojson_annotation_dir",
+     "param_type": "option",
+     "required": false
+    },
+    {
+     "default": 56,
+     "flags": [
+      "--qupath-detection-patch-size"
+     ],
+     "help": "The patch size of the pseudo model generated using QuPath detection files.",
+     "is_flag": false,
+     "kind": "int",
+     "multiple": false,
+     "name": "qupath_detection_patch_size",
+     "param_type": "option",
+     "required": false
+    },
+    {
+     "default": 224,
+     "flags": [
+      "--qupath-annotation-patch-size"
+     ],
+     "help": "The patch size of the pseudo model generated using QuPath annotation files.",
+     "is_flag": false,
+     "kind": "int",
+     "multiple": false,
+     "name": "qupath_annotation_patch_size",
+     "param_type": "option",
+     "required": false
+    },
+    {
+     "default": 0.5,
+     "flags": [
+      "--qupath-spacing-um-px"
+     ],
+     "help": "The spacing um/px of the pseudo model generated using QuPath annotation/detection files.",
+     "is_flag": false,
+     "kind": "float",
+     "multiple": false,
+     "name": "qupath_spacing_um_px",
+     "param_type": "option",
+     "required": false
+    },
+    {
+     "default": false,
+     "flags": [
+      "--qupath-name-as-class"
+     ],
+     "help": "When operating QuPath geojson/detection data, using name as class.",
+     "is_flag": true,
+     "kind": "bool",
+     "multiple": false,
+     "name": "qupath_name_as_class",
+     "param_type": "option",
+     "required": false
+    },
+    {
+     "choices": [
+      "breast-tumor-resnet34.tcga-brca",
+      "colorectal-resnet34.penn",
+      "colorectal-tiatoolbox-resnet50.kather100k",
+      "lung-tumor-resnet34.tcga-luad",
+      "lymphnodes-tiatoolbox-resnet50.patchcamelyon",
+      "pancancer-lymphocytes-inceptionv4.tcga",
+      "pancreas-tumor-preactresnet34.tcga-paad",
+      "prostate-tumor-resnet34.tcga-prad"
+     ],
+     "default": null,
+     "flags": [
+      "-m",
+      "--model"
+     ],
+     "help": "Name of the model to use from WSInsight Model Zoo. Mutually exclusive with --config.",
+     "is_flag": false,
+     "kind": "choice",
+     "multiple": false,
+     "name": "model_name",
+     "param_type": "option",
+     "required": false
+    },
+    {
+     "default": null,
+     "flags": [
+      "-c",
+      "--config"
+     ],
+     "help": "Path to configuration for the trained model. Use this option if the model weights are not registered in wsinsight. Mutually exclusive with--model",
+     "is_flag": false,
+     "kind": "path",
+     "multiple": false,
+     "name": "config",
+     "param_type": "option",
+     "path_dir_okay": false,
+     "path_exists": true,
+     "path_file_okay": true,
+     "required": false
+    },
+    {
+     "default": null,
+     "flags": [
+      "-p",
+      "--model-path"
+     ],
+     "help": "Path to the pretrained model. Use only when --config is passed. Mutually exclusive with --model.",
+     "is_flag": false,
+     "kind": "path",
+     "multiple": false,
+     "name": "model_path",
+     "param_type": "option",
+     "path_dir_okay": false,
+     "path_exists": true,
+     "path_file_okay": true,
+     "required": false
+    },
+    {
+     "default": null,
+     "flags": [
+      "-z",
+      "--zoo-model-dir"
+     ],
+     "help": "Path to a folder containing config.json and torchscript_model.pt. Shorthand for --config + --model-path. Mutually exclusive with --model, --config, and --model-path.",
+     "is_flag": false,
+     "kind": "path",
+     "multiple": false,
+     "name": "zoo_model_dir",
+     "param_type": "option",
+     "path_dir_okay": true,
+     "path_exists": true,
+     "path_file_okay": false,
+     "required": false
+    },
+    {
+     "default": false,
+     "flags": [
+      "--cache-image-patches"
+     ],
+     "help": "Extract image patches and save to hdf5.",
+     "is_flag": true,
+     "kind": "bool",
+     "multiple": false,
+     "name": "cache_image_patches",
+     "param_type": "option",
+     "required": false
+    },
+    {
+     "default": null,
+     "flags": [
+      "--histoqc-dir"
+     ],
+     "help": "Directory containing histoqc outcomes.",
+     "is_flag": false,
+     "kind": "string",
+     "multiple": false,
+     "name": "histoqc_dir",
+     "param_type": "option",
+     "required": false
+    },
+    {
+     "default": [
+      2048,
+      2048
+     ],
+     "flags": [
+      "--seg-thumbsize"
+     ],
+     "help": "The size of the slide thumbnail (in pixels) used for tissue segmentation. The aspect ratio is preserved, and the longest side will have length max(thumbsize).",
+     "is_flag": false,
+     "kind": "string",
+     "multiple": false,
+     "name": "seg_thumbsize",
+     "param_type": "option",
+     "required": false
+    },
+    {
+     "default": 7,
+     "flags": [
+      "--seg-median-filter-size"
+     ],
+     "help": "The kernel size for median filtering. Must be greater than 1 and odd.",
+     "is_flag": false,
+     "kind": "int",
+     "multiple": false,
+     "name": "seg_median_filter_size",
+     "param_type": "option",
+     "required": false
+    },
+    {
+     "default": 7,
+     "flags": [
+      "--seg-binary-threshold"
+     ],
+     "help": "The threshold for image binarization.",
+     "is_flag": false,
+     "kind": "int",
+     "multiple": false,
+     "name": "seg_binary_threshold",
+     "param_type": "option",
+     "required": false
+    },
+    {
+     "default": 6,
+     "flags": [
+      "--seg-closing-kernel-size"
+     ],
+     "help": "The kernel size for binary closing (morphological operation).",
+     "is_flag": false,
+     "kind": "int",
+     "multiple": false,
+     "name": "seg_closing_kernel_size",
+     "param_type": "option",
+     "required": false
+    },
+    {
+     "default": 40000,
+     "flags": [
+      "--seg-min-object-size-um2"
+     ],
+     "help": "The minimum size of an object to keep during tissue detection. If a contiguous object is smaller than this area, it replaced with background. The default is 200um x 200um. The units of this argument are microns squared.",
+     "is_flag": false,
+     "kind": "float",
+     "multiple": false,
+     "name": "seg_min_object_size_um2",
+     "param_type": "option",
+     "required": false
+    },
+    {
+     "default": 36100,
+     "flags": [
+      "--seg-min-hole-size-um2"
+     ],
+     "help": "The minimum size of a hole to keep as a hole. If a hole is smaller than this area, it is filled with foreground. The default is 190um x 190um. The units of this argument are microns squared.",
+     "is_flag": false,
+     "kind": "float",
+     "multiple": false,
+     "name": "seg_min_hole_size_um2",
+     "param_type": "option",
+     "required": false
+    },
+    {
+     "default": 0.0,
+     "flags": [
+      "--patch-overlap-ratio"
+     ],
+     "help": "The ratio of overlap among patches. The default value of 0 produces non-overlapping patches. A value in (0, 1) will produce overlapping patches. Negative values will add space between patches. A value of -1 would skip every other patch. A value of 0.5 will provide 50%% of overlap between patches. Values must be in (-inf, 1).",
+     "is_flag": false,
+     "kind": "float",
+     "multiple": false,
+     "name": "patch_overlap_ratio",
+     "param_type": "option",
+     "required": false
+    },
+    {
+     "default": 0.0,
+     "flags": [
+      "--patch-size-um"
+     ],
+     "help": "The size of patch in um. The default value of 0 produces full patch size of the chosen model.",
+     "is_flag": false,
+     "kind": "float",
+     "multiple": false,
+     "name": "patch_size_um",
+     "param_type": "option",
+     "required": false
+    },
+    {
+     "default": 0,
+     "flags": [
+      "--patch-size-px"
+     ],
+     "help": "The size of patch in pixel. The default value of 0 produces full patch size of the chosen model.",
+     "is_flag": false,
+     "kind": "float",
+     "multiple": false,
+     "name": "patch_size_px",
+     "param_type": "option",
+     "required": false
+    }
+   ]
+  },
+  "reg": {
+   "help": "Register a primary object-CSV against a secondary inference.\n\n    The secondary inference may be a region-level run (``-r``) or another\n    object-level run (``-c``); exactly one must be supplied.  Region matching\n    uses point-in-bbox containment; object matching uses nearest-neighbour\n    KD-tree lookup within ``--radius-um``.  Matched secondary class\n    probabilities are appended in-place to the primary CSVs under\n    ``region_<tag>_prob_*`` or ``object_<tag>_prob_*`` columns.\n\n    With ``--geojson`` or ``--omecsv``, all probability prefix groups present\n    in the registered CSVs are exported, one subfolder per group.",
+   "name": "reg",
+   "params": [
+    {
+     "default": null,
+     "flags": [
+      "-i",
+      "--wsi-dir"
+     ],
+     "help": "If provided, only slides whose filename stem matches a file in this directory are processed.  Image files are not opened; the directory is used for name enumeration only.  Mirrors --wsi-dir in run/infer/hplot for consistent sharding.",
+     "is_flag": false,
+     "kind": "string",
+     "multiple": false,
+     "name": "wsi_dir",
+     "param_type": "option",
+     "required": false
+    },
+    {
+     "default": null,
+     "flags": [
+      "-o",
+      "--results-dir"
+     ],
+     "help": "Results directory from a prior object-based wsinsight run containing a model-outputs-csv/ folder.",
+     "is_flag": false,
+     "kind": "string",
+     "multiple": false,
+     "name": "results_dir",
+     "param_type": "option",
+     "required": true
+    },
+    {
+     "default": null,
+     "flags": [
+      "-r",
+      "--region-inference-dir"
+     ],
+     "help": "Results directory from a prior region-level (patch-based) wsinsight run containing a model-outputs-csv/ folder.  Each detected object is matched to its enclosing region and the region's class probabilities are added as region_<tag>_prob_* columns in the object CSVs.  Mutually exclusive with -c.",
+     "is_flag": false,
+     "kind": "string",
+     "multiple": false,
+     "name": "region_inference_dir",
+     "param_type": "option",
+     "required": false
+    },
+    {
+     "default": null,
+     "flags": [
+      "-c",
+      "--object-inference-dir"
+     ],
+     "help": "Results directory from a prior object-level (cell-based) wsinsight run containing a model-outputs-csv/ folder.  Each primary object is matched to its nearest secondary object within --radius-um and that object's class probabilities are added as object_<tag>_prob_* columns in the primary CSVs.  Mutually exclusive with -r.",
+     "is_flag": false,
+     "kind": "string",
+     "multiple": false,
+     "name": "object_inference_dir",
+     "param_type": "option",
+     "required": false
+    },
+    {
+     "default": "",
+     "flags": [
+      "--tag"
+     ],
+     "help": "Optional namespace inserted between the kind and 'prob' in the output column names: -r --tag X writes region_X_prob_*; -c --tag X writes object_X_prob_*.  Must match [a-z0-9_]+.  When omitted, the bare default (region_prob_* / object_prob_*) is used; if the bare default already exists, the smallest free integer suffix is auto-picked (region_1_prob_*, object_2_prob_*, ...) unless --overwrite is given.",
+     "is_flag": false,
+     "kind": "string",
+     "multiple": false,
+     "name": "tag",
+     "param_type": "option",
+     "required": false
+    },
+    {
+     "default": 5.0,
+     "flags": [
+      "--radius-um"
+     ],
+     "help": "Maximum object-to-object match radius in micrometres.  Only consulted when -c is set.",
+     "is_flag": false,
+     "kind": "float",
+     "multiple": false,
+     "name": "radius_um",
+     "param_type": "option",
+     "required": false
+    },
+    {
+     "default": 0.25,
+     "flags": [
+      "--spacing-um-px"
+     ],
+     "help": "Slide pixel size in micrometres-per-pixel, used to convert --radius-um into pixel space.  Only consulted when -c is set.  When -i/--wsi-dir is supplied, this value is treated as a fallback: each slide's MPP is read from the WSI metadata (OpenSlide / TiffSlide / tifffile / Aperio AppMag table) and used in preference; --spacing-um-px is only used for slides whose MPP cannot be read.",
+     "is_flag": false,
+     "kind": "float",
+     "multiple": false,
+     "name": "spacing_um_px",
+     "param_type": "option",
+     "required": false
+    },
+    {
+     "default": false,
+     "flags": [
+      "--geojson"
+     ],
+     "help": "Export registered object CSVs to GeoJSON files.  One subfolder is written per discovered probability prefix (prob, region_*_prob, object_*_prob) under model-outputs-geojson/.",
+     "is_flag": true,
+     "kind": "bool",
+     "multiple": false,
+     "name": "geojson",
+     "param_type": "option",
+     "required": false
+    },
+    {
+     "default": false,
+     "flags": [
+      "--omecsv"
+     ],
+     "help": "Export registered object CSVs to OME-CSV files.  One subfolder is written per discovered probability prefix under model-outputs-omecsv/.",
+     "is_flag": true,
+     "kind": "bool",
+     "multiple": false,
+     "name": "omecsv",
+     "param_type": "option",
+     "required": false
+    },
+    {
+     "default": 4,
+     "flags": [
+      "--export-workers"
+     ],
+     "help": "Worker processes for GeoJSON/OME-CSV export.",
+     "is_flag": false,
+     "kind": "int",
+     "multiple": false,
+     "name": "export_workers",
+     "param_type": "option",
+     "required": false
+    },
+    {
+     "default": false,
+     "flags": [
+      "--overwrite"
+     ],
+     "help": "Overwrite existing columns under the resolved prefix.  Without this flag, slides whose CSV already contains the resolved prefix are skipped with a warning (for explicit --tag) or auto-bumped to the next free integer suffix (for empty --tag).",
+     "is_flag": true,
+     "kind": "bool",
+     "multiple": false,
+     "name": "overwrite",
+     "param_type": "option",
+     "required": false
+    }
+   ]
+  },
+  "run": {
+   "help": "Run both patch extraction and inference workflows for a slide directory.\n\n    The command enumerates slides once, caches the list, and feeds identical\n    arguments into the standalone `patch` and `infer` commands. Optional QuPath\n    project generation reuses the combined results directory.",
+   "name": "run",
+   "params": [
+    {
+     "default": null,
+     "flags": [
+      "-i",
+      "--wsi-dir"
+     ],
+     "help": "Directory containing whole slide images, or an image-list:///path/to/filelist.txt URI pointing to a text file with one slide path per line (blank lines and # comments ignored).",
+     "is_flag": false,
+     "kind": "string",
+     "multiple": false,
+     "name": "wsi_dir",
+     "param_type": "option",
+     "required": true
+    },
+    {
+     "default": null,
+     "flags": [
+      "-o",
+      "--results-dir"
+     ],
+     "help": "Directory to store results. If directory exists, will skip whole slides for which outputs exist.",
+     "is_flag": false,
+     "kind": "string",
+     "multiple": false,
+     "name": "results_dir",
+     "param_type": "option",
+     "required": true
+    },
+    {
+     "default": null,
+     "flags": [
+      "-r",
+      "--region-inference-dir"
+     ],
+     "help": "Results directory from a prior region-level (patch-based) wsinsight run containing a model-outputs-csv/ folder. Requires --object-based: each detected object is matched to its enclosing region and the region's class probabilities are added as region_prob_* columns in the output.",
+     "is_flag": false,
+     "kind": "string",
+     "multiple": false,
+     "name": "region_inference_dir",
+     "param_type": "option",
+     "required": false
+    },
+    {
+     "default": null,
+     "flags": [
+      "--qupath-measurement-detection-dir"
+     ],
+     "help": "Directory of QuPath TSV detection-measurement exports (one <slide>.txt per slide containing 'Centroid X µm', 'Centroid Y µm', classification columns). Patches are extracted as fixed-size squares centered on each centroid. For GeoJSON detection exports, use --qupath-geojson-detection-dir instead.",
+     "is_flag": false,
+     "kind": "string",
+     "multiple": false,
+     "name": "qupath_measurement_detection_dir",
+     "param_type": "option",
+     "required": false
+    },
+    {
+     "default": null,
+     "flags": [
+      "--qupath-geojson-detection-dir"
+     ],
+     "help": "Directory containing geojson files generated by QuPath. The detection in the geojson files will be used.",
+     "is_flag": false,
+     "kind": "string",
+     "multiple": false,
+     "name": "qupath_geojson_detection_dir",
+     "param_type": "option",
+     "required": false
+    },
+    {
+     "default": null,
+     "flags": [
+      "--qupath-geojson-annotation-dir"
+     ],
+     "help": "Directory containing QuPath annotation geojson files; their region labels seed the pseudo-model.",
+     "is_flag": false,
+     "kind": "string",
+     "multiple": false,
+     "name": "qupath_geojson_annotation_dir",
+     "param_type": "option",
+     "required": false
+    },
+    {
+     "default": 56,
+     "flags": [
+      "--qupath-detection-patch-size"
+     ],
+     "help": "The patch size of the pseudo model generated using QuPath detection files.",
+     "is_flag": false,
+     "kind": "int",
+     "multiple": false,
+     "name": "qupath_detection_patch_size",
+     "param_type": "option",
+     "required": false
+    },
+    {
+     "default": 224,
+     "flags": [
+      "--qupath-annotation-patch-size"
+     ],
+     "help": "The patch size of the pseudo model generated using QuPath annotation files.",
+     "is_flag": false,
+     "kind": "int",
+     "multiple": false,
+     "name": "qupath_annotation_patch_size",
+     "param_type": "option",
+     "required": false
+    },
+    {
+     "default": 0.5,
+     "flags": [
+      "--qupath-spacing-um-px"
+     ],
+     "help": "The spacing um/px of the pseudo model generated using QuPath annotation/detection files.",
+     "is_flag": false,
+     "kind": "float",
+     "multiple": false,
+     "name": "qupath_spacing_um_px",
+     "param_type": "option",
+     "required": false
+    },
+    {
+     "default": false,
+     "flags": [
+      "--qupath-name-as-class"
+     ],
+     "help": "When operating QuPath geojson/detection data, using name as class.",
+     "is_flag": true,
+     "kind": "bool",
+     "multiple": false,
+     "name": "qupath_name_as_class",
+     "param_type": "option",
+     "required": false
+    },
+    {
+     "choices": [
+      "breast-tumor-resnet34.tcga-brca",
+      "colorectal-resnet34.penn",
+      "colorectal-tiatoolbox-resnet50.kather100k",
+      "lung-tumor-resnet34.tcga-luad",
+      "lymphnodes-tiatoolbox-resnet50.patchcamelyon",
+      "pancancer-lymphocytes-inceptionv4.tcga",
+      "pancreas-tumor-preactresnet34.tcga-paad",
+      "prostate-tumor-resnet34.tcga-prad"
+     ],
+     "default": null,
+     "flags": [
+      "-m",
+      "--model"
+     ],
+     "help": "Name of the model to use from WSInsight Model Zoo. Mutually exclusive with --config.",
+     "is_flag": false,
+     "kind": "choice",
+     "multiple": false,
+     "name": "model_name",
+     "param_type": "option",
+     "required": false
+    },
+    {
+     "default": null,
+     "flags": [
+      "-c",
+      "--config"
+     ],
+     "help": "Path to configuration for the trained model. Use this option if the model weights are not registered in wsinsight. Mutually exclusive with--model",
+     "is_flag": false,
+     "kind": "path",
+     "multiple": false,
+     "name": "config",
+     "param_type": "option",
+     "path_dir_okay": false,
+     "path_exists": true,
+     "path_file_okay": true,
+     "required": false
+    },
+    {
+     "default": null,
+     "flags": [
+      "-p",
+      "--model-path"
+     ],
+     "help": "Path to the pretrained model. Use only when --config is passed. Mutually exclusive with --model.",
+     "is_flag": false,
+     "kind": "path",
+     "multiple": false,
+     "name": "model_path",
+     "param_type": "option",
+     "path_dir_okay": false,
+     "path_exists": true,
+     "path_file_okay": true,
+     "required": false
+    },
+    {
+     "default": null,
+     "flags": [
+      "-z",
+      "--zoo-model-dir"
+     ],
+     "help": "Path to a folder containing config.json and torchscript_model.pt. Shorthand for --config + --model-path. Mutually exclusive with --model, --config, and --model-path.",
+     "is_flag": false,
+     "kind": "path",
+     "multiple": false,
+     "name": "zoo_model_dir",
+     "param_type": "option",
+     "path_dir_okay": true,
+     "path_exists": true,
+     "path_file_okay": false,
+     "required": false
+    },
+    {
+     "default": 32,
+     "flags": [
+      "-b",
+      "--batch-size"
+     ],
+     "help": "Batch size during model inference. If using multiple GPUs, increase the batch size.",
+     "is_flag": false,
+     "kind": "int",
+     "multiple": false,
+     "name": "batch_size",
+     "param_type": "option",
+     "required": false
+    },
+    {
+     "default": 8,
+     "flags": [
+      "-n",
+      "--num-workers"
+     ],
+     "help": "Number of workers to use for data loading during model inference (n=0 for single thread). Set this to the number of cores on your machine or lower.",
+     "is_flag": false,
+     "kind": "int",
+     "multiple": false,
+     "name": "num_workers",
+     "param_type": "option",
+     "required": false
+    },
+    {
+     "default": false,
+     "flags": [
+      "--cache-image-patches"
+     ],
+     "help": "Extract image patches and save to hdf5.",
+     "is_flag": true,
+     "kind": "bool",
+     "multiple": false,
+     "name": "cache_image_patches",
+     "param_type": "option",
+     "required": false
+    },
+    {
+     "default": false,
+     "flags": [
+      "--qupath"
+     ],
+     "help": "Create a QuPath project containing the inference results",
+     "is_flag": true,
+     "kind": "bool",
+     "multiple": false,
+     "name": "qupath",
+     "param_type": "option",
+     "required": false
+    },
+    {
+     "default": null,
+     "flags": [
+      "--histoqc-dir"
+     ],
+     "help": "Directory containing histoqc outcomes.",
+     "is_flag": false,
+     "kind": "string",
+     "multiple": false,
+     "name": "histoqc_dir",
+     "param_type": "option",
+     "required": false
+    },
+    {
+     "default": [
+      2048,
+      2048
+     ],
+     "flags": [
+      "--seg-thumbsize"
+     ],
+     "help": "The size of the slide thumbnail (in pixels) used for tissue segmentation. The aspect ratio is preserved, and the longest side will have length max(thumbsize).",
+     "is_flag": false,
+     "kind": "string",
+     "multiple": false,
+     "name": "seg_thumbsize",
+     "param_type": "option",
+     "required": false
+    },
+    {
+     "default": 7,
+     "flags": [
+      "--seg-median-filter-size"
+     ],
+     "help": "The kernel size for median filtering. Must be greater than 1 and odd.",
+     "is_flag": false,
+     "kind": "int",
+     "multiple": false,
+     "name": "seg_median_filter_size",
+     "param_type": "option",
+     "required": false
+    },
+    {
+     "default": 7,
+     "flags": [
+      "--seg-binary-threshold"
+     ],
+     "help": "The threshold for image binarization.",
+     "is_flag": false,
+     "kind": "int",
+     "multiple": false,
+     "name": "seg_binary_threshold",
+     "param_type": "option",
+     "required": false
+    },
+    {
+     "default": 6,
+     "flags": [
+      "--seg-closing-kernel-size"
+     ],
+     "help": "The kernel size for binary closing (morphological operation).",
+     "is_flag": false,
+     "kind": "int",
+     "multiple": false,
+     "name": "seg_closing_kernel_size",
+     "param_type": "option",
+     "required": false
+    },
+    {
+     "default": 40000,
+     "flags": [
+      "--seg-min-object-size-um2"
+     ],
+     "help": "The minimum size of an object to keep during tissue detection. If a contiguous object is smaller than this area, it replaced with background. The default is 200um x 200um. The units of this argument are microns squared.",
+     "is_flag": false,
+     "kind": "float",
+     "multiple": false,
+     "name": "seg_min_object_size_um2",
+     "param_type": "option",
+     "required": false
+    },
+    {
+     "default": 36100,
+     "flags": [
+      "--seg-min-hole-size-um2"
+     ],
+     "help": "The minimum size of a hole to keep as a hole. If a hole is smaller than this area, it is filled with foreground. The default is 190um x 190um. The units of this argument are microns squared.",
+     "is_flag": false,
+     "kind": "float",
+     "multiple": false,
+     "name": "seg_min_hole_size_um2",
+     "param_type": "option",
+     "required": false
+    },
+    {
+     "default": 0.0,
+     "flags": [
+      "--patch-overlap-ratio"
+     ],
+     "help": "The ratio of overlap among patches. The default value of 0 produces non-overlapping patches. A value in (0, 1) will produce overlapping patches. Negative values will add space between patches. A value of -1 would skip every other patch. A value of 0.5 will provide 50%% of overlap between patches. Values must be in (-inf, 1).",
+     "is_flag": false,
+     "kind": "float",
+     "multiple": false,
+     "name": "patch_overlap_ratio",
+     "param_type": "option",
+     "required": false
+    },
+    {
+     "default": 0.0,
+     "flags": [
+      "--patch-size-um"
+     ],
+     "help": "The size of patch in um. The default value of 0 produces full patch size of the chosen model.",
+     "is_flag": false,
+     "kind": "float",
+     "multiple": false,
+     "name": "patch_size_um",
+     "param_type": "option",
+     "required": false
+    },
+    {
+     "default": 0,
+     "flags": [
+      "--patch-size-px"
+     ],
+     "help": "The size of patch in pixel. The default value of 0 produces full patch size of the chosen model.",
+     "is_flag": false,
+     "kind": "float",
+     "multiple": false,
+     "name": "patch_size_px",
+     "param_type": "option",
+     "required": false
+    },
+    {
+     "default": false,
+     "flags": [
+      "--hplot"
+     ],
+     "help": "Run H-Plot analysis.",
+     "is_flag": true,
+     "kind": "bool",
+     "multiple": false,
+     "name": "hplot",
+     "param_type": "option",
+     "required": false
+    },
+    {
+     "default": 25.0,
+     "flags": [
+      "--hplot-max-neighbor-distance"
+     ],
+     "help": "A parameter of float value determining maximal distance (um) to a neighboring cell.",
+     "is_flag": false,
+     "kind": "float",
+     "multiple": false,
+     "name": "hplot_max_neighbor_distance",
+     "param_type": "option",
+     "required": false
+    },
+    {
+     "default": null,
+     "flags": [
+      "--hplot-base-types"
+     ],
+     "help": "Base cell type or cell type list that form(s) the cell cluster(s), e.g., tumor cells.",
+     "is_flag": false,
+     "kind": "string",
+     "multiple": false,
+     "name": "hplot_base_types",
+     "param_type": "option",
+     "required": false
+    },
+    {
+     "default": null,
+     "flags": [
+      "--hplot-target-types"
+     ],
+     "help": "Target cell type or cell type list whose layer-wise proportion is computed, e.g., lymphocytes.",
+     "is_flag": false,
+     "kind": "string",
+     "multiple": false,
+     "name": "hplot_target_types",
+     "param_type": "option",
+     "required": false
+    },
+    {
+     "default": 2,
+     "flags": [
+      "--hplot-k"
+     ],
+     "help": "The maximal edge distance for defining the neighborhood of a cell.",
+     "is_flag": false,
+     "kind": "int",
+     "multiple": false,
+     "name": "hplot_k",
+     "param_type": "option",
+     "required": false
+    },
+    {
+     "default": 8,
+     "flags": [
+      "--hplot-n"
+     ],
+     "help": "The minimal neighborhood size for a cell to be computed for determining tumor regions.",
+     "is_flag": false,
+     "kind": "int",
+     "multiple": false,
+     "name": "hplot_n",
+     "param_type": "option",
+     "required": false
+    },
+    {
+     "default": 0.5,
+     "flags": [
+      "--hplot-r"
+     ],
+     "help": "The minimal ratio of tumor cells in the neighborhood of a cell, determining is this cell included in a tumor region.",
+     "is_flag": false,
+     "kind": "float",
+     "multiple": false,
+     "name": "hplot_r",
+     "param_type": "option",
+     "required": false
+    },
+    {
+     "default": null,
+     "flags": [
+      "--hplot-range-max"
+     ],
+     "help": "The maximal layer index toward OUTSIDE of tumors for the range window of H-Plot.",
+     "is_flag": false,
+     "kind": "int",
+     "multiple": false,
+     "name": "hplot_range_max",
+     "param_type": "option",
+     "required": false
+    },
+    {
+     "default": null,
+     "flags": [
+      "--hplot-range-min"
+     ],
+     "help": "The minimal layer index toward INSIDE of tumors for the range window of H-Plot.",
+     "is_flag": false,
+     "kind": "int",
+     "multiple": false,
+     "name": "hplot_range_min",
+     "param_type": "option",
+     "required": false
+    },
+    {
+     "default": false,
+     "flags": [
+      "--hplot-samples-with-valid-range-only"
+     ],
+     "help": "H-Plot computing uses only samples with valid range of cellular-wise layers.",
+     "is_flag": true,
+     "kind": "bool",
+     "multiple": false,
+     "name": "hplot_samples_with_valid_range_only",
+     "param_type": "option",
+     "required": false
+    },
+    {
+     "default": false,
+     "flags": [
+      "--overwrite"
+     ],
+     "help": "Overwrite existing outputs in all stages instead of skipping slides that already have results.",
+     "is_flag": true,
+     "kind": "bool",
+     "multiple": false,
+     "name": "overwrite",
+     "param_type": "option",
+     "required": false
+    },
+    {
+     "default": false,
+     "flags": [
+      "--ncomp"
+     ],
+     "help": "Run neighborhood composition (ncomp) analysis after inference.",
+     "is_flag": true,
+     "kind": "bool",
+     "multiple": false,
+     "name": "ncomp",
+     "param_type": "option",
+     "required": false
+    },
+    {
+     "default": 25.0,
+     "flags": [
+      "--ncomp-max-neighbor-distance"
+     ],
+     "help": "Maximum distance (µm) between neighboring cells in the Delaunay graph for ncomp.",
+     "is_flag": false,
+     "kind": "float",
+     "multiple": false,
+     "name": "ncomp_max_neighbor_distance",
+     "param_type": "option",
+     "required": false
+    },
+    {
+     "default": 2,
+     "flags": [
+      "--ncomp-k"
+     ],
+     "help": "Number of hops defining the ncomp neighborhood radius.",
+     "is_flag": false,
+     "kind": "int",
+     "multiple": false,
+     "name": "ncomp_k",
+     "param_type": "option",
+     "required": false
+    },
+    {
+     "default": false,
+     "flags": [
+      "--ecomp"
+     ],
+     "help": "Run edge-level composition (ecomp) analysis after ncomp.",
+     "is_flag": true,
+     "kind": "bool",
+     "multiple": false,
+     "name": "ecomp",
+     "param_type": "option",
+     "required": false
+    },
+    {
+     "default": 25.0,
+     "flags": [
+      "--ecomp-max-edge"
+     ],
+     "help": "Maximum Delaunay edge length (µm) for ecomp; longer edges are pruned.",
+     "is_flag": false,
+     "kind": "float",
+     "multiple": false,
+     "name": "ecomp_max_edge",
+     "param_type": "option",
+     "required": false
+    },
+    {
+     "default": 2,
+     "flags": [
+      "--ecomp-k"
+     ],
+     "help": "Number of hops defining the ecomp neighborhood radius (k-hop on the line graph).",
+     "is_flag": false,
+     "kind": "int",
+     "multiple": false,
+     "name": "ecomp_k",
+     "param_type": "option",
+     "required": false
+    },
+    {
+     "default": false,
+     "flags": [
+      "--tcomp"
+     ],
+     "help": "Run triad-level composition (tcomp) analysis after ecomp.",
+     "is_flag": true,
+     "kind": "bool",
+     "multiple": false,
+     "name": "tcomp",
+     "param_type": "option",
+     "required": false
+    },
+    {
+     "default": 25.0,
+     "flags": [
+      "--tcomp-max-edge"
+     ],
+     "help": "Maximum Delaunay edge length (µm) for tcomp; triads with any longer edge are pruned.",
+     "is_flag": false,
+     "kind": "float",
+     "multiple": false,
+     "name": "tcomp_max_edge",
+     "param_type": "option",
+     "required": false
+    },
+    {
+     "default": 2,
+     "flags": [
+      "--tcomp-k"
+     ],
+     "help": "Number of hops defining the tcomp neighborhood radius (k-hop on the dual graph).",
+     "is_flag": false,
+     "kind": "int",
+     "multiple": false,
+     "name": "tcomp_k",
+     "param_type": "option",
+     "required": false
+    },
+    {
+     "default": false,
+     "flags": [
+      "--cme"
+     ],
+     "help": "Run cellular microenvironment (CME) analysis after inference.",
+     "is_flag": true,
+     "kind": "bool",
+     "multiple": false,
+     "name": "cme",
+     "param_type": "option",
+     "required": false
+    },
+    {
+     "default": false,
+     "flags": [
+      "--cme-hoptimus"
+     ],
+     "help": "Enable H-Optimus tissue morphology features for CME.  Requires a GPU and the timm package.  Ignored unless --cme is set.",
+     "is_flag": true,
+     "kind": "bool",
+     "multiple": false,
+     "name": "cme_hoptimus",
+     "param_type": "option",
+     "required": false
+    },
+    {
+     "default": null,
+     "flags": [
+      "--cme-clusters"
+     ],
+     "help": "Number of CME clusters (KMeans).  When omitted, determined automatically via Leiden community detection.  Ignored unless --cme is set.",
+     "is_flag": false,
+     "kind": "int",
+     "multiple": false,
+     "name": "cme_clusters",
+     "param_type": "option",
+     "required": false
+    },
+    {
+     "default": false,
+     "flags": [
+      "--export-geojson"
+     ],
+     "help": "After inference, merge all per-cell analytics and export to GeoJSON files (export-geojson/).  Equivalent to running 'wsinsight export --geojson'.",
+     "is_flag": true,
+     "kind": "bool",
+     "multiple": false,
+     "name": "export_geojson",
+     "param_type": "option",
+     "required": false
+    },
+    {
+     "default": false,
+     "flags": [
+      "--export-omecsv"
+     ],
+     "help": "After inference, merge all per-cell analytics and export to compressed OME-CSV files (export-omecsv/).  Equivalent to running 'wsinsight export --omecsv'.",
+     "is_flag": true,
+     "kind": "bool",
+     "multiple": false,
+     "name": "export_omecsv",
+     "param_type": "option",
+     "required": false
+    }
+   ]
+  },
+  "tcomp": {
+   "help": "Compute triad-level neighborhood composition for WSInsight inference outputs.\n\n    For every Delaunay triad (triangle of three cells), the k-hop neighboring\n    triads are collected from the dual graph and the proportion of each triad\n    type in that neighborhood is recorded, together with per-triad geometric\n    features (area, perimeter, regularity, max edge length).\n\n    \b\n    Outputs written to <results-dir>/:\n      tcomp-outputs-csv/<slide_id>.csv   per-triad neighborhood composition",
+   "name": "tcomp",
+   "params": [
+    {
+     "default": null,
+     "flags": [
+      "-i",
+      "--wsi-dir"
+     ],
+     "help": "Directory containing whole slide images.  Used only to enumerate slides and to resolve µm-per-pixel spacing; images are not fully read during tcomp.",
+     "is_flag": false,
+     "kind": "string",
+     "multiple": false,
+     "name": "wsi_dir",
+     "param_type": "option",
+     "required": true
+    },
+    {
+     "default": null,
+     "flags": [
+      "-o",
+      "--results-dir"
+     ],
+     "help": "Directory holding WSInsight inference outputs.  Must contain a ``model-outputs-csv/`` subdirectory produced by ``wsinsight infer`` or ``wsinsight run``.",
+     "is_flag": false,
+     "kind": "string",
+     "multiple": false,
+     "name": "results_dir",
+     "param_type": "option",
+     "required": true
+    },
+    {
+     "default": 25.0,
+     "flags": [
+      "--tcomp-max-edge"
+     ],
+     "help": "Maximum triad edge length (µm); triads whose longest edge exceeds this are dropped.",
+     "is_flag": false,
+     "kind": "float",
+     "multiple": false,
+     "name": "tcomp_max_edge",
+     "param_type": "option",
+     "required": false
+    },
+    {
+     "default": 2,
+     "flags": [
+      "--tcomp-k"
+     ],
+     "help": "Number of hops that define the triad-level neighborhood radius (k-hop on the dual graph).",
+     "is_flag": false,
+     "kind": "int",
+     "multiple": false,
+     "name": "tcomp_k",
+     "param_type": "option",
+     "required": false
+    },
+    {
+     "default": false,
+     "flags": [
+      "--overwrite"
+     ],
+     "help": "Recompute and overwrite existing per-slide tcomp outputs.",
+     "is_flag": true,
+     "kind": "bool",
+     "multiple": false,
+     "name": "overwrite",
+     "param_type": "option",
+     "required": false
+    },
+    {
+     "default": 8,
+     "flags": [
+      "--num-workers"
+     ],
+     "help": "Number of slides to process concurrently.",
+     "is_flag": false,
+     "kind": "int",
+     "multiple": false,
+     "name": "num_workers",
+     "param_type": "option",
+     "required": false
+    },
+    {
+     "default": false,
+     "flags": [
+      "--no-neighborhood"
+     ],
+     "help": "Skip dual-graph construction and k-hop aggregation.  Output one row per Delaunay triad with geometry, cell types, triad type, and a ``centroid_region`` column (derived from per-vertex ``region_prob_*`` columns).  Much faster; no ``neighborhood_*`` columns are written.",
+     "is_flag": true,
+     "kind": "bool",
+     "multiple": false,
+     "name": "no_neighborhood",
+     "param_type": "option",
+     "required": false
+    }
+   ]
+  },
+  "import": {
+   "help": "Import spatial-transcriptomics gene expression onto WSInsight cells.\n\n\b\nFor each sample in the sptx-list manifest:\n  • map Xenium centroids (µm) onto the H&E via the ST2WSI transform,\n  • match each cell to the nearest model-output detection,\n  • write one AnnData whose obs carries the matched detection under model_* (plus model_cell_id), and any --include sources under cme_/hplot_/ncomp_.\n\n\b\nOutput written to <results-dir>/:\n  xenium-import/<sample_id>.h5ad",
+   "name": "import",
+   "params": [
+    {
+     "default": null,
+     "flags": [
+      "-i",
+      "--wsi-dir"
+     ],
+     "help": "Directory (or image-list://) of H&E slides. Matched to a sample by stem == manifest sample_id; provides the exact target dimensions used by the elastic (B-spline) transform.",
+     "is_flag": false,
+     "kind": "string",
+     "multiple": false,
+     "name": "wsi_dir",
+     "param_type": "option",
+     "required": true
+    },
+    {
+     "default": null,
+     "flags": [
+      "-s",
+      "--sptx-dir"
+     ],
+     "help": "A sptx-list:// manifest (path<TAB>sample_id per line). The path points at each Xenium sample directory; sample_id is the stable id used to match the H&E / model-output (Xenium filenames collide across runs).",
+     "is_flag": false,
+     "kind": "string",
+     "multiple": false,
+     "name": "sptx_dir",
+     "param_type": "option",
+     "required": true
+    },
+    {
+     "default": null,
+     "flags": [
+      "-o",
+      "--results-dir"
+     ],
+     "help": "Directory holding WSInsight inference outputs (must contain model-outputs-csv/). xenium-import/ is written here.",
+     "is_flag": false,
+     "kind": "string",
+     "multiple": false,
+     "name": "results_dir",
+     "param_type": "option",
+     "required": true
+    },
+    {
+     "default": "xenium",
+     "flags": [
+      "--platform"
+     ],
+     "help": "Spatial-transcriptomics platform to import (xenium by default).",
+     "is_flag": false,
+     "kind": "choice",
+     "multiple": false,
+     "name": "platform",
+     "param_type": "option",
+     "required": false,
+     "choices": [
+      "xenium"
+     ]
+    },
+    {
+     "default": "affine+bspline",
+     "flags": [
+      "--transform"
+     ],
+     "help": "ST2WSI coordinate transform: SIFT affine only, or affine + bUnwarpJ elastic B-spline (default; requires the H&E target dimensions).",
+     "is_flag": false,
+     "kind": "choice",
+     "multiple": false,
+     "name": "transform",
+     "param_type": "option",
+     "required": false,
+     "choices": [
+      "affine",
+      "affine+bspline"
+     ]
+    },
+    {
+     "default": "all",
+     "flags": [
+      "--genes"
+     ],
+     "help": "'all' (full panel, Gene Expression features) or a comma-separated list of gene names to import.",
+     "is_flag": false,
+     "kind": "string",
+     "multiple": false,
+     "name": "genes",
+     "param_type": "option",
+     "required": false
+    },
+    {
+     "default": "",
+     "flags": [
+      "--include"
+     ],
+     "help": "Comma-separated optional per-cell sources to merge into obs, each under its own prefix: cme (cme_), hplot (hplot_), ncomp (ncomp_). The mandatory 'model' source (model_*) is always imported and need not be listed. Empty = model only. Example: --include cme,hplot",
+     "is_flag": false,
+     "kind": "string",
+     "multiple": false,
+     "name": "include",
+     "param_type": "option",
+     "required": false
+    },
+    {
+     "default": 0.0,
+     "flags": [
+      "--match-max-dist"
+     ],
+     "help": "Maximum H&E-pixel distance for a cell↔detection match (0 = no cap; match_dist_px is always recorded so matches can be filtered later).",
+     "is_flag": false,
+     "kind": "float",
+     "multiple": false,
+     "name": "match_max_dist",
+     "param_type": "option",
+     "required": false
+    },
+    {
+     "default": false,
+     "flags": [
+      "--overwrite"
+     ],
+     "help": "Recompute and overwrite existing per-slide imports.",
+     "is_flag": true,
+     "kind": "bool",
+     "multiple": false,
+     "name": "overwrite",
+     "param_type": "option",
+     "required": false
+    },
+    {
+     "default": false,
+     "flags": [
+      "--dry-run"
+     ],
+     "help": "QC only: compute and report the cell↔detection match hit-rate and median match distance per sample, without reading expression or writing any h5ad. Use it to check a manifest pairing / registration before a full import.",
+     "is_flag": true,
+     "kind": "bool",
+     "multiple": false,
+     "name": "dry_run",
+     "param_type": "option",
+     "required": false
+    }
+   ]
+  }
+ },
+ "schema_version": 1
 }
