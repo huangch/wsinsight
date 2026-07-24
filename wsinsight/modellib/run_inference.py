@@ -45,6 +45,37 @@ EPSILON = 1e-8
 I_0 = 255
 
 
+def _as_output_tensor(pred: object) -> torch.Tensor:
+    """Normalise a model's forward output to a single logits tensor.
+
+    Zoo TorchScript models are not all bare-tensor classifiers: some return a
+    ``dict`` (e.g. ``{"logits": ...}`` / ``{"out": ...}``), a ``tuple``/``list``
+    (logits first), or an object exposing a ``.logits`` attribute. Calling
+    ``.detach()`` on those raised ``'dict' object has no attribute 'detach'``.
+    """
+    if torch.is_tensor(pred):
+        return pred
+    if isinstance(pred, dict):
+        for key in ("logits", "out", "output", "y", "pred", "predictions"):
+            if key in pred and torch.is_tensor(pred[key]):
+                return pred[key]
+        tensor_vals = [v for v in pred.values() if torch.is_tensor(v)]
+        if len(tensor_vals) == 1:
+            return tensor_vals[0]
+        raise TypeError(
+            "model returned a dict with no unambiguous logits tensor; "
+            f"keys={list(pred)}"
+        )
+    if isinstance(pred, (tuple, list)):
+        for v in pred:
+            if torch.is_tensor(v):
+                return v
+        raise TypeError("model returned a sequence with no tensor element.")
+    if hasattr(pred, "logits") and torch.is_tensor(pred.logits):
+        return pred.logits
+    raise TypeError(f"unsupported model output type: {type(pred)}")
+
+
 def _advance_batch_search(
     current: int, lo: int, hi: int, max_bs: int, *, oom: bool
 ) -> tuple[int, int, int]:
@@ -694,8 +725,8 @@ def run_inference(
                                     break
                                 assert batch_imgs.shape[0] == batch_coords.shape[0], "length mismatch"
                                 with torch.no_grad():
-                                    logits: torch.Tensor = model(
-                                        batch_imgs.to(device, non_blocking=True)
+                                    logits: torch.Tensor = _as_output_tensor(
+                                        model(batch_imgs.to(device, non_blocking=True))
                                     ).detach().cpu()
                                 # probs has shape (batch_size, num_classes) or (batch_size,)
                                 if len(logits.shape) > 1 and logits.shape[1] > 1:
