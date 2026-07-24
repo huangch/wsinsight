@@ -158,20 +158,28 @@ PY
 # ------------------------------------
 # Non-root user
 # ------------------------------------
-ARG USERNAME=user
-ARG UID=1000
-ARG GID=1000
-RUN groupadd -g ${GID} ${USERNAME} && \
-    useradd -m -u ${UID} -g ${GID} -s /bin/bash ${USERNAME} && \
+# The container starts as root; the runtime entrypoint (docker-entrypoint.sh)
+# remaps the pre-created ``user`` account to the owner of the mounted /workspace
+# (or to $HOST_UID/$HOST_GID) and then drops privileges via setpriv. The uid/gid
+# baked here is only a throwaway placeholder, immediately overwritten at run
+# time, so it is hard-coded (1000) rather than exposed as a build ARG.
+RUN groupadd -g 1000 user && \
+    useradd -m -u 1000 -g 1000 -s /bin/bash user && \
     # ensure new user's ~/.bashrc inherits conda setup
-    bash -lc 'echo ". /opt/conda/etc/profile.d/conda.sh" >> /home/'"${USERNAME}"'/.bashrc' && \
-    bash -lc 'echo "conda activate wsinsight" >> /home/'"${USERNAME}"'/.bashrc' && \
-    chown -R ${UID}:${GID} /home/${USERNAME} && \
+    bash -lc 'echo ". /opt/conda/etc/profile.d/conda.sh" >> /home/user/.bashrc' && \
+    bash -lc 'echo "conda activate wsinsight" >> /home/user/.bashrc' && \
     mkdir -p /app/hf-cache && \
-    chown -R ${UID}:${GID} /app/hf-cache /app/zoo /app/keras
+    chown -R 1000:1000 /home/user /app/hf-cache /app/zoo /app/keras
+
+# Install the runtime uid/gid-remapping entrypoint.
+RUN install -m 0755 /app/wsinsight/docker-entrypoint.sh /usr/local/bin/docker-entrypoint.sh
+
 WORKDIR /workspace
-RUN chown -R ${UID}:${GID} /workspace
-USER ${USERNAME}
+RUN chown -R 1000:1000 /workspace
+# NOTE: no ``USER`` here on purpose — the container starts as root so the
+# entrypoint can remap ``user`` to the mount owner, then drops privileges via
+# setpriv. Passing ``docker run --user ...`` still works: the entrypoint detects
+# a non-root start and execs the command unchanged.
 
 # ------------------------------------
 # Environment variables
@@ -188,4 +196,5 @@ ENV HF_HOME=/app/hf-cache \
 # Default interactive shell
 # ------------------------------------
 SHELL ["/bin/bash","-lc"]
+ENTRYPOINT ["/usr/local/bin/docker-entrypoint.sh"]
 CMD ["bash"]

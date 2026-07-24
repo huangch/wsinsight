@@ -3,6 +3,11 @@
 IMAGE_ID=huangchtw/wsinsight:latest
 docker pull ${IMAGE_ID}
 
+# The container's uid/gid is set at run time by the image entrypoint: by default
+# it becomes the owner of the mounted /workspace (so you can always write to your
+# data). Export HOST_UID / HOST_GID before running to force a specific id; the
+# ``-e HOST_UID -e HOST_GID`` on the docker run lines forward them only when set.
+
 # Named volume that persists the Hugging Face model cache between runs.
 # First invocation triggers an auto-download of any model referenced from the
 # WSInsight zoo registry; subsequent runs reuse the cached weights.
@@ -33,10 +38,10 @@ fi
 
 if [ $# -gt 0 ]; then
     # Direct command mode: run the provided command and exit
-    echo docker run --rm -it --gpus "${GPU_FLAG}" --shm-size=32g --init -v "${DATA_DIR}":/workspace -v "${HF_CACHE_VOLUME}":/app/hf-cache ${IMAGE_ID} bash -lc "$*"
-    docker run --rm -it --gpus "${GPU_FLAG}" --shm-size=32g --init -v "${DATA_DIR}":/workspace -v "${HF_CACHE_VOLUME}":/app/hf-cache ${IMAGE_ID} bash -lc "$*"
+    echo docker run --rm -it --gpus "${GPU_FLAG}" --shm-size=32g --init -e HOST_UID -e HOST_GID -v "${DATA_DIR}":/workspace -v "${HF_CACHE_VOLUME}":/app/hf-cache ${IMAGE_ID} bash -lc "$*"
+    docker run --rm -it --gpus "${GPU_FLAG}" --shm-size=32g --init -e HOST_UID -e HOST_GID -v "${DATA_DIR}":/workspace -v "${HF_CACHE_VOLUME}":/app/hf-cache ${IMAGE_ID} bash -lc "$*"
 else
     # Interactive mode: drop into a shell
-    echo docker run --rm -it --gpus "${GPU_FLAG}" --shm-size=32g --init -v "${DATA_DIR}":/workspace -v "${HF_CACHE_VOLUME}":/app/hf-cache ${IMAGE_ID}
-    docker run --rm -it --gpus "${GPU_FLAG}" --shm-size=32g --init -v "${DATA_DIR}":/workspace -v "${HF_CACHE_VOLUME}":/app/hf-cache ${IMAGE_ID}
+    echo docker run --rm -it --gpus "${GPU_FLAG}" --shm-size=32g --init -e HOST_UID -e HOST_GID -v "${DATA_DIR}":/workspace -v "${HF_CACHE_VOLUME}":/app/hf-cache ${IMAGE_ID}
+    docker run --rm -it --gpus "${GPU_FLAG}" --shm-size=32g --init -e HOST_UID -e HOST_GID -v "${DATA_DIR}":/workspace -v "${HF_CACHE_VOLUME}":/app/hf-cache ${IMAGE_ID}
 fi
