@@ -56,23 +56,23 @@
       "hf_revision": "main"
     },
     "CellViT-SAM-H-x20": {
-      "description": "CellViT-CellViT-SAM-H-x20",
-      "hf_repo_id": "huangch/CellViT-CellViT-SAM-H-x20",
+      "description": "CellViT-SAM-H-x20",
+      "hf_repo_id": "huangch/CellViT-SAM-H-x20",
       "hf_revision": "main"
     },
     "CellViT-SAM-H-x40": {
-      "description": "CellViT-CellViT-SAM-H-x40",
-      "hf_repo_id": "huangch/CellViT-CellViT-SAM-H-x40",
+      "description": "CellViT-SAM-H-x40",
+      "hf_repo_id": "huangch/CellViT-SAM-H-x40",
       "hf_revision": "main"
     },
     "CellViT-SAM-H-x40-AMP": {
-      "description": "CellViT-CellViT-SAM-H-x40-AMP",
-      "hf_repo_id": "huangch/CellViT-CellViT-SAM-H-x40-AMP",
+      "description": "CellViT-SAM-H-x40-AMP",
+      "hf_repo_id": "huangch/CellViT-SAM-H-x40-AMP",
       "hf_revision": "main"
     },
     "CellViT-Virchow-x40-AMP": {
-      "description": "CellViT-CellViT-Virchow-x40-AMP",
-      "hf_repo_id": "huangch/CellViT-CellViT-Virchow-x40-AMP",
+      "description": "CellViT-Virchow-x40-AMP",
+      "hf_repo_id": "huangch/CellViT-Virchow-x40-AMP",
       "hf_revision": "main"
     },
     "hovernet_fast_pannuke": {
