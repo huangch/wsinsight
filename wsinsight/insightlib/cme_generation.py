@@ -18,6 +18,15 @@ from sklearn.preprocessing import StandardScaler
 from torch_geometric.data import Data # , DataLoader as GeoDataLoader
 from torch_geometric.loader import DataLoader as GeoDataLoader, DataListLoader
 from torch_geometric.nn import GCNConv, DataParallel as GeoDataParallel
+
+# PyG's DataParallel emits a UserWarning recommending DistributedDataParallel.
+# DP is used here intentionally (bounded DGI embedding pass; a DDP port would be
+# a scoped refactor with no correctness gain), so silence just that message.
+import warnings as _warnings
+_warnings.filterwarnings(
+    "ignore",
+    message=r".*'DataParallel' is usually much slower than 'DistributedDataParallel'.*",
+)
 from torch_geometric.nn.models import DeepGraphInfomax
 from collections import deque
 from concurrent.futures import ProcessPoolExecutor, as_completed
