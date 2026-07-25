@@ -110,7 +110,7 @@ def _num_cpus() -> int:
     ),
 )
 @click.option(
-    "--cme-leiden-resolutions",
+    "--cme-leiden-res",
     default=_DEFAULT_LEIDEN_RESOLUTIONS,
     show_default=True,
     type=FLOAT_LIST,
@@ -140,7 +140,7 @@ def cme(
     results_dir: URIPath,
     cme_hoptimus: bool = False,
     cme_clusters: int | None = None,
-    cme_leiden_resolutions: list[float] | None = None,
+    cme_leiden_res: list[float] | None = None,
     overwrite: bool = False,
     num_workers: int = 8,
 ) -> None:
@@ -197,7 +197,7 @@ def cme(
         cme_cellular=True,
         cme_annotation=True,
         cme_clustering_k=cme_clusters,
-        cme_clustering_resolutions=cme_leiden_resolutions,
+        cme_clustering_resolutions=cme_leiden_res,
         overwrite=overwrite,
     )
 
