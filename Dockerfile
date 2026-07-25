@@ -130,7 +130,7 @@ RUN pip install --retries 10 -c constraints.txt "numpy<2" \
     openslide-python wsidicom paquo "wsinfer-zoo>=0.6.2" \
     igraph leidenalg s3fs gcsfs boto3 platformdirs timm \
     tiffslide imagecodecs opencv-python-headless orjson \
-    h5py anndata \
+    h5py anndata lz4 \
     "huggingface_hub[hf_transfer]"
 RUN pip install --retries 10 -c constraints.txt fastmcp
 RUN pip install --no-deps --no-build-isolation -e "."
