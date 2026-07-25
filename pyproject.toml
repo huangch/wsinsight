@@ -64,6 +64,8 @@ dependencies = [
   "gcsfs",
   "boto3",
   "platformdirs",
+  "joblib",
+  "lz4",  # required by joblib.dump(compress=("lz4", ...)) in cme_generation
 
   # Graph & clustering
   "igraph",

@@ -12,7 +12,7 @@ ENV DEBIAN_FRONTEND=noninteractive \
 # Basic system dependencies + OpenJDK 17
 # ------------------------------------
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    git curl wget unzip ca-certificates build-essential pkg-config \
+    git curl wget unzip vim ca-certificates build-essential pkg-config \
     libglib2.0-0 libsm6 libxext6 libxrender1 \
     openjdk-17-jdk-headless && \
     rm -rf /var/lib/apt/lists/*
