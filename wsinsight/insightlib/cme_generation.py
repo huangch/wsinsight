@@ -1272,16 +1272,36 @@ def cme_generation(
         joblib.dump(Z_list, cme_dgi_embeddings_file, compress=("lz4", 3))
         
     if not cme_clustering_k:
-        click.secho("\nPhase 3/5: Estimate cme clustering number.\n", fg="green")
-        
-        estimate_cmes_from_Z_list_res = estimate_cmes_from_Z_list(Z_list, 
-                                                                      mode="global", 
-                                                                      cme_clustering_resolutions=cme_clustering_resolutions,
+        # Resolution selection. When several resolutions are supplied we sweep
+        # them and keep the most stable "winner"; when a SINGLE resolution is
+        # given there is nothing to compare, so we skip the repeat/scoring
+        # machinery and just run Leiden once at that resolution (direct mode).
+        _res_list = list(cme_clustering_resolutions)
+        _single = len(_res_list) == 1
+        _n_repeats = 1 if _single else 5
+        if _single:
+            click.secho(
+                f"\nPhase 3/5: Direct Leiden clustering at resolution="
+                f"{_res_list[0]:g} (single resolution, no sweep).\n", fg="green")
+        else:
+            click.secho(
+                f"\nPhase 3/5: Estimate cme clustering number via Leiden sweep "
+                f"over resolutions {[float(r) for r in _res_list]}.\n", fg="green")
+
+        estimate_cmes_from_Z_list_res = estimate_cmes_from_Z_list(Z_list,
+                                                                      mode="global",
+                                                                      cme_clustering_resolutions=_res_list,
+                                                                      n_repeats=_n_repeats,
                                                                       k_nn=15)
-        
-        cme_clustering_k = estimate_cmes_from_Z_list_res['winner']['n_clusters']
+
+        _w = estimate_cmes_from_Z_list_res['winner']
+        cme_clustering_k = _w['n_clusters']
         labels_list  = estimate_cmes_from_Z_list_res["labels_list"]     # per-slide cme labels
-        
+        click.secho(
+            f"  selected Leiden resolution={_w['resolution']:g} -> k={cme_clustering_k} "
+            f"clusters (modularity={_w['modularity']:.3f}, "
+            f"silhouette={_w['silhouette']:.3f})\n", fg="cyan")
+
     else:
         click.secho(f"\nPhase 3/5: Use predefined cme clustering number: cme_clustering_k={cme_clustering_k}.\n", fg="green")
         
