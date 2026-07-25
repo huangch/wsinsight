@@ -610,10 +610,13 @@ def patch(
     model_obj: HFModel | models.LocalModelTorchScript
     if model_name is not None:
         model_obj = models.get_registered_model(name=model_name)
-        object_based = False
-        halo_size_px = 0
-        stardist_normalization_pmin = None
-        stardist_normalization_pmax = None
+        _config_dict = models.read_registered_model_config_dict(model_obj)
+        object_based = True if 'object_based' in _config_dict.keys() and _config_dict['object_based'] else False
+        object_detection = _config_dict['object_detection']["name"] if object_based and 'object_detection' in _config_dict.keys() and isinstance(_config_dict['object_detection'], dict) else None
+        stardist_normalization_pmin = _config_dict['object_detection']["normalization_pmin"] if object_detection == "stardist" else None
+        stardist_normalization_pmax = _config_dict['object_detection']["normalization_pmax"] if object_detection == "stardist" else None
+        halo_size_px = _config_dict['halo_size_pixels'] if object_based and 'halo_size_pixels' in _config_dict.keys() and _config_dict['halo_size_pixels'] else 0
+        del _config_dict
         
     elif config is not None:
         with open(config) as f:

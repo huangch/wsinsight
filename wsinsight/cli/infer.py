@@ -752,9 +752,13 @@ def infer(
     model_obj: HFModel | models.LocalModelTorchScript
     if model_name is not None:
         model_obj = models.get_registered_model(name=model_name)
-        object_based = False
-        mixed_precision = False
-        halo_size_px = 0
+        _config_dict = models.read_registered_model_config_dict(model_obj)
+        object_based = True if 'object_based' in _config_dict.keys() and _config_dict['object_based'] else False
+        mixed_precision = True if 'mixed_precision' in _config_dict.keys() and _config_dict['mixed_precision'] else False
+        stain_normalization = True if 'stain_normalization' in _config_dict.keys() and _config_dict['stain_normalization'] else False
+        object_detection = _config_dict['object_detection']["name"] if object_based and 'object_detection' in _config_dict.keys() and isinstance(_config_dict['object_detection'], dict) else None
+        halo_size_px = _config_dict['halo_size_pixels'] if object_based and 'halo_size_pixels' in _config_dict.keys() and _config_dict['halo_size_pixels'] else 0
+        del _config_dict
         
     elif config is not None:
         with Path(config).open("r", encoding="utf-8") as f:

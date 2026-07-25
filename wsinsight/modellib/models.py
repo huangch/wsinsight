@@ -67,6 +67,30 @@ def get_registered_model(name: str) -> HFModelTorchScript:
     model = registry.get_model_by_name(name=name)
     return model.load_model_torchscript()
 
+
+def read_registered_model_config_dict(
+    model_obj: HFModelTorchScript | LocalModelTorchScript,
+) -> dict:
+    """Return the raw ``config.json`` that sits next to a downloaded model.
+
+    ``ModelConfiguration.from_dict`` drops object-detection metadata such as
+    ``object_based``/``object_detection``/``halo_size_pixels``, so the CLI
+    reads those extra top-level keys straight from the JSON. The registered
+    (``--model``) path downloads ``torchscript_model.pt`` and ``config.json``
+    into the same HuggingFace snapshot directory; this reads that sibling
+    ``config.json``. Returns an empty dict if it cannot be found.
+    """
+
+    import json
+
+    config_path = Path(model_obj.model_path).parent / "config.json"
+    if config_path.is_file():
+        with config_path.open("r", encoding="utf-8") as f:
+            data = json.load(f)
+        if isinstance(data, dict):
+            return data
+    return {}
+
 # class ScriptWrapper(torch.nn.Module):
 #     def __init__(self, path):
 #         super().__init__()
