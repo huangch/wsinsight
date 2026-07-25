@@ -25,6 +25,34 @@ from ._paths import (
 
 _STORAGE_KWARGS = default_storage_kwargs()
 
+_DEFAULT_LEIDEN_RESOLUTIONS = "0.5,1.0,2.0"
+
+
+class _FloatListParamType(click.ParamType):
+    """Comma-separated list of positive floats (Leiden resolutions)."""
+
+    name = "floats"
+
+    def convert(self, value, param, ctx):
+        if isinstance(value, (list, tuple)):
+            return list(value)
+        try:
+            out = [float(tok) for tok in str(value).split(",") if tok.strip()]
+        except ValueError:
+            self.fail(
+                f"{value!r} is not a comma-separated list of numbers "
+                "(e.g. '0.5,1.0,2.0').",
+                param, ctx,
+            )
+        if not out:
+            self.fail("at least one resolution is required.", param, ctx)
+        if any(r <= 0 for r in out):
+            self.fail("all resolutions must be positive.", param, ctx)
+        return out
+
+
+FLOAT_LIST = _FloatListParamType()
+
 
 def _num_cpus() -> int:
     """Get number of CPUs on the system."""
@@ -82,6 +110,17 @@ def _num_cpus() -> int:
     ),
 )
 @click.option(
+    "--cme-leiden-resolutions",
+    default=_DEFAULT_LEIDEN_RESOLUTIONS,
+    show_default=True,
+    type=FLOAT_LIST,
+    help=(
+        "Comma-separated Leiden resolutions to sweep when choosing the number "
+        "of CMEs automatically (e.g. '0.2,0.5,1.0,2.0').  Higher resolutions "
+        "yield more, smaller clusters.  Ignored when --cme-clusters is set."
+    ),
+)
+@click.option(
     "--overwrite",
     is_flag=True,
     default=False,
@@ -101,6 +140,7 @@ def cme(
     results_dir: URIPath,
     cme_hoptimus: bool = False,
     cme_clusters: int | None = None,
+    cme_leiden_resolutions: list[float] | None = None,
     overwrite: bool = False,
     num_workers: int = 8,
 ) -> None:
@@ -157,7 +197,7 @@ def cme(
         cme_cellular=True,
         cme_annotation=True,
         cme_clustering_k=cme_clusters,
-        cme_clustering_resolutions=[0.5, 1.0, 2.0],
+        cme_clustering_resolutions=cme_leiden_resolutions,
         overwrite=overwrite,
     )
 
