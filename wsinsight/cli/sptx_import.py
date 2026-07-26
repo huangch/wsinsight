@@ -33,6 +33,7 @@ import click
 
 from ..bunwarp import map_cells
 from ..uri_path import URIPath, URIPathType
+from ..wsi import get_avg_mpp
 from ._meta import write_runtime_metadata
 from ._paths import default_storage_kwargs, ensure_input_directory
 
@@ -145,6 +146,9 @@ def _process_sample(sample_id: str, xdir: Path, wsi_path: Optional[URIPath],
     params = xdir / "registration_params.json"
     elastic = xdir / "direct_transf.txt"
     target_wh = None
+    mpp_he = None
+    if wsi_path is not None:
+        mpp_he = get_avg_mpp(wsi_path)
     if transform == "affine+bspline":
         if wsi_path is None:
             raise click.ClickException(
@@ -188,10 +192,20 @@ def _process_sample(sample_id: str, xdir: Path, wsi_path: Optional[URIPath],
                 "median_dist_px": round(float(np.nanmedian(dist)), 2) if len(dist) else None}
 
     # ---- AnnData: obs=geometry/link, X=sparse expression, var=genes ----
+    # x_um/y_um are H&E microns (x_px * mpp_he), not raw Xenium microns.
+    # Original Xenium coordinates are stored as xenium_x_um/xenium_y_um.
+    if mpp_he is not None:
+        x_um_he = xy_px[:, 0] * mpp_he
+        y_um_he = xy_px[:, 1] * mpp_he
+    else:
+        # Fallback: use raw Xenium microns if H&E MPP unavailable
+        x_um_he = xy_um[:, 0]
+        y_um_he = xy_um[:, 1]
     obs = pd.DataFrame({
         "cell_id": cid.astype(str),
         "x_px": xy_px[:, 0], "y_px": xy_px[:, 1],
-        "x_um": xy_um[:, 0], "y_um": xy_um[:, 1],
+        "x_um": x_um_he, "y_um": y_um_he,
+        "xenium_x_um": xy_um[:, 0], "xenium_y_um": xy_um[:, 1],
         "matched_box": matched,
         "match_dist_px": dist,
     })
