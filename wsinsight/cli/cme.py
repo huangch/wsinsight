@@ -121,6 +121,16 @@ def _num_cpus() -> int:
     ),
 )
 @click.option(
+    "--cme-embed-dim",
+    default=32,
+    show_default=True,
+    type=click.IntRange(min=8, max=256),
+    help=(
+        "Dimensionality of the DGI cell embedding.  Higher values retain more "
+        "detail but increase computation.  Typical range: 16-64."
+    ),
+)
+@click.option(
     "--overwrite",
     is_flag=True,
     default=False,
@@ -141,6 +151,7 @@ def cme(
     cme_hoptimus: bool = False,
     cme_clusters: int | None = None,
     cme_leiden_res: list[float] | None = None,
+    cme_embed_dim: int = 32,
     overwrite: bool = False,
     num_workers: int = 8,
 ) -> None:
@@ -192,7 +203,7 @@ def cme(
         alpha=1.0,
         use_hoptimus=cme_hoptimus,
         hidden=64,
-        out_dim=32,
+        out_dim=cme_embed_dim,
         epochs=300,
         cme_cellular=True,
         cme_annotation=True,
