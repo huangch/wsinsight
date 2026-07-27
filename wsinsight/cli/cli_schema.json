@@ -383,7 +383,7 @@
    ]
   },
   "export": {
-   "help": "Merge all available per-cell analytics and export to GeoJSON / OME-CSV.\n\n    Reads whatever analysis outputs are present under RESULTS_DIR:\n\n    \b\n      model-outputs-csv/       — base inference probabilities (+ reg columns)\n      hplot-outputs-csv/cells/ — H-Plot per-cell layer features\n      ncomp-outputs-csv/       — node-level (cell) composition features\n\n    All per-cell sources above are left-joined into export-csv/, then\n    written to export-geojson/ and/or export-omecsv/ depending on the\n    flags provided.\n\n    Edge-level (``ecomp-outputs-csv/``) and triad-level\n    (``tcomp-outputs-csv/``) composition outputs are standalone\n    simplicial deliverables and are NOT merged into the per-cell\n    export (they have different primary keys).  Consume them\n    directly from their respective subdirectories.\n\n    At least one of --geojson or --omecsv must be supplied.\n\n    This command can be run at any time after inference — and optionally after\n    hplot / ncomp — without re-running the full inference pipeline.",
+   "help": "Merge all available per-cell analytics and export to GeoJSON / OME-CSV.\n\n    Reads whatever analysis outputs are present under RESULTS_DIR:\n\n    \b\n      model-outputs-csv/       — base inference probabilities (+ reg columns)\n      hplot-outputs-csv/cells/ — H-Plot per-cell layer features\n      ncomp-outputs-csv/       — node-level (cell) composition features\n      cme-outputs-csv/cells/   — cell morphology embeddings\n      imported-xenium/         — Xenium per-cell summaries\n\n    All per-cell sources above are left-joined into export-csv/, then\n    written to export-geojson/, export-omecsv/, and/or export-h5ad/. Use --include to select specific sources including simplex outputs (ecomp, tcomp, agg:<name>) depending on the\n    flags provided.\n\n    Edge-level (``ecomp-outputs-csv/``) and triad-level\n    (``tcomp-outputs-csv/``) composition outputs are standalone\n    simplicial deliverables and are NOT merged into the per-cell\n    export (they have different primary keys).  Consume them\n    directly from their respective subdirectories.\n\n    At least one of --geojson, --omecsv, or --h5ad must be supplied.\n\n    This command can be run at any time after inference — and optionally after\n    hplot / ncomp — without re-running the full inference pipeline.",
    "name": "export",
    "params": [
     {
@@ -480,6 +480,32 @@
      "kind": "bool",
      "multiple": false,
      "name": "overwrite",
+     "param_type": "option",
+     "required": false
+    },
+    {
+     "default": false,
+     "flags": [
+      "--h5ad"
+     ],
+     "help": "Export per-cell data to AnnData .h5ad files (export-h5ad/).  Compatible with scanpy / squidpy; cell centroids are stored in obsm['spatial'].",
+     "is_flag": true,
+     "kind": "bool",
+     "multiple": false,
+     "name": "h5ad",
+     "param_type": "option",
+     "required": false
+    },
+    {
+     "default": null,
+     "flags": [
+      "--include"
+     ],
+     "help": "Analysis sources to include in the export (repeatable, or comma-separated). Per-cell sources (merged into export-csv/): hplot, ncomp, cme, xenium. Simplex sources (separate directories): ecomp, tcomp, agg:<name>. Special values: all (everything), all-cells (per-cell only). If omitted, all available per-cell sources are included.",
+     "is_flag": false,
+     "kind": "string",
+     "multiple": true,
+     "name": "include_sources",
      "param_type": "option",
      "required": false
     }
@@ -2515,7 +2541,7 @@
    ]
   },
   "import": {
-   "help": "Import spatial-transcriptomics gene expression onto WSInsight cells.\n\n\b\nFor each sample in the sptx-list manifest:\n  • map Xenium centroids (µm) onto the H&E via the ST2WSI transform,\n  • match each cell to the nearest model-output detection,\n  • write one AnnData whose obs carries the matched detection under model_* (plus model_cell_id), and any --include sources under cme_/hplot_/ncomp_.\n\n\b\nOutput written to <results-dir>/:\n  xenium-import/<sample_id>.h5ad",
+   "help": "Import spatial-transcriptomics gene expression onto WSInsight cells.\n\n\b\nFor each sample in the sptx-list manifest:\n  • map Xenium centroids (µm) onto the H&E via the ST2WSI transform,\n  • match each cell to the nearest model-output detection,\n  • write one AnnData whose obs carries the matched detection under model_* (plus model_cell_id), and any --include sources under cme_/hplot_/ncomp_.\n\n\b\nOutput written to <results-dir>/:\n  imported-xenium/<sample_id>.h5ad",
    "name": "import",
    "params": [
     {
@@ -2552,7 +2578,7 @@
       "-o",
       "--results-dir"
      ],
-     "help": "Directory holding WSInsight inference outputs (must contain model-outputs-csv/). xenium-import/ is written here.",
+     "help": "Directory holding WSInsight inference outputs (must contain model-outputs-csv/). imported-xenium/ is written here.",
      "is_flag": false,
      "kind": "string",
      "multiple": false,

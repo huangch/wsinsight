@@ -208,7 +208,7 @@ wsinsight
 > (`path`<TAB>`sample_id`, via `-s`/`--sptx-dir`), transforms each transcriptomics
 > cell onto the registered H&E through the ST2WSI SIFT-affine + bUnwarpJ
 > B-spline transform, matches it to the nearest `model-outputs-csv` detection,
-> and writes one AnnData `.h5ad` per slide under `xenium-import/`
+> and writes one AnnData `.h5ad` per slide under `imported-xenium/`
 > (`model-outputs-csv/` is never modified). Every matched `model-outputs-csv`
 > column is carried onto the cell under a `model_` prefix (plus `model_cell_id`);
 > optional per-cell sidecars requested with `--include cme,hplot,ncomp` are

@@ -3,7 +3,7 @@
 ``wsinsight import`` maps each transcriptomics cell onto the registered H&E
 image using the ST2WSI (SIFT affine + bUnwarpJ B-spline) transform, matches it
 to the nearest per-cell model-output detection, and writes one AnnData
-``.h5ad`` per slide under ``<results-dir>/xenium-import/``. The existing
+``.h5ad`` per slide under ``<results-dir>/imported-xenium/``. The existing
 ``model-outputs-csv/`` is never modified.
 
 Inputs
@@ -15,7 +15,7 @@ Inputs
   ``cell_feature_matrix.h5`` + ``registration_params.json`` +
   ``direct_transf.txt``) and whose second column is the stable ``sample_id``
   (must equal the H&E / model-output stem).
-* ``--results-dir``  holds ``model-outputs-csv/`` and receives ``xenium-import/``.
+* ``--results-dir``  holds ``model-outputs-csv/`` and receives ``imported-xenium/``.
 
 Platform is ``xenium`` by default (the only value today); it is exposed as an
 option so additional platforms can be added without a breaking change.
@@ -325,7 +325,7 @@ def _write_h5ad(adata, out_path: URIPath) -> None:
     type=URIPathType(exists=True, **_STORAGE_KWARGS),
     required=True,
     help="Directory holding WSInsight inference outputs (must contain "
-         "model-outputs-csv/). xenium-import/ is written here.",
+         "model-outputs-csv/). imported-xenium/ is written here.",
 )
 @click.option(
     "--platform",
@@ -410,7 +410,7 @@ def sptx_import(
 
     \b
     Output written to <results-dir>/:
-      xenium-import/<sample_id>.h5ad
+      imported-xenium/<sample_id>.h5ad
     """
     import numpy as np  # noqa: F401  (kept for parity / potential summaries)
 
@@ -449,7 +449,7 @@ def sptx_import(
             "Run 'wsinsight infer' or 'wsinsight run' first."
         )
 
-    out_dir = results_dir / "xenium-import"
+    out_dir = results_dir / "imported-xenium"
     out_dir.mkdir(parents=True, exist_ok=True)
 
     want_genes = None

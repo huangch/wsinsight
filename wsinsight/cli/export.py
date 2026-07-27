@@ -7,7 +7,12 @@ from pathlib import Path
 
 import click
 
-from ..export_helpers import build_export_csvs
+from ..export_helpers import (
+    build_export_csvs,
+    CELL_SOURCES,
+    SIMPLEX_SOURCES,
+    parse_include_sources,
+)
 from ..uri_path import URIPath, URIPathType
 from ..write_geojson import write_geojsons
 from ..write_h5ad import write_h5ads
@@ -97,6 +102,19 @@ def _to_local_path(p: URIPath | Path) -> Path:
         "up-to-date files.  Useful after re-running hplot or ncomp."
     ),
 )
+@click.option(
+    "--include",
+    "include_sources",
+    multiple=True,
+    help=(
+        "Analysis sources to include in the export (repeatable, or comma-separated). "
+        "Per-cell sources (merged into export-csv/): hplot, ncomp, cme, xenium. "
+        "Simplex sources (separate directories): ecomp, tcomp, agg:<name>. "
+        "Special values: 'all' (everything), 'all-cells' (per-cell only). "
+        "If omitted, only per-cell sources are included (backward compatible). "
+        "Example: --include hplot,ncomp,ecomp --include agg:tls"
+    ),
+)
 def export(
     results_dir: URIPath,
     geojson: bool,
@@ -106,30 +124,30 @@ def export(
     object_type: str,
     export_workers: int,
     overwrite: bool,
+    include_sources: tuple[str, ...],
 ) -> None:
-    """Merge all available per-cell analytics and export to GeoJSON / OME-CSV.
+    """Merge per-cell analytics and export to GeoJSON / OME-CSV / H5AD.
 
     Reads whatever analysis outputs are present under RESULTS_DIR:
 
     \b
-      model-outputs-csv/       — base inference probabilities (+ reg columns)
+    Per-cell sources (merged into one CSV per slide):
+      model-outputs-csv/       — base inference probabilities (always included)
       hplot-outputs-csv/cells/ — H-Plot per-cell layer features
       ncomp-outputs-csv/       — node-level (cell) composition features
+      cme-outputs-csv/cells/   — cell morphology embeddings
+      imported-xenium/         — Xenium per-cell summaries
 
-    All per-cell sources above are left-joined into export-csv/, then
-    written to export-geojson/, export-omecsv/, and/or export-h5ad/
-    depending on the flags provided.
-
-    Edge-level (``ecomp-outputs-csv/``) and triad-level
-    (``tcomp-outputs-csv/``) composition outputs are standalone
-    simplicial deliverables and are NOT merged into the per-cell
-    export (they have different primary keys).  Consume them
-    directly from their respective subdirectories.
+    \b
+    Simplex sources (exported to separate directories):
+      ecomp-outputs-csv/       — edge-level composition (per Delaunay edge)
+      tcomp-outputs-csv/       — triad-level composition (per Delaunay triangle)
+      agg-<name>-outputs-csv/  — aggregate-level features (e.g., TLS)
 
     At least one of --geojson, --omecsv, or --h5ad must be supplied.
 
     This command can be run at any time after inference — and optionally after
-    hplot / ncomp — without re-running the full inference pipeline.
+    hplot / ncomp / ecomp / tcomp / agg — without re-running the full pipeline.
     """
     if not geojson and not omecsv and not h5ad:
         raise click.UsageError(
@@ -142,9 +160,22 @@ def export(
             "Run 'wsinsight run' or 'wsinsight infer' first."
         )
 
+    # --- Parse and validate include sources ----------------------------------
+    try:
+        cell_sources, simplex_sources = parse_include_sources(include_sources, results_dir)
+    except ValueError as e:
+        raise click.ClickException(str(e))
+
+    if cell_sources or simplex_sources:
+        all_sources = sorted(cell_sources) + sorted(simplex_sources)
+        click.echo(f"\nIncluding sources: {', '.join(all_sources)}")
+    else:
+        click.echo("\nIncluding all per-cell sources (default)")
+
     # --- Merge all per-cell sources into export-csv/ -------------------------
     click.echo("\nMerging per-cell analytics into export CSVs...\n")
-    build_export_csvs(results_dir, overwrite=overwrite)
+    include_set = frozenset(cell_sources) if cell_sources else None
+    build_export_csvs(results_dir, overwrite=overwrite, include=include_set)
 
     export_dir = results_dir / "export-csv"
     export_candidates = list(export_dir.iterdir(files_only=True))
@@ -159,9 +190,9 @@ def export(
 
     click.echo(f"  {len(export_csvs)} slide(s) ready for export.")
 
-    # --- GeoJSON export -------------------------------------------------------
+    # --- GeoJSON export (per-cell) --------------------------------------------
     if geojson:
-        click.echo("\nWriting results to GeoJSON files...\n")
+        click.echo("\nWriting per-cell results to GeoJSON files...\n")
         write_geojsons(
             csvs=export_csvs,
             overlap=patch_overlap_ratio,
@@ -174,9 +205,9 @@ def export(
             overwrite=overwrite,
         )
 
-    # --- OME-CSV export -------------------------------------------------------
+    # --- OME-CSV export (per-cell) --------------------------------------------
     if omecsv:
-        click.echo("\nWriting results to OME-CSV files...\n")
+        click.echo("\nWriting per-cell results to OME-CSV files...\n")
         h5s: list[Path] = []
         patches_dir = results_dir / "patches"
         if patches_dir.exists():
@@ -196,9 +227,9 @@ def export(
             overwrite=overwrite,
         )
 
-    # --- AnnData (.h5ad) export ----------------------------------------------
+    # --- AnnData (.h5ad) export (per-cell) ------------------------------------
     if h5ad:
-        click.echo("\nWriting results to AnnData .h5ad files...\n")
+        click.echo("\nWriting per-cell results to AnnData .h5ad files...\n")
         write_h5ads(
             csvs=export_csvs,
             results_dir=results_dir,
@@ -208,4 +239,82 @@ def export(
             overwrite=overwrite,
         )
 
+    # --- Simplex exports (ecomp, tcomp, agg) ----------------------------------
+    for source in simplex_sources:
+        if source == "ecomp":
+            _export_simplex(
+                results_dir=results_dir,
+                source_dir="ecomp-outputs-csv",
+                output_prefix="export-ecomp",
+                label="edge",
+                geojson=geojson,
+                omecsv=omecsv,
+                export_workers=export_workers,
+                overwrite=overwrite,
+            )
+        elif source == "tcomp":
+            _export_simplex(
+                results_dir=results_dir,
+                source_dir="tcomp-outputs-csv",
+                output_prefix="export-tcomp",
+                label="triad",
+                geojson=geojson,
+                omecsv=omecsv,
+                export_workers=export_workers,
+                overwrite=overwrite,
+            )
+        elif source.startswith("agg:"):
+            agg_name = source.split(":", 1)[1]
+            _export_simplex(
+                results_dir=results_dir,
+                source_dir=f"agg-{agg_name}-outputs-csv",
+                output_prefix=f"export-agg-{agg_name}",
+                label=f"aggregate ({agg_name})",
+                geojson=geojson,
+                omecsv=omecsv,
+                export_workers=export_workers,
+                overwrite=overwrite,
+            )
+
     click.secho("\nExport complete.\n", fg="green")
+
+
+def _export_simplex(
+    results_dir: URIPath,
+    source_dir: str,
+    output_prefix: str,
+    label: str,
+    geojson: bool,
+    omecsv: bool,
+    export_workers: int,
+    overwrite: bool,
+) -> None:
+    """Export a simplex-level (edge/triad/agg) source to GeoJSON / OME-CSV.
+
+    Note: GeoJSON/OME-CSV export for edges and triads is not yet implemented
+    because they have different geometry (lines/triangles) than cells (boxes).
+    For now, the raw CSVs in the source directory can be consumed directly.
+    """
+    source_path = results_dir / source_dir
+    if not source_path.exists():
+        click.secho(f"  ⚠ {source_dir}/ not found — skipping {label} export.", fg="yellow")
+        return
+
+    csvs = [
+        _to_local_path(p) for p in source_path.iterdir(files_only=True) if p.suffix == ".csv"
+    ]
+    if not csvs:
+        click.secho(f"  ⚠ No CSVs in {source_dir}/ — skipping {label} export.", fg="yellow")
+        return
+
+    click.echo(f"\n  Found {len(csvs)} {label} CSV(s) in {source_dir}/")
+
+    # Simplex CSVs have different geometry than cell CSVs (lines for edges,
+    # triangles for triads), so standard GeoJSON/OME-CSV export is not yet
+    # implemented. The raw CSVs can be consumed directly.
+    if geojson or omecsv:
+        click.secho(
+            f"  ⚠ GeoJSON/OME-CSV export for {label}s not yet implemented — "
+            f"use {source_dir}/ CSVs directly.",
+            fg="yellow",
+        )

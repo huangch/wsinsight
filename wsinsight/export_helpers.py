@@ -45,25 +45,178 @@ def _ensure_center(df: pd.DataFrame) -> pd.DataFrame:
     return df
 
 
+# Per-cell analysis sources that can be merged into export CSVs.
+CELL_SOURCES = frozenset({"hplot", "ncomp", "cme", "xenium"})
+
+# Simplex-level sources (edges, triads, aggregates) — exported separately.
+SIMPLEX_SOURCES = frozenset({"ecomp", "tcomp"})  # agg:<name> handled dynamically
+
+# Backward compatibility alias
+AVAILABLE_SOURCES = CELL_SOURCES
+
+
+def parse_include_sources(
+    include_sources: tuple[str, ...],
+    results_dir,  # URIPath
+) -> tuple[set[str], set[str]]:
+    """Parse and validate --include sources.
+
+    Returns (cell_sources, simplex_sources) where:
+    - cell_sources: set of per-cell source names (hplot, ncomp, cme, xenium)
+    - simplex_sources: set of simplex source names (ecomp, tcomp, agg:<name>)
+
+    Special values:
+    - "all": include all available sources (cell + simplex)
+    - "all-cells": include all per-cell sources only
+    """
+    import re
+
+    if not include_sources:
+        # Default: all per-cell sources, no simplex
+        return set(), set()
+
+    # Flatten comma-separated values
+    raw_sources: list[str] = []
+    for item in include_sources:
+        raw_sources.extend(s.strip().lower() for s in item.split(",") if s.strip())
+
+    cell_sources: set[str] = set()
+    simplex_sources: set[str] = set()
+
+    for src in raw_sources:
+        if src == "all":
+            # All cell sources + all available simplex sources
+            cell_sources.update(CELL_SOURCES)
+            simplex_sources.update(SIMPLEX_SOURCES)
+            # Also discover any agg-*-outputs-csv directories
+            for child in results_dir.iterdir():
+                match = re.match(r"agg-([a-z0-9_]+)-outputs-csv", child.name)
+                if match and child.is_dir():
+                    simplex_sources.add(f"agg:{match.group(1)}")
+        elif src == "all-cells":
+            cell_sources.update(CELL_SOURCES)
+        elif src in CELL_SOURCES:
+            cell_sources.add(src)
+        elif src in SIMPLEX_SOURCES:
+            simplex_sources.add(src)
+        elif src.startswith("agg:"):
+            # Validate agg name format
+            agg_name = src.split(":", 1)[1]
+            if re.match(r"^[a-z0-9_]+$", agg_name):
+                simplex_sources.add(src)
+            else:
+                raise ValueError(
+                    f"Invalid aggregate name '{agg_name}' — must be lowercase alphanumeric with underscores."
+                )
+        else:
+            valid = sorted(CELL_SOURCES | SIMPLEX_SOURCES) + ["all", "all-cells", "agg:<name>"]
+            raise ValueError(
+                f"Unknown source '{src}'. Valid sources: {', '.join(valid)}"
+            )
+
+    return cell_sources, simplex_sources
+
+
+def _read_xenium_summaries(h5ad_path: PathLike, slide_id: str) -> pd.DataFrame:
+    """Extract per-cell summaries from an imported-xenium h5ad file.
+
+    Returns a DataFrame indexed by model-output row index (0-based) with columns:
+    * xenium_barcode — original Xenium cell barcode
+    * xenium_total_counts — total UMI counts per cell
+    * xenium_n_genes — number of genes detected (count > 0)
+    * xenium_matched — always True for matched cells
+
+    Only cells with a valid model_cell_id (matched to a WSInsight detection) are
+    included.
+    """
+    import anndata
+
+    # Handle URIPath by materializing to local path
+    if isinstance(h5ad_path, URIPath):
+        local_path = Path(h5ad_path.materialize())
+    else:
+        local_path = Path(h5ad_path)
+
+    adata = anndata.read_h5ad(local_path)
+
+    # Filter to matched cells only
+    if "model_cell_id" not in adata.obs.columns:
+        return pd.DataFrame()
+
+    matched_mask = adata.obs["model_cell_id"].notna()
+    if not matched_mask.any():
+        return pd.DataFrame()
+
+    adata = adata[matched_mask].copy()
+
+    # Parse row index from model_cell_id (format: "{sample_id}-{row_index}")
+    def parse_row_idx(cell_id: str) -> int:
+        # cell_id is like "SAMPLE-123" where 123 is the row index
+        parts = cell_id.rsplit("-", 1)
+        return int(parts[-1]) if len(parts) == 2 else -1
+
+    row_indices = adata.obs["model_cell_id"].apply(parse_row_idx)
+
+    # Compute summaries
+    X = adata.X
+    if hasattr(X, "toarray"):
+        X = X.toarray()
+
+    summaries = pd.DataFrame({
+        "_row_idx": row_indices.values,
+        "xenium_barcode": adata.obs.index.values,
+        "xenium_total_counts": np.asarray(X.sum(axis=1)).flatten(),
+        "xenium_n_genes": np.asarray((X > 0).sum(axis=1)).flatten(),
+        "xenium_matched": True,
+    })
+
+    # Filter out invalid row indices and set as index
+    summaries = summaries[summaries["_row_idx"] >= 0].copy()
+    summaries = summaries.set_index("_row_idx")
+
+    return summaries
+
+
 def build_export_csvs(
     results_dir: PathLike,
     *,
     overwrite: bool = True,
+    include: Optional[frozenset[str]] = None,
 ) -> List[PathLike]:
     """Left-join all per-cell analysis outputs into ``export-csv/``.
 
-    Sources (all optional — skipped when absent):
-    * ``model-outputs-csv/<slide>.csv``  — base inference + reg columns
+    Parameters
+    ----------
+    results_dir
+        Root results directory containing model-outputs-csv/ and other outputs.
+    overwrite
+        Re-build even if export-csv/ already contains up-to-date files.
+    include
+        Set of source names to include: {"hplot", "ncomp", "cme", "xenium"}.
+        If None or empty, all available sources are included.
+
+    Sources (all optional — skipped when absent or not in ``include``):
+    * ``model-outputs-csv/<slide>.csv``  — base inference + reg columns (always)
     * ``hplot-outputs-csv/cells/<slide>.csv`` — H-Plot per-cell features
     * ``ncomp-outputs-csv/<slide>.csv`` — neighbourhood composition
+    * ``cme-outputs-csv/cells/<slide>.csv`` — cell morphology embeddings
+    * ``imported-xenium/<slide>.h5ad`` — Xenium per-cell summaries
 
     Returns the list of combined CSV paths that were written.
     """
+    # If include is None or empty, include all sources
+    if not include:
+        include = AVAILABLE_SOURCES
     base_dir = results_dir / "model-outputs-csv"
     if not base_dir.exists():
         return []
+
+    # Source directories
     hplot_cells_dir = results_dir / "hplot-outputs-csv" / "cells"
     ncomp_dir = results_dir / "ncomp-outputs-csv"
+    cme_cells_dir = results_dir / "cme-outputs-csv" / "cells"
+    xenium_dir = results_dir / "imported-xenium"
+
     export_dir = results_dir / "export-csv"
     export_dir.mkdir(parents=True, exist_ok=True)
 
@@ -86,40 +239,58 @@ def build_export_csvs(
         df = _ensure_center(df)
 
         # --- H-Plot cells (join on minx, miny) ------------------------------
-        hplot_csv = hplot_cells_dir / f"{slide_id}.csv"
-        if hplot_csv.exists():
-            hdf = _read_csv(hplot_csv)
-            new_cols = [c for c in hdf.columns if c not in df.columns]
-            if new_cols and "minx" in hdf.columns and "miny" in hdf.columns:
-                df = df.merge(
-                    hdf[["minx", "miny"] + new_cols],
-                    on=["minx", "miny"],
-                    how="left",
-                )
+        if "hplot" in include:
+            hplot_csv = hplot_cells_dir / f"{slide_id}.csv"
+            if hplot_csv.exists():
+                hdf = _read_csv(hplot_csv)
+                new_cols = [c for c in hdf.columns if c not in df.columns]
+                if new_cols and "minx" in hdf.columns and "miny" in hdf.columns:
+                    df = df.merge(
+                        hdf[["minx", "miny"] + new_cols],
+                        on=["minx", "miny"],
+                        how="left",
+                    )
 
         # --- ncomp (join on center_x, center_y) -----------------------------
-        ncomp_csv = ncomp_dir / f"{slide_id}.csv"
-        if ncomp_csv.exists():
-            ndf = _read_csv(ncomp_csv)
-            new_cols = [c for c in ndf.columns if c not in df.columns]
-            if new_cols and "center_x" in ndf.columns and "center_y" in ndf.columns:
-                df = df.merge(
-                    ndf[["center_x", "center_y"] + new_cols],
-                    on=["center_x", "center_y"],
-                    how="left",
-                )
+        if "ncomp" in include:
+            ncomp_csv = ncomp_dir / f"{slide_id}.csv"
+            if ncomp_csv.exists():
+                ndf = _read_csv(ncomp_csv)
+                new_cols = [c for c in ndf.columns if c not in df.columns]
+                if new_cols and "center_x" in ndf.columns and "center_y" in ndf.columns:
+                    df = df.merge(
+                        ndf[["center_x", "center_y"] + new_cols],
+                        on=["center_x", "center_y"],
+                        how="left",
+                    )
 
         # --- cme (join on minx, miny) ----------------------------------------
-        cme_csv = results_dir / "cme-outputs-csv" / "cells" / f"{slide_id}.csv"
-        if cme_csv.exists():
-            cdf = _read_csv(cme_csv)
-            new_cols = [c for c in cdf.columns if c not in df.columns]
-            if new_cols and "minx" in cdf.columns and "miny" in cdf.columns:
-                df = df.merge(
-                    cdf[["minx", "miny"] + new_cols],
-                    on=["minx", "miny"],
-                    how="left",
-                )
+        if "cme" in include:
+            cme_csv = cme_cells_dir / f"{slide_id}.csv"
+            if cme_csv.exists():
+                cdf = _read_csv(cme_csv)
+                new_cols = [c for c in cdf.columns if c not in df.columns]
+                if new_cols and "minx" in cdf.columns and "miny" in cdf.columns:
+                    df = df.merge(
+                        cdf[["minx", "miny"] + new_cols],
+                        on=["minx", "miny"],
+                        how="left",
+                    )
+
+        # --- Xenium (join by row index from model_cell_id) --------------------
+        if "xenium" in include:
+            xenium_h5ad = xenium_dir / f"{slide_id}.h5ad"
+            if xenium_h5ad.exists():
+                try:
+                    xdf = _read_xenium_summaries(xenium_h5ad, slide_id)
+                    if not xdf.empty:
+                        # xdf is indexed by row index; merge by position
+                        df = df.reset_index(drop=True)
+                        for col in xdf.columns:
+                            if col not in df.columns:
+                                df[col] = xdf.reindex(df.index).get(col, np.nan)
+                except Exception:
+                    pass  # Skip silently if h5ad read fails
 
         _write_csv(df, out_csv)
         written.append(out_csv)
