@@ -68,6 +68,7 @@ def segment_and_patch_one_slide(
     stardist_normalization_pmax: float = 99.8,
     cache_image_patches: bool = False,
     spacing_um_px: float | None = None,
+    overwrite: bool = False,
 ) -> None:
     """Get non-overlapping patch coordinates in tissue regions for a slide."""
 
@@ -79,8 +80,8 @@ def segment_and_patch_one_slide(
     patch_path = save_dir / PATCHES_DIR / f"{slide_prefix}.h5"
     mask_path = save_dir / MASKS_DIR / f"{slide_prefix}.jpg"
 
-    if patch_path.exists() and mask_path.exists():
-        logger.info("Patch output and mask output files already exist")
+    if not overwrite and patch_path.exists() and mask_path.exists():
+        logger.info("Patch output and mask output files already exist (use --overwrite to regenerate)")
         logger.info(f"patch_path={patch_path}")
         logger.info(f"mask_path={mask_path}")
         return None
@@ -471,6 +472,7 @@ def segment_and_patch_directory_of_slides(
     stardist_normalization_pmax: float = 99.8,
     cache_image_patches: bool = False,
     spacing_um_px: float | None = None,
+    overwrite: bool = False,
 ) -> None:
     """Batch segment and patch a directory of slides."""
 
@@ -505,6 +507,7 @@ def segment_and_patch_directory_of_slides(
                     stardist_normalization_pmax=stardist_normalization_pmax,
                     cache_image_patches=cache_image_patches,
                     spacing_um_px=spacing_um_px,
+                    overwrite=overwrite,
                 )
             except Exception as e:  # pragma: no cover - logged for operators
                 logger.error(f"Failed to segment and patch slide\n{slide_path}", exc_info=e)

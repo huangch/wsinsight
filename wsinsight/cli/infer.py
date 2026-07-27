@@ -1004,6 +1004,7 @@ def infer(
         object_detection=object_detection,
         mixed_precision=mixed_precision,
         stitch_workers=stitch_workers,
+        overwrite=overwrite,
         region_overwrite=overwrite,
         pin_memory=pin_memory,
     )

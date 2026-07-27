@@ -230,6 +230,7 @@ def cme(
                 object_type="detection",
                 set_classification=True,
                 annotation_shape="box",
+                overwrite=overwrite,
             )
 
     # --- GeoJSON: annotation-level CME regions -------------------------------
@@ -250,6 +251,7 @@ def cme(
                 object_type="annotation",
                 set_classification=True,
                 annotation_shape="polygon",
+                overwrite=overwrite,
             )
 
     write_runtime_metadata(

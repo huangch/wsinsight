@@ -149,6 +149,7 @@ def run_inference(
     object_detection: str = None,
     mixed_precision: bool = False,
     stitch_workers: int | None = None,
+    overwrite: bool = False,
     region_overwrite: bool = False,
     pin_memory: bool = True,
 ) -> tuple[list[str], list[str]]:
@@ -327,8 +328,8 @@ def run_inference(
             
             slide_csv_name = wsi_path.with_suffix(".csv").name
             slide_csv = model_output_dir / slide_csv_name
-            if slide_csv.exists():
-                print("Output CSV exists... skipping.")
+            if not overwrite and slide_csv.exists():
+                print("Output CSV exists... skipping (use --overwrite to regenerate).")
                 print(slide_csv)
                 pbar.update(1)
                 continue

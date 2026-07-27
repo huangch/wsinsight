@@ -1364,6 +1364,7 @@ def cme_generation(
             if not overwrite and cme_csv.exists():
                 continue
             
+            mpp = get_avg_mpp(wsi_path)
             cme_detection_df = pd.read_csv(cell_csv)
             valid_mask = np.zeros(len(cme_detection_df), dtype=bool)
             valid_mask[np.asarray(slides[i]["kept_idx"], dtype=int)] = True

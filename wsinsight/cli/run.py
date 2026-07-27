@@ -259,6 +259,7 @@ _PATCH_PARAM_NAMES: tuple[str, ...] = (
     "patch_size_um",
     "patch_size_px",
     "spacing_um_px",
+    "overwrite",
 )
 
 _INFER_PARAM_NAMES: tuple[str, ...] = (

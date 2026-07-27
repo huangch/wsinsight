@@ -463,6 +463,13 @@ def _optional_uri_paths(ctx: click.Context, param: click.Option, value):
     " slides whose MPP cannot be read from the WSI metadata. Slide metadata is"
     " always preferred. The default of 0 disables the fallback.",
 )
+@click.option(
+    "--overwrite",
+    is_flag=True,
+    default=False,
+    show_default=True,
+    help="Overwrite existing patch/mask outputs instead of skipping slides that already have results.",
+)
 def patch(
     ctx: click.Context,
     *,
@@ -493,6 +500,7 @@ def patch(
     patch_size_um: float = 0.0,
     patch_size_px: int = 0,
     spacing_um_px: float = 0.0,
+    overwrite: bool = False,
 ) -> None:
     """Segment tissue and generate patch coordinates for a WSI directory.
 
@@ -824,6 +832,7 @@ def patch(
         stardist_normalization_pmax=stardist_normalization_pmax,
         cache_image_patches=cache_image_patches,
         spacing_um_px=spacing_um_px or None,
+        overwrite=overwrite,
     )
 
     if not (results_dir / "patches").exists():
