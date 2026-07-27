@@ -150,6 +150,7 @@ def run_inference(
     mixed_precision: bool = False,
     stitch_workers: int | None = None,
     region_overwrite: bool = False,
+    pin_memory: bool = True,
 ) -> tuple[list[str], list[str]]:
     """Run batched model inference on precomputed patches and emit CSV outputs.
 
@@ -283,6 +284,17 @@ def run_inference(
     _bs_lo: int = 0
     _bs_hi: int = batch_size + 1
 
+    # Worker-death recovery state (persists across slides).
+    # When DataLoader workers are killed by the OOM killer, we first disable
+    # pin_memory, then halve num_workers on subsequent failures.
+    _effective_pin_memory = pin_memory
+    _effective_num_workers = num_workers
+
+    def _is_worker_killed(err: Exception) -> bool:
+        """Detect if a RuntimeError is due to DataLoader worker being killed."""
+        msg = str(err).lower()
+        return "worker" in msg and "killed" in msg
+
     # for i, (wsi_path, patch_path) in enumerate(zip(wsi_paths, patch_paths)):
     #     slide_csv_name = Path(wsi_path).with_suffix(".csv").name
     #     slide_csv = model_output_dir / slide_csv_name
@@ -388,9 +400,9 @@ def run_inference(
                 dset,
                 batch_size=current_batch_size,
                 shuffle=False,
-                num_workers=num_workers,
+                num_workers=_effective_num_workers,
                 worker_init_fn=dset.worker_init,
-                pin_memory=torch.cuda.is_available() or torch.backends.mps.is_available(),
+                pin_memory=_effective_pin_memory and (torch.cuda.is_available() or torch.backends.mps.is_available()),
                 # persistent_workers=True,      # add this for better performance?
                 persistent_workers=False,       # Useless as wsinsight is working in eval only
                 # prefetch_factor=2,              # add this for better performance?
@@ -593,8 +605,44 @@ def run_inference(
                         )
                         break
                     except (torch.cuda.OutOfMemoryError, RuntimeError) as _oom_err:
-                        if isinstance(_oom_err, RuntimeError) and "out of memory" not in str(_oom_err).lower():
+                        _is_cuda_oom = (
+                            isinstance(_oom_err, torch.cuda.OutOfMemoryError)
+                            or "out of memory" in str(_oom_err).lower()
+                        )
+                        _is_worker_death = _is_worker_killed(_oom_err)
+                        if isinstance(_oom_err, RuntimeError) and not _is_cuda_oom and not _is_worker_death:
                             raise
+                        # Handle worker death (system OOM killer) separately.
+                        if _is_worker_death:
+                            if _effective_pin_memory:
+                                _effective_pin_memory = False
+                                tqdm.tqdm.write(
+                                    f"[WorkerKilled] Disabling pin_memory — retrying {wsi_path.stem}"
+                                )
+                            elif _effective_num_workers > 0:
+                                _effective_num_workers = max(0, _effective_num_workers // 2)
+                                tqdm.tqdm.write(
+                                    f"[WorkerKilled] Reducing num_workers → {_effective_num_workers} — retrying {wsi_path.stem}"
+                                )
+                            else:
+                                tqdm.tqdm.write(
+                                    f"[WorkerKilled] Already at num_workers=0, pin_memory=False — skipping {wsi_path.stem}"
+                                )
+                                failed_inference.append(wsi_path.stem)
+                                _oom_skip = True
+                                break
+                            loader = torch.utils.data.DataLoader(
+                                dset,
+                                batch_size=current_batch_size,
+                                shuffle=False,
+                                num_workers=_effective_num_workers,
+                                worker_init_fn=dset.worker_init,
+                                pin_memory=_effective_pin_memory and (torch.cuda.is_available() or torch.backends.mps.is_available()),
+                                persistent_workers=False,
+                                multiprocessing_context="spawn",
+                            )
+                            continue
+                        # CUDA OOM handling (existing logic).
                         torch.cuda.empty_cache()
                         gc.collect()
                         if current_batch_size <= 1:
@@ -634,9 +682,9 @@ def run_inference(
                             dset,
                             batch_size=current_batch_size,
                             shuffle=False,
-                            num_workers=num_workers,
+                            num_workers=_effective_num_workers,
                             worker_init_fn=dset.worker_init,
-                            pin_memory=torch.cuda.is_available() or torch.backends.mps.is_available(),
+                            pin_memory=_effective_pin_memory and (torch.cuda.is_available() or torch.backends.mps.is_available()),
                             persistent_workers=False,
                             multiprocessing_context="spawn",
                         )
@@ -743,8 +791,44 @@ def run_inference(
                         )
                         break
                     except (torch.cuda.OutOfMemoryError, RuntimeError) as _oom_err:
-                        if isinstance(_oom_err, RuntimeError) and "out of memory" not in str(_oom_err).lower():
+                        _is_cuda_oom = (
+                            isinstance(_oom_err, torch.cuda.OutOfMemoryError)
+                            or "out of memory" in str(_oom_err).lower()
+                        )
+                        _is_worker_death = _is_worker_killed(_oom_err)
+                        if isinstance(_oom_err, RuntimeError) and not _is_cuda_oom and not _is_worker_death:
                             raise
+                        # Handle worker death (system OOM killer) separately.
+                        if _is_worker_death:
+                            if _effective_pin_memory:
+                                _effective_pin_memory = False
+                                tqdm.tqdm.write(
+                                    f"[WorkerKilled] Disabling pin_memory — retrying {wsi_path.stem}"
+                                )
+                            elif _effective_num_workers > 0:
+                                _effective_num_workers = max(0, _effective_num_workers // 2)
+                                tqdm.tqdm.write(
+                                    f"[WorkerKilled] Reducing num_workers → {_effective_num_workers} — retrying {wsi_path.stem}"
+                                )
+                            else:
+                                tqdm.tqdm.write(
+                                    f"[WorkerKilled] Already at num_workers=0, pin_memory=False — skipping {wsi_path.stem}"
+                                )
+                                failed_inference.append(wsi_path.stem)
+                                _oom_skip = True
+                                break
+                            loader = torch.utils.data.DataLoader(
+                                dset,
+                                batch_size=current_batch_size,
+                                shuffle=False,
+                                num_workers=_effective_num_workers,
+                                worker_init_fn=dset.worker_init,
+                                pin_memory=_effective_pin_memory and (torch.cuda.is_available() or torch.backends.mps.is_available()),
+                                persistent_workers=False,
+                                multiprocessing_context="spawn",
+                            )
+                            continue
+                        # CUDA OOM handling (existing logic).
                         torch.cuda.empty_cache()
                         gc.collect()
                         if current_batch_size <= 1:
@@ -778,9 +862,9 @@ def run_inference(
                             dset,
                             batch_size=current_batch_size,
                             shuffle=False,
-                            num_workers=num_workers,
+                            num_workers=_effective_num_workers,
                             worker_init_fn=dset.worker_init,
-                            pin_memory=torch.cuda.is_available() or torch.backends.mps.is_available(),
+                            pin_memory=_effective_pin_memory and (torch.cuda.is_available() or torch.backends.mps.is_available()),
                             persistent_workers=False,
                             multiprocessing_context="spawn",
                         )

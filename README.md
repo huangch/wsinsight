@@ -832,6 +832,45 @@ WSInsight reads the following environment variables at startup. Set them in your
 - **Clinical & molecular labels**: WSInsight slide filenames encode the TCGA patient barcode (first 12 characters, e.g. `TCGA-A7-A0CE`).  Use this as a join key to link per-slide inference outputs with clinical endpoints.  Recommended sources: **Liu et al. 2018** (*Cell* 173(2):400-416; [DOI](https://doi.org/10.1016/j.cell.2018.02.052)) for curated survival (OS, PFI, DFI, DSS); **cBioPortal** for molecular subtypes (PAM50, MSI-H/MSS, ER/PR/HER2); the **GDC `/cases` API** with `expand=diagnoses,diagnoses.treatments,demographic&format=TSV` for demographics, staging, and treatment.  See `SKILL.md` Section 9 for curl examples, source tables, and a Python joining snippet.
 - For throughput, adjust `--num-workers` to match CPU availability and tune `--batch-size` per GPU memory.
 
+## Memory Management
+
+WSInsight's DataLoader uses **pinned (page-locked) memory** by default for faster CPU→GPU transfer. On memory-constrained systems (containers, shared servers, <16GB RAM), this can cause the Linux OOM killer to terminate DataLoader workers.
+
+### Automatic Recovery
+
+WSInsight automatically detects when workers are killed by the system OOM killer and recovers:
+
+1. **First failure** — disables `pin_memory` and retries
+2. **Subsequent failures** — halves `num_workers` (4→2→1→0) and retries
+3. **Final fallback** — runs single-threaded (num_workers=0) with unpinned memory
+
+Recovery progress is logged:
+```
+[WorkerKilled] Disabling pin_memory — retrying slide_name
+[WorkerKilled] Reducing num_workers → 2 — retrying slide_name
+```
+
+### Manual Tuning
+
+For memory-constrained environments, start with conservative settings:
+
+```bash
+# Memory-constrained preset (containers, shared servers)
+wsinsight run --no-pin-memory --num-workers 2 --batch-size 16 \
+  --wsi-dir slides/ --results-dir results/ --model CellViT-SAM-H-x40
+
+# Extreme memory pressure (single-threaded)
+wsinsight run --no-pin-memory --num-workers 0 --batch-size 8 \
+  --wsi-dir slides/ --results-dir results/ --model CellViT-SAM-H-x40
+```
+
+| Option | Default | Effect |
+|--------|---------|--------|
+| `--pin-memory` | enabled | Page-locked memory for ~20% faster transfer; cannot be swapped |
+| `--no-pin-memory` | — | Uses pageable memory; OS can swap if needed |
+| `--num-workers N` | 8 | Fewer workers = less memory per DataLoader |
+| `--batch-size N` | 32 | Smaller batches = smaller per-worker allocations |
+
 ## Development and Testing
 
 - Ensure `ruff`, `black`, and other lint tools remain clean by running `pre-commit run --all-files`.

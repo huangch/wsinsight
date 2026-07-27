@@ -254,6 +254,7 @@ wsinsight run \
 | `--zoo-model-dir / -z`          | path      | Folder with `config.json` + `torchscript_model.pt`.                                          |
 | `--batch-size / -b`             | int       | Inference batch size (default 32).                                                           |
 | `--num-workers / -n`            | int       | Dataloader workers (default 8; `0` = single-threaded).                                       |
+| `--pin-memory / --no-pin-memory`| flag      | Pin DataLoader tensors to CUDA memory (default on). Disable with `--no-pin-memory` in memory-constrained environments where workers are killed by the OOM killer. |
 | `--cache-image-patches`         | flag      | Save extracted RGB patches into `patches/<slide>.h5` under `/images`.                        |
 | `--qupath`                      | flag      | Build a QuPath project containing the inference results.                                     |
 | `--region-inference-dir / -r`   | path/URI  | Prior region (patch-based) results dir; adds `region_prob_*` columns to per-cell outputs.    |
@@ -312,13 +313,17 @@ stages share the same surface as `run`). Writes `patch_metadata_<ts>.json`.
 wsinsight infer \
   --results-dir <RESULTS_DIR> \
   --model <MODEL_NAME> \
-  [--batch-size 32] [--num-workers 4] [--stitch-workers 8] [--overwrite]
+  [--batch-size 32] [--num-workers 4] [--stitch-workers 8] \
+  [--pin-memory | --no-pin-memory] [--overwrite]
 ```
 
 Reads from `patches/`, writes to `model-outputs-csv/` plus
 `infer_metadata_<ts>.json`. Accepts the same `--region-inference-dir`,
 `--qupath-*`, and `--patch-*` options as `run`. `--stitch-workers` controls
 the TileFuse thread pool used to assemble object-based detections.
+`--no-pin-memory` disables pinned (page-locked) memory for DataLoaders,
+which helps in memory-constrained environments where workers are killed
+by the system OOM killer.
 
 ### 4.6 `wsinsight ncomp` — Node-level (Cell) Composition
 
@@ -1042,6 +1047,7 @@ The path must be absolute (triple slash: `gdc-manifest:///absolute/path`).
 | `numpy >= 2.0` assertion failure     | Dependency upgraded numpy             | `pip install -c constraints.txt "numpy<2"`                   |
 | `ModuleNotFoundError: osgeo`         | GDAL not installed via conda          | `conda install -c conda-forge gdal=3.11.3`                  |
 | CUDA out of memory                   | Batch size too large                  | Reduce `--batch-size`                                       |
+| DataLoader worker killed by signal   | System OOM killer (pinned memory)     | Use `--no-pin-memory --num-workers 2`; auto-recovery retries |
 | Inference produces empty CSV         | Wrong model for slide magnification   | Match model suffix (`x20`/`x40`) to slide magnification     |
 | Stale graph cache                    | CSV changed after graph was built     | Automatic: cache detects via SHA-256 hash and rebuilds       |
 | Experimental subcommand refuses to run | `WSINSIGHT_EXPERIMENTAL` not set    | Export `WSINSIGHT_EXPERIMENTAL=1` before invoking it         |

@@ -137,6 +137,7 @@ _INFER_PARAM_NAMES: tuple[str, ...] = (
     "model_path",
     "batch_size",
     "num_workers",
+    "pin_memory",
     # "speedup",
     "patch_overlap_ratio",
     "patch_size_um",
@@ -332,6 +333,16 @@ def _select_kwargs(values: dict[str, Any], keys: tuple[str, ...]) -> dict[str, A
     type=click.IntRange(min=0),
     help="Number of workers to use for data loading during model inference (n=0 for"
     " single thread). Set this to the number of cores on your machine or lower.",
+)
+@click.option(
+    "--pin-memory/--no-pin-memory",
+    default=True,
+    show_default=True,
+    help=(
+        "Pin DataLoader tensors to CUDA memory for faster host-to-device transfer.  "
+        "Disable (--no-pin-memory) in memory-constrained environments where DataLoader "
+        "workers are being killed by the system OOM killer."
+    ),
 )
 # @click.option(
 #     "--speedup/--no-speedup",
@@ -656,6 +667,7 @@ def run(
     zoo_model_dir: Path | None = None,
     batch_size: int = 32,
     num_workers: int = 4,
+    pin_memory: bool = True,
     # speedup: bool = False,
     cache_image_patches: bool = False,
     qupath: bool = False,

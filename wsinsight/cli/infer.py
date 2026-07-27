@@ -526,6 +526,16 @@ def _optional_uri_paths(ctx: click.Context, param: click.Option, value):
     type=click.IntRange(min=1),
     help="Thread pool size used when TileFuse stitches object-based detections.",
 )
+@click.option(
+    "--pin-memory/--no-pin-memory",
+    default=True,
+    show_default=True,
+    help=(
+        "Pin DataLoader tensors to CUDA memory for faster host-to-device transfer.  "
+        "Disable (--no-pin-memory) in memory-constrained environments where DataLoader "
+        "workers are being killed by the system OOM killer."
+    ),
+)
 # @click.option(
 #     "--speedup/--no-speedup",
 #     default=False,
@@ -634,6 +644,7 @@ def infer(
     batch_size: int = 32,
     num_workers: int = DEFAULT_INFER_WORKERS,
     stitch_workers: int = DEFAULT_STITCH_WORKERS,
+    pin_memory: bool = True,
     # speedup: bool = False,
     # qupath: bool = False,
     patch_overlap_ratio: float = 0.0,
@@ -994,6 +1005,7 @@ def infer(
         mixed_precision=mixed_precision,
         stitch_workers=stitch_workers,
         region_overwrite=overwrite,
+        pin_memory=pin_memory,
     )
 
     if failed_patching:
