@@ -1,0 +1,252 @@
+"""Tests for the run command's completeness reconciliation logic.
+
+These tests verify that `wsinsight run`:
+1. Detects missing patches/CSVs from prior incomplete runs
+2. Re-processes only the missing slides
+3. Reports clear status summaries
+"""
+
+from __future__ import annotations
+
+import tempfile
+from pathlib import Path
+from unittest.mock import MagicMock
+
+import pytest
+
+from wsinsight.cli.run import (
+    SlideStatus,
+    _scan_existing_artifacts,
+    _log_reconciliation_summary,
+)
+from wsinsight.uri_path import URIPath
+
+
+class TestSlideStatus:
+    """Tests for SlideStatus dataclass properties."""
+
+    def test_missing_patches(self) -> None:
+        status = SlideStatus()
+        status.requested = {"a", "b", "c"}
+        status.existing_patches = {"a", "b"}
+        assert status.missing_patches == {"c"}
+
+    def test_needs_inference(self) -> None:
+        status = SlideStatus()
+        status.existing_patches = {"a", "b", "c"}
+        status.existing_csvs = {"a"}
+        assert status.needs_inference == {"b", "c"}
+
+    def test_completed(self) -> None:
+        status = SlideStatus()
+        status.existing_patches = {"a", "b", "c"}
+        status.existing_csvs = {"a", "b", "d"}  # d has no patch
+        assert status.completed == {"a", "b"}
+
+    def test_failed_patch(self) -> None:
+        status = SlideStatus()
+        status.patched_this_run = {"a", "b", "c"}
+        status.existing_patches = {"a", "c"}  # b failed
+        assert status.failed_patch == {"b"}
+
+    def test_failed_infer(self) -> None:
+        status = SlideStatus()
+        status.inferred_this_run = {"a", "b", "c"}
+        status.existing_csvs = {"a"}  # b, c failed
+        assert status.failed_infer == {"b", "c"}
+
+
+class TestScanExistingArtifacts:
+    """Tests for _scan_existing_artifacts."""
+
+    def test_empty_results_dir(self, tmp_path: Path) -> None:
+        results_dir = URIPath(str(tmp_path / "results"))
+        results_dir.mkdir(parents=True, exist_ok=True)
+        slide_paths = [URIPath(f"slide_{i}.svs") for i in range(3)]
+
+        status = _scan_existing_artifacts(slide_paths, results_dir)
+
+        assert status.requested == {"slide_0", "slide_1", "slide_2"}
+        assert status.existing_patches == set()
+        assert status.existing_csvs == set()
+
+    def test_partial_patches(self, tmp_path: Path) -> None:
+        results_dir = URIPath(str(tmp_path / "results"))
+        patches_dir = results_dir / "patches"
+        patches_dir.mkdir(parents=True, exist_ok=True)
+
+        # Create 2 of 3 patches
+        (patches_dir / "slide_0.h5").touch()
+        (patches_dir / "slide_2.h5").touch()
+
+        slide_paths = [URIPath(f"slide_{i}.svs") for i in range(3)]
+        status = _scan_existing_artifacts(slide_paths, results_dir)
+
+        assert status.requested == {"slide_0", "slide_1", "slide_2"}
+        assert status.existing_patches == {"slide_0", "slide_2"}
+        assert status.missing_patches == {"slide_1"}
+
+    def test_partial_csvs(self, tmp_path: Path) -> None:
+        results_dir = URIPath(str(tmp_path / "results"))
+        patches_dir = results_dir / "patches"
+        csv_dir = results_dir / "model-outputs-csv"
+        patches_dir.mkdir(parents=True, exist_ok=True)
+        csv_dir.mkdir(parents=True, exist_ok=True)
+
+        # All patches exist
+        for i in range(3):
+            (patches_dir / f"slide_{i}.h5").touch()
+
+        # Only 1 CSV exists
+        (csv_dir / "slide_1.csv").touch()
+
+        slide_paths = [URIPath(f"slide_{i}.svs") for i in range(3)]
+        status = _scan_existing_artifacts(slide_paths, results_dir)
+
+        assert status.existing_patches == {"slide_0", "slide_1", "slide_2"}
+        assert status.existing_csvs == {"slide_1"}
+        assert status.needs_inference == {"slide_0", "slide_2"}
+        assert status.completed == {"slide_1"}
+
+    def test_ignores_non_h5_files(self, tmp_path: Path) -> None:
+        results_dir = URIPath(str(tmp_path / "results"))
+        patches_dir = results_dir / "patches"
+        patches_dir.mkdir(parents=True, exist_ok=True)
+
+        (patches_dir / "slide_0.h5").touch()
+        (patches_dir / "slide_1.txt").touch()  # Not an H5
+        (patches_dir / "readme.md").touch()
+
+        slide_paths = [URIPath("slide_0.svs"), URIPath("slide_1.svs")]
+        status = _scan_existing_artifacts(slide_paths, results_dir)
+
+        assert status.existing_patches == {"slide_0"}
+
+    def test_ignores_non_csv_files(self, tmp_path: Path) -> None:
+        results_dir = URIPath(str(tmp_path / "results"))
+        csv_dir = results_dir / "model-outputs-csv"
+        csv_dir.mkdir(parents=True, exist_ok=True)
+
+        (csv_dir / "slide_0.csv").touch()
+        (csv_dir / "slide_1.txt").touch()  # Not a CSV
+        (csv_dir / "metadata.json").touch()
+
+        slide_paths = [URIPath("slide_0.svs"), URIPath("slide_1.svs")]
+        status = _scan_existing_artifacts(slide_paths, results_dir)
+
+        assert status.existing_csvs == {"slide_0"}
+
+
+class TestLogReconciliationSummary:
+    """Tests for _log_reconciliation_summary (smoke tests)."""
+
+    def test_pre_patch_stage_runs(self, capsys) -> None:
+        status = SlideStatus()
+        status.requested = {"a", "b", "c"}
+        status.existing_patches = {"a"}
+        status.existing_csvs = set()
+
+        _log_reconciliation_summary(status, stage="pre-patch")
+
+        captured = capsys.readouterr()
+        assert "Requested slides:" in captured.out
+        assert "3" in captured.out
+
+    def test_final_stage_all_complete(self, capsys) -> None:
+        status = SlideStatus()
+        status.requested = {"a", "b"}
+        status.existing_patches = {"a", "b"}
+        status.existing_csvs = {"a", "b"}
+
+        _log_reconciliation_summary(status, stage="final")
+
+        captured = capsys.readouterr()
+        assert "All slides completed successfully!" in captured.out
+
+    def test_final_stage_with_failures(self, capsys) -> None:
+        status = SlideStatus()
+        status.requested = {"a", "b", "c"}
+        status.existing_patches = {"a", "b"}  # c missing patch
+        status.existing_csvs = {"a"}  # b missing csv
+
+        _log_reconciliation_summary(status, stage="final")
+
+        captured = capsys.readouterr()
+        assert "Still incomplete:" in captured.out
+
+
+class TestReconciliationScenarios:
+    """Integration-style tests for reconciliation scenarios."""
+
+    def test_scenario_12_slides_11_patches_rerun_patches_missing(
+        self, tmp_path: Path
+    ) -> None:
+        """Reproduce the bug: 12 requested slides, 11 patches exist.
+
+        Before fix: rerun processes 0 slides (inference sees 11 patches, all have CSVs).
+        After fix: rerun should detect missing patch and attempt to create it.
+        """
+        results_dir = URIPath(str(tmp_path / "results"))
+        patches_dir = results_dir / "patches"
+        csv_dir = results_dir / "model-outputs-csv"
+        patches_dir.mkdir(parents=True, exist_ok=True)
+        csv_dir.mkdir(parents=True, exist_ok=True)
+
+        # Simulate 11 of 12 patches and CSVs
+        for i in range(12):
+            if i != 5:  # slide_5 is missing
+                (patches_dir / f"slide_{i}.h5").touch()
+                (csv_dir / f"slide_{i}.csv").touch()
+
+        slide_paths = [URIPath(f"slide_{i}.svs") for i in range(12)]
+        status = _scan_existing_artifacts(slide_paths, results_dir)
+
+        # Verify detection
+        assert len(status.requested) == 12
+        assert len(status.existing_patches) == 11
+        assert len(status.existing_csvs) == 11
+        assert status.missing_patches == {"slide_5"}
+        assert status.needs_inference == set()  # slide_5 has no patch yet
+        assert len(status.completed) == 11
+
+    def test_scenario_missing_csv_but_has_patch(self, tmp_path: Path) -> None:
+        """Slide has patch but inference failed — needs inference only."""
+        results_dir = URIPath(str(tmp_path / "results"))
+        patches_dir = results_dir / "patches"
+        csv_dir = results_dir / "model-outputs-csv"
+        patches_dir.mkdir(parents=True, exist_ok=True)
+        csv_dir.mkdir(parents=True, exist_ok=True)
+
+        # All patches exist
+        for i in range(5):
+            (patches_dir / f"slide_{i}.h5").touch()
+
+        # Only some CSVs
+        (csv_dir / "slide_0.csv").touch()
+        (csv_dir / "slide_2.csv").touch()
+
+        slide_paths = [URIPath(f"slide_{i}.svs") for i in range(5)]
+        status = _scan_existing_artifacts(slide_paths, results_dir)
+
+        assert status.missing_patches == set()  # All patches exist
+        assert status.needs_inference == {"slide_1", "slide_3", "slide_4"}
+        assert status.completed == {"slide_0", "slide_2"}
+
+    def test_scenario_second_rerun_all_complete(self, tmp_path: Path) -> None:
+        """After full completion, second rerun should skip everything."""
+        results_dir = URIPath(str(tmp_path / "results"))
+        patches_dir = results_dir / "patches"
+        csv_dir = results_dir / "model-outputs-csv"
+        patches_dir.mkdir(parents=True, exist_ok=True)
+        csv_dir.mkdir(parents=True, exist_ok=True)
+
+        for i in range(5):
+            (patches_dir / f"slide_{i}.h5").touch()
+            (csv_dir / f"slide_{i}.csv").touch()
+
+        slide_paths = [URIPath(f"slide_{i}.svs") for i in range(5)]
+        status = _scan_existing_artifacts(slide_paths, results_dir)
+
+        assert status.missing_patches == set()
+        assert status.needs_inference == set()
+        assert status.completed == {"slide_0", "slide_1", "slide_2", "slide_3", "slide_4"}

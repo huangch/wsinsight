@@ -3,6 +3,10 @@
 `wsinsight run` enumerates slides once, launches the patch stage, then funnels the
 same arguments into the inference/export stage so users can process cohorts with a
 single command.
+
+**Completeness guarantee**: On rerun, if any requested slide is missing a patch or
+inference output, the missing artifact is automatically recovered. Progress counts
+reflect the requested work, not just existing files.
 """
 
 from __future__ import annotations
@@ -10,6 +14,7 @@ from __future__ import annotations
 import math
 import os
 import re
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, List
 
@@ -35,6 +40,142 @@ from ..write_omecsv import write_omecsvs
 from ._paths import default_storage_kwargs
 
 _STORAGE_KWARGS = default_storage_kwargs()
+
+
+# --- Completeness reconciliation helpers -------------------------------------
+
+
+@dataclass
+class SlideStatus:
+    """Tracks per-slide completion status across pipeline stages."""
+
+    requested: set[str] = field(default_factory=set)
+    existing_patches: set[str] = field(default_factory=set)
+    existing_csvs: set[str] = field(default_factory=set)
+    patched_this_run: set[str] = field(default_factory=set)
+    inferred_this_run: set[str] = field(default_factory=set)
+
+    @property
+    def missing_patches(self) -> set[str]:
+        return self.requested - self.existing_patches
+
+    @property
+    def needs_inference(self) -> set[str]:
+        """Slides that have patches but no CSV."""
+        return self.existing_patches - self.existing_csvs
+
+    @property
+    def completed(self) -> set[str]:
+        """Slides that have both patch and CSV."""
+        return self.existing_patches & self.existing_csvs
+
+    @property
+    def failed_patch(self) -> set[str]:
+        """Slides we tried to patch but still have no patch file."""
+        return self.patched_this_run - self.existing_patches
+
+    @property
+    def failed_infer(self) -> set[str]:
+        """Slides we tried to infer but still have no CSV."""
+        return self.inferred_this_run - self.existing_csvs
+
+
+def _scan_existing_artifacts(
+    slide_paths: list[URIPath],
+    results_dir: URIPath,
+) -> SlideStatus:
+    """Scan results_dir and determine per-slide completion status.
+
+    Returns a SlideStatus with requested stems and existing patch/csv stems.
+    """
+    status = SlideStatus()
+    status.requested = {p.stem for p in slide_paths}
+
+    patches_dir = results_dir / "patches"
+    if patches_dir.exists():
+        status.existing_patches = {
+            p.stem for p in patches_dir.iterdir(files_only=True)
+            if p.suffix.lower() == ".h5"
+        }
+
+    csv_dir = results_dir / "model-outputs-csv"
+    if csv_dir.exists():
+        status.existing_csvs = {
+            p.stem for p in csv_dir.iterdir(files_only=True)
+            if p.suffix.lower() == ".csv"
+        }
+
+    return status
+
+
+def _log_reconciliation_summary(status: SlideStatus, stage: str = "final") -> None:
+    """Log a clear summary of pipeline completeness."""
+    n_requested = len(status.requested)
+    n_completed = len(status.completed)
+    missing_patch = status.missing_patches
+    missing_csv = status.needs_inference
+
+    if stage == "pre-patch":
+        click.echo("\n" + "=" * 60)
+        click.secho("Pipeline Status (before patching)", fg="cyan", bold=True)
+        click.echo("=" * 60)
+        click.echo(f"  Requested slides:    {n_requested}")
+        click.echo(f"  Existing patches:    {len(status.existing_patches)}")
+        click.echo(f"  Existing CSVs:       {len(status.existing_csvs)}")
+        if missing_patch:
+            click.secho(f"  Need patching:       {len(missing_patch)}", fg="yellow")
+        if missing_csv:
+            click.echo(f"  Need inference:      {len(missing_csv)}")
+        click.echo("=" * 60 + "\n")
+
+    elif stage == "post-patch":
+        if status.patched_this_run:
+            click.echo(f"\n  Patched this run: {len(status.patched_this_run)}")
+        failed = status.failed_patch
+        if failed:
+            click.secho(f"\n  WARNING: {len(failed)} slide(s) failed patching:", fg="red")
+            for stem in sorted(failed)[:10]:
+                click.echo(f"    - {stem}")
+            if len(failed) > 10:
+                click.echo(f"    ... and {len(failed) - 10} more")
+
+    elif stage == "post-infer":
+        if status.inferred_this_run:
+            click.echo(f"\n  Inferred this run: {len(status.inferred_this_run)}")
+        failed = status.failed_infer
+        if failed:
+            click.secho(f"\n  WARNING: {len(failed)} slide(s) failed inference:", fg="red")
+            for stem in sorted(failed)[:10]:
+                click.echo(f"    - {stem}")
+            if len(failed) > 10:
+                click.echo(f"    ... and {len(failed) - 10} more")
+
+    elif stage == "final":
+        click.echo("\n" + "=" * 60)
+        click.secho("Pipeline Summary", fg="cyan", bold=True)
+        click.echo("=" * 60)
+        click.echo(f"  Requested slides:    {n_requested}")
+        click.echo(f"  Completed (patch+csv): {n_completed}")
+
+        if status.patched_this_run:
+            click.echo(f"  Patched this run:    {len(status.patched_this_run)}")
+        if status.inferred_this_run:
+            click.echo(f"  Inferred this run:   {len(status.inferred_this_run)}")
+
+        all_failed = status.missing_patches | (status.existing_patches - status.existing_csvs)
+        if all_failed:
+            click.secho(f"  Still incomplete:    {len(all_failed)}", fg="red")
+            for stem in sorted(all_failed)[:10]:
+                has_patch = stem in status.existing_patches
+                click.echo(f"    - {stem} (patch={'yes' if has_patch else 'NO'}, csv=NO)")
+            if len(all_failed) > 10:
+                click.echo(f"    ... and {len(all_failed) - 10} more")
+        else:
+            click.secho("  All slides completed successfully!", fg="green")
+        click.echo("=" * 60 + "\n")
+
+
+# --- System helpers ----------------------------------------------------------
 
 
 def _num_cpus() -> int:
@@ -743,42 +884,80 @@ def run(
     params = locals().copy()
     params.pop("ctx", None)
 
-    params["slide_paths"] = _enumerate_slide_paths(wsi_dir)
+    slide_paths = _enumerate_slide_paths(wsi_dir)
+    params["slide_paths"] = slide_paths
 
-    # Stage 1: segmentation + patch extraction.
-    ctx.invoke(patch_command, **_select_kwargs(params, _PATCH_PARAM_NAMES))
+    # --- Preflight reconciliation: check existing artifacts ------------------
+    status = _scan_existing_artifacts(slide_paths, results_dir)
+    _log_reconciliation_summary(status, stage="pre-patch")
+
+    # --- Stage 1: segmentation + patch extraction ----------------------------
+    # Only patch slides that don't already have patches (unless overwrite)
+    slides_needing_patch = status.missing_patches if not overwrite else status.requested
+    if slides_needing_patch:
+        click.secho(f"\nPatching {len(slides_needing_patch)} slide(s)...\n", fg="green")
+        patch_params = params.copy()
+        # Filter slide_paths to only those needing patches
+        patch_params["slide_paths"] = [
+            p for p in slide_paths if p.stem in slides_needing_patch
+        ]
+        ctx.invoke(patch_command, **_select_kwargs(patch_params, _PATCH_PARAM_NAMES))
+        status.patched_this_run = slides_needing_patch.copy()
+    else:
+        click.echo("\nAll slides already have patches — skipping patch stage.\n")
     raise_if_cancelled()
 
-    # Stage 2: inference.
-    ctx.invoke(infer_command, **_select_kwargs(params, _INFER_PARAM_NAMES))
+    # --- Post-patch reconciliation: update status ----------------------------
+    status_after_patch = _scan_existing_artifacts(slide_paths, results_dir)
+    status.existing_patches = status_after_patch.existing_patches
+    _log_reconciliation_summary(status, stage="post-patch")
+
+    # --- Stage 2: inference --------------------------------------------------
+    # Only infer slides that have patches but no CSV (unless overwrite)
+    slides_needing_infer = status.needs_inference if not overwrite else status.existing_patches
+    if slides_needing_infer:
+        click.secho(f"\nRunning inference on {len(slides_needing_infer)} slide(s)...\n", fg="green")
+        infer_params = params.copy()
+        # Filter slide_paths to only those needing inference
+        infer_params["slide_paths"] = [
+            p for p in slide_paths if p.stem in slides_needing_infer
+        ]
+        ctx.invoke(infer_command, **_select_kwargs(infer_params, _INFER_PARAM_NAMES))
+        status.inferred_this_run = slides_needing_infer.copy()
+    else:
+        click.echo("\nAll slides already have inference outputs — skipping inference stage.\n")
     raise_if_cancelled()
 
-    # Stage 3 (optional): H-Plot spatial analytics.
+    # --- Post-inference reconciliation: update status ------------------------
+    status_after_infer = _scan_existing_artifacts(slide_paths, results_dir)
+    status.existing_csvs = status_after_infer.existing_csvs
+
+    # --- Stage 3 (optional): H-Plot spatial analytics ------------------------
     if hplot:
         ctx.invoke(hplot_command, **_select_kwargs(params, _HPLOT_PARAM_NAMES))
         raise_if_cancelled()
 
-    # Stage 4 (optional): node-level (cell) composition analytics.
+    # --- Stage 4 (optional): node-level (cell) composition analytics ---------
     if ncomp:
         ctx.invoke(ncomp_command, **_select_kwargs(params, _NCOMP_PARAM_NAMES))
         raise_if_cancelled()
 
-    # Stage 4b (optional): edge-level composition analytics.
+    # --- Stage 4b (optional): edge-level composition analytics ---------------
     if ecomp:
         ctx.invoke(ecomp_command, **_select_kwargs(params, _ECOMP_PARAM_NAMES))
         raise_if_cancelled()
 
-    # Stage 4c (optional): triad-level composition analytics.
+    # --- Stage 4c (optional): triad-level composition analytics --------------
     if tcomp:
         ctx.invoke(tcomp_command, **_select_kwargs(params, _TCOMP_PARAM_NAMES))
         raise_if_cancelled()
 
-    # Stage 5 (optional): cellular microenvironment (CME) analysis.
+    # --- Stage 5 (optional): cellular microenvironment (CME) analysis --------
     if cme:
         ctx.invoke(cme_command, **_select_kwargs(params, _CME_PARAM_NAMES))
         raise_if_cancelled()
 
-    # Stage 6 (optional): merged export to GeoJSON / OME-CSV / h5ad.
+    # --- Stage 6 (optional): merged export to GeoJSON / OME-CSV / h5ad -------
     if export_geojson or export_omecsv or export_h5ad:
         click.echo("\nMerging per-cell analytics into export CSVs...\n")
         build_export_csvs(results_dir, overwrite=True)
@@ -848,5 +1027,8 @@ def run(
     if qupath:
         click.echo("Creating QuPath project with results")
         make_qupath_project(wsi_dir, results_dir)
+
+    # --- Final reconciliation summary ----------------------------------------
+    _log_reconciliation_summary(status, stage="final")
 
     click.secho("\nWSInsight run completed.\n", fg="green")
