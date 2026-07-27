@@ -107,6 +107,7 @@ Command                       Purpose
                               slides.  Builds per-slide Delaunay cell graphs, trains a
                               global DGI encoder, clusters the embeddings, and writes
                               per-cell CME labels plus annotation-level region merges.
+                              Pass ``--export-geojson`` to also write GeoJSON files.
                               Can also run inline via ``wsinsight run --cme``.  CME is a
                               cross-slide analysis (global DGI training + global clustering)
                               and cannot be parallelized across GPU shards — run it after

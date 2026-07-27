@@ -336,6 +336,7 @@ _CME_PARAM_NAMES: tuple[str, ...] = (
     "cme_hoptimus",
     "cme_clusters",
     "overwrite",
+    "export_geojson",
     "num_workers",
 )
 

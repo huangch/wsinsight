@@ -351,7 +351,7 @@ in control of every result.
 ├── cme-outputs-csv/
 │   ├── cells/<slide>.csv           Per-cell CME labels + features
 │   └── cmes/<slide>.csv            Annotation-level merged CME regions
-├── cme-outputs-geojson/
+├── cme-outputs-geojson/                (with --export-geojson)
 │   ├── cells/<slide>.geojson        GeoJSON cell detections with CME labels
 │   └── cmes/<slide>.geojson         GeoJSON CME region annotations
 ├── graphs/
@@ -654,7 +654,7 @@ QuPath extension, etc.) can discover every command; only invocation is gated.
  `wsinsight hplot-finalize` | Aggregate per-slide H-plot intermediates into a single `hplot-outputs.csv` and `hmetrics-outputs.csv`. Use after running parallel `hplot` jobs that share the same `--results-dir`.
  `wsinsight ecomp`          | Edge-level composition analysis. For each Delaunay edge, builds the line graph, collects k-hop edge neighbors, and records the composition of edge types in the local neighborhood. Outputs per-edge CSVs under `ecomp-outputs-csv/`.
  `wsinsight tcomp`          | Triad-level composition analysis. For each Delaunay triangle, builds the dual graph (triads sharing ≥1 vertex), collects k-hop triad neighbors, and records the composition of triad types plus per-triad geometry (area, perimeter, regularity). Outputs per-triad CSVs under `tcomp-outputs-csv/`.
- `wsinsight cme`            | Cellular microenvironment (CME) analysis across a cohort of slides. Builds per-slide Delaunay cell graphs, trains a global Deep Graph Infomax (DGI) encoder, clusters the resulting embeddings, and writes per-cell CME labels plus annotation-level region merges under `cme-outputs-csv/`. Cross-slide analysis — cannot be parallelized across GPU shards.
+ `wsinsight cme`            | Cellular microenvironment (CME) analysis across a cohort of slides. Builds per-slide Delaunay cell graphs, trains a global Deep Graph Infomax (DGI) encoder, clusters the resulting embeddings, and writes per-cell CME labels plus annotation-level region merges under `cme-outputs-csv/`. Pass `--export-geojson` to also write GeoJSON files under `cme-outputs-geojson/`. Cross-slide analysis — cannot be parallelized across GPU shards.
  `wsinsight agg`            | Cell-type aggregate analysis on existing inference outputs. Detects connected, density-gated aggregates of a chosen cell-type set (`--agg-types`, e.g. `t_cell,b_cell` → TLS) over the cached Delaunay graph, contracts them into a quotient graph, and writes namespaced outputs under the product label `--agg-name`: an `object_<name>_prob_<name>` per-cell membership column (upserted into `model-outputs-csv/`), a per-aggregate sidecar under `agg-<name>-outputs-csv/`, and an `agg/<name>/` subgroup in `graphs/<slide>.h5`. The name is selectable in `hplot` via `--base-by aggregate` / `--target-by aggregate`.
 
 Experimental stages can also be invoked inline from `wsinsight run` via
@@ -712,11 +712,12 @@ where 1.0 is equilateral).  Edges and triads are **not** merged into
 
 ### CME parameters (`--cme-*` options in `run` and `wsinsight cme`)
 
- Option           | Default | Description
-------------------|---------|------------------------------------------------------------------------------------
- `--cme-hoptimus` | off     | Enable H-Optimus tissue morphology features (requires GPU + timm)
- `--cme-clusters` | auto    | Number of KMeans clusters; when omitted, determined via Leiden community detection
- `--overwrite`    | off     | Delete cached checkpoints and recompute from scratch
+ Option             | Default | Description
+--------------------|---------|------------------------------------------------------------------------------------
+ `--cme-hoptimus`   | off     | Enable H-Optimus tissue morphology features (requires GPU + timm)
+ `--cme-clusters`   | auto    | Number of KMeans clusters; when omitted, determined via Leiden community detection
+ `--export-geojson` | off     | Export CME results to GeoJSON files under `cme-outputs-geojson/`
+ `--overwrite`      | off     | Delete cached checkpoints and recompute from scratch
 
 ### Aggregate parameters (`--agg-*` options in `wsinsight agg`)
 

@@ -138,11 +138,18 @@ def _num_cpus() -> int:
     help="Delete cached checkpoints and recompute all CME outputs from scratch.",
 )
 @click.option(
+    "--export-geojson",
+    is_flag=True,
+    default=False,
+    show_default=True,
+    help="Export CME results to GeoJSON files (cme-outputs-geojson/).",
+)
+@click.option(
     "--num-workers",
     default=min(_num_cpus(), 8),
     show_default=True,
     type=click.IntRange(min=0),
-    help="Number of workers for GeoJSON export at the end of the run.",
+    help="Number of workers for GeoJSON export.",
 )
 def cme(
     *,
@@ -153,6 +160,7 @@ def cme(
     cme_leiden_res: list[float] | None = None,
     cme_embed_dim: int = 32,
     overwrite: bool = False,
+    export_geojson: bool = False,
     num_workers: int = 8,
 ) -> None:
     """Discover cellular microenvironments (CMEs) across a cohort of slides.
@@ -213,46 +221,47 @@ def cme(
     )
 
     # --- GeoJSON: cell-level detections with CME labels ----------------------
-    cme_cells_dir = Path(str(results_dir)) / "cme-outputs-csv" / "cells"
-    if cme_cells_dir.exists():
-        cme_cell_csvs = sorted(cme_cells_dir.glob("*.csv"))
-        if cme_cell_csvs:
-            click.echo(
-                "\nWriting CME cell detections to GeoJSON files...\n"
-            )
-            write_geojsons(
-                csvs=cme_cell_csvs,
-                overlap=0,
-                results_dir=results_dir,
-                output_dir=Path("cme-outputs-geojson") / "cells",
-                prefix="cme",
-                num_workers=num_workers,
-                object_type="detection",
-                set_classification=True,
-                annotation_shape="box",
-                overwrite=overwrite,
-            )
+    if export_geojson:
+        cme_cells_dir = Path(str(results_dir)) / "cme-outputs-csv" / "cells"
+        if cme_cells_dir.exists():
+            cme_cell_csvs = sorted(cme_cells_dir.glob("*.csv"))
+            if cme_cell_csvs:
+                click.echo(
+                    "\nWriting CME cell detections to GeoJSON files...\n"
+                )
+                write_geojsons(
+                    csvs=cme_cell_csvs,
+                    overlap=0,
+                    results_dir=results_dir,
+                    output_dir=Path("cme-outputs-geojson") / "cells",
+                    prefix="cme",
+                    num_workers=num_workers,
+                    object_type="detection",
+                    set_classification=True,
+                    annotation_shape="box",
+                    overwrite=overwrite,
+                )
 
-    # --- GeoJSON: annotation-level CME regions -------------------------------
-    cme_cmes_dir = Path(str(results_dir)) / "cme-outputs-csv" / "cmes"
-    if cme_cmes_dir.exists():
-        cme_cme_csvs = sorted(cme_cmes_dir.glob("*.csv"))
-        if cme_cme_csvs:
-            click.echo(
-                "\nWriting CME annotation regions to GeoJSON files...\n"
-            )
-            write_geojsons(
-                csvs=cme_cme_csvs,
-                overlap=0,
-                results_dir=results_dir,
-                output_dir=Path("cme-outputs-geojson") / "cmes",
-                prefix="cme",
-                num_workers=num_workers,
-                object_type="annotation",
-                set_classification=True,
-                annotation_shape="polygon",
-                overwrite=overwrite,
-            )
+        # --- GeoJSON: annotation-level CME regions ---------------------------
+        cme_cmes_dir = Path(str(results_dir)) / "cme-outputs-csv" / "cmes"
+        if cme_cmes_dir.exists():
+            cme_cme_csvs = sorted(cme_cmes_dir.glob("*.csv"))
+            if cme_cme_csvs:
+                click.echo(
+                    "\nWriting CME annotation regions to GeoJSON files...\n"
+                )
+                write_geojsons(
+                    csvs=cme_cme_csvs,
+                    overlap=0,
+                    results_dir=results_dir,
+                    output_dir=Path("cme-outputs-geojson") / "cmes",
+                    prefix="cme",
+                    num_workers=num_workers,
+                    object_type="annotation",
+                    set_classification=True,
+                    annotation_shape="polygon",
+                    overwrite=overwrite,
+                )
 
     write_runtime_metadata(
         results_dir,
