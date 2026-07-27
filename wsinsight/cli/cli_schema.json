@@ -985,6 +985,19 @@
      "required": false
     },
     {
+     "default": true,
+     "flags": [
+      "--pin-memory/--no-pin-memory"
+     ],
+     "help": "Pin DataLoader tensors to CUDA memory for faster host-to-device transfer. Disable (--no-pin-memory) in memory-constrained environments where DataLoader workers are being killed by the system OOM killer.",
+     "is_flag": true,
+     "kind": "bool",
+     "multiple": false,
+     "name": "pin_memory",
+     "param_type": "option",
+     "required": false
+    },
+    {
      "default": 8,
      "flags": [
       "--stitch-workers"
@@ -1900,6 +1913,19 @@
      "kind": "int",
      "multiple": false,
      "name": "num_workers",
+     "param_type": "option",
+     "required": false
+    },
+    {
+     "default": true,
+     "flags": [
+      "--pin-memory/--no-pin-memory"
+     ],
+     "help": "Pin DataLoader tensors to CUDA memory for faster host-to-device transfer. Disable (--no-pin-memory) in memory-constrained environments where DataLoader workers are being killed by the system OOM killer.",
+     "is_flag": true,
+     "kind": "bool",
+     "multiple": false,
+     "name": "pin_memory",
      "param_type": "option",
      "required": false
     },
