@@ -79,9 +79,12 @@ Command                       Purpose
                               the end of the run.  Experimental ``--hplot`` /
                               ``--cme`` flags require ``WSINSIGHT_EXPERIMENTAL=1``.
 ``wsinsight patch``           Generate tissue masks + patch caches inside ``--results-dir``.
+                              By default, slides with existing patch outputs are skipped;
+                              pass ``--overwrite`` to regenerate.
 ``wsinsight infer``           Reuse cached patches to run models and emit per-cell CSV
-                              outputs.  Supports inline region registration via
-                              ``--region-inference-dir`` and ``--overwrite``.
+                              outputs. By default, slides with existing CSV outputs are
+                              skipped; pass ``--overwrite`` to regenerate. Supports
+                              inline region registration via ``--region-inference-dir``.
 ``wsinsight reg``             Post-hoc object-to-region registration on already-completed
                               runs.  Enriches object CSVs with ``region_prob_*`` columns.
 ``wsinsight ncomp``           Standalone neighborhood composition analysis on existing

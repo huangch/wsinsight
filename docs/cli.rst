@@ -33,11 +33,13 @@ Command                       Purpose
                               GeoJSON / OME-CSV files at the end of the run.  Experimental
                               ``--hplot`` / ``--cme`` flags require
                               ``WSINSIGHT_EXPERIMENTAL=1``.
-``wsinsight patch``           Segment tissue and cache patches to HDF5; safe to rerun to
-                              resume interrupted jobs.
+``wsinsight patch``           Segment tissue and cache patches to HDF5. By default,
+                              slides with existing patch outputs are skipped; pass
+                              ``--overwrite`` to regenerate.
 ``wsinsight infer``           Reuse cached patches to run models and produce per-cell CSV
-                              outputs.  Supports region registration via
-                              ``--region-inference-dir`` and ``--overwrite``.
+                              outputs. By default, slides with existing CSV outputs are
+                              skipped; pass ``--overwrite`` to regenerate. Supports
+                              region registration via ``--region-inference-dir``.
                               Use standalone ``ncomp``/``export`` commands (or ``run``) for
                               downstream analytics.
 ``wsinsight reg``             Post-hoc object-to-region registration on already-completed
