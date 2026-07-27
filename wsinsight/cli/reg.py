@@ -390,6 +390,7 @@ def reg(
                 num_workers=export_workers,
                 object_type="detection",
                 set_classification=True,
+                overwrite=True,  # Always regenerate after reg modifies CSVs
             )
         if omecsv:
             click.echo(f"  OME-CSV: {grp}_*  ->  model-outputs-omecsv/{grp}/")
@@ -401,6 +402,7 @@ def reg(
                 output_dir=Path("model-outputs-omecsv") / grp,
                 prefix=grp,
                 num_workers=export_workers,
+                overwrite=True,  # Always regenerate after reg modifies CSVs
             )
 
     write_runtime_metadata(
