@@ -56,7 +56,7 @@ experimental subcommands that are gated by ``WSINSIGHT_EXPERIMENTAL=1`` (see
 
    **Experimental commands.** ``hplot``, ``hplot-finalize``, ``ncomp``,
    ``ecomp``, ``tcomp``, ``cme``, and ``agg`` (together with their
-   ``hplot-outputs.csv`` / ``hmetrics-outputs.csv`` /
+   ``hplot-outputs.csv`` /
    ``ncomp-outputs-csv/`` / ``ecomp-outputs-csv/`` / ``tcomp-outputs-csv/`` /
    ``cme-outputs-*/`` / ``agg-<name>-outputs-csv/`` outputs) are research
    features under active
@@ -488,7 +488,7 @@ H-plot analysis
 .. note::
 
    **Experimental.** ``hplot`` / ``hplot-finalize`` and their
-   ``hplot-outputs.csv`` / ``hmetrics-outputs.csv`` outputs are under
+   ``hplot-outputs.csv`` outputs are under
    active development; flags and schemas may change without notice.
 
 ``wsinsight hplot`` computes H-plot spatial metrics from existing cell-detection
@@ -549,13 +549,12 @@ by one or more ``hplot`` jobs into a single cohort-level summary.  Run this comm
 after all parallel ``hplot`` workers have finished:
 
 * ``-o / --results-dir`` (required) — the shared ``--results-dir`` used by the ``hplot``
-  jobs.  The command reads per-slide H-plot files and writes two files into this
-  directory:
+  jobs.  The command reads per-slide H-plot files and writes the aggregated
+  file into this directory:
 
   * ``hplot-outputs.csv`` — cohort-level H-plot profiles
-  * ``hmetrics-outputs.csv`` — cohort-level H-metric summary statistics
 
-* ``--overwrite`` — overwrite the aggregated CSVs if they already exist.
+* ``--overwrite`` — overwrite the aggregated CSV if it already exists.
 
 Example::
 
@@ -693,7 +692,6 @@ Output structure
    ├── patches/                # HDF5 with patch coordinates
    ├── hplot-outputs-csv/      # per-slide H-plot intermediates
    ├── hplot-outputs.csv       # cohort-level H-plot summary (after hplot-finalize)
-   ├── hmetrics-outputs.csv    # cohort-level H-metrics summary (after hplot-finalize)
    ├── ncomp-outputs-csv/      # per-cell neighborhood composition
    ├── cme-outputs-csv/        # CME analysis
    │   ├── cells/              # per-cell CME labels + features

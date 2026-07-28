@@ -368,6 +368,12 @@ def hplot_finalize(output_dir: URIPath, overwrite: bool = False) -> None:
             f"No per-slide hplot CSV files found under {hplot_outputs_csv_dir}."
         )
 
+    print(
+        f"Found {len(hplot_files)} per-slide hplot CSV(s) in {hplots_dir}. "
+        "Note: finalize aggregates whatever is present — make sure every parallel "
+        "subset job has finished before relying on this total."
+    )
+
     _COL_RENAME = {
         "target_type_prop": "target_prop",
         "target_type_count": "target_count",
@@ -439,6 +445,12 @@ def hplot_finalize(output_dir: URIPath, overwrite: bool = False) -> None:
         with critical_section("saving aggregated hplot-outputs.csv"):
             with hplot_hplots_csv.open("w", encoding="utf-8", newline="") as fp:
                 merged_hplot.to_csv(fp, index=False)
+        print(
+            f"Wrote {hplot_hplots_csv} aggregating "
+            f"{merged_hplot['id'].nunique()} slide(s)."
+        )
+    else:
+        print("No non-empty per-slide hplot CSVs to aggregate; nothing written.")
 
 
 def hplot_generation(

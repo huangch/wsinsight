@@ -338,10 +338,8 @@ in control of every result.
 │   └── <sample_id>.h5ad            Spatial-transcriptomics expression mapped onto cells (wsinsight import)
 ├── hplot-outputs-csv/
 │   ├── hplots/<slide>.csv          Per-layer H-plot curve (one row per layer)
-│   ├── cells/<slide>.csv           Per-cell data with spatial annotations
-│   └── hmetrics/<slide>.json       Per-slide H-plot metrics (intermediate)
+│   └── cells/<slide>.csv           Per-cell data with spatial annotations
 ├── hplot-outputs.csv               Aggregated H-plot curve (all slides)
-├── hmetrics-outputs.csv            Aggregated H-plot metrics (all slides)
 ├── ncomp-outputs-csv/
 │   └── <slide>.csv                 Per-cell (node-level) composition
 ├── ecomp-outputs-csv/
@@ -436,18 +434,6 @@ Per-cell file: the original `model-outputs-csv/<slide>.csv` extended with spatia
 Cohort-level H-plot curve aggregated across all slides. Produced by `hplot`, `run --hplot`, or `hplot-finalize`.
 
 Columns: `id`, `layer`, `target_prop`, `target_count`, `base_prop`, `base_count`, `all_count`, `distance`
-
-### `hmetrics-outputs.csv`
-
-Per-slide spatial interaction metrics. One row per slide.
-
-- `id`, `valid`
-- `convergence_distance (intra)`, `abundance_score (intra)`, `penetration_score (intra)`
-- `layerwise_enrichment_index (intra)`, `global_enrichment_index (intra)`, `weighted_global_enrichment_index (intra)`
-- `convergence_distance (peri)`, `abundance_score (peri)`, `proximity_score (peri)`
-- `layerwise_enrichment_index (peri)`, `global_enrichment_index (peri)`, `weighted_global_enrichment_index (peri)`
-- `exclusion_index`, `desert_index`, `inflammation_index`
-- `layerwise_enrichment_index`, `global_enrichment_index`, `weighted_global_enrichment_index`
 
 ### `ncomp-outputs-csv/<slide>.csv`
 
@@ -656,7 +642,7 @@ QuPath extension, etc.) can discover every command; only invocation is gated.
  Command                    | Purpose
 ----------------------------|------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
  `wsinsight hplot`          | Standalone H-plot analysis on existing inference outputs. Requires cell-type-aware model outputs and both `--hplot-base-types` and `--hplot-target-types`. Computes layer-wise cell-type proportions from tumour boundary outward. Outputs under `hplot-outputs-csv/`.
- `wsinsight hplot-finalize` | Aggregate per-slide H-plot intermediates into a single `hplot-outputs.csv` and `hmetrics-outputs.csv`. Use after running parallel `hplot` jobs that share the same `--results-dir`.
+ `wsinsight hplot-finalize` | Aggregate per-slide H-plot intermediates into a single `hplot-outputs.csv`. Use after running parallel `hplot` jobs that share the same `--results-dir`.
  `wsinsight ecomp`          | Edge-level composition analysis. For each Delaunay edge, builds the line graph, collects k-hop edge neighbors, and records the composition of edge types in the local neighborhood. Outputs per-edge CSVs under `ecomp-outputs-csv/`.
  `wsinsight tcomp`          | Triad-level composition analysis. For each Delaunay triangle, builds the dual graph (triads sharing ≥1 vertex), collects k-hop triad neighbors, and records the composition of triad types plus per-triad geometry (area, perimeter, regularity). Outputs per-triad CSVs under `tcomp-outputs-csv/`.
  `wsinsight cme`            | Cellular microenvironment (CME) analysis across a cohort of slides. Builds per-slide Delaunay cell graphs, trains a global Deep Graph Infomax (DGI) encoder, clusters the resulting embeddings, and writes per-cell CME labels plus annotation-level region merges under `cme-outputs-csv/`. Pass `--export-geojson` to also write GeoJSON files under `cme-outputs-geojson/`. Cross-slide analysis — cannot be parallelized across GPU shards.

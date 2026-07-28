@@ -7,8 +7,7 @@ Command reference
 
    **Experimental commands.** ``hplot``, ``hplot-finalize``, ``cme``,
    ``cme-profile``, ``ecomp``, ``tcomp``, and ``import`` (together with their
-   ``hplot-outputs.csv`` /
-   ``hmetrics-outputs.csv`` / ``ecomp-outputs-csv/`` / ``tcomp-outputs-csv/``
+   ``hplot-outputs.csv`` / ``ecomp-outputs-csv/`` / ``tcomp-outputs-csv/``
    outputs) are research features under active development.  Their CLI flags,
    output directory layouts, and column schemas may change without notice in
    future releases.  They are hidden from ``wsinsight --help`` and refuse to
@@ -92,7 +91,7 @@ Command                       Purpose
                               instead of a cell type; CME ids may be given as ``7`` or
                               ``cme_7``.
 ``wsinsight hplot-finalize``  Aggregate per-slide H-plot intermediates into cohort-level
-                              ``hplot-outputs.csv`` and ``hmetrics-outputs.csv``.  Run this
+                              ``hplot-outputs.csv``.  Run this
                               after parallel ``hplot`` jobs that share an output directory.
 ``wsinsight ecomp``           Edge-level composition analysis.  For each Delaunay edge,
                               builds the line graph, collects k-hop edge neighbors, and
@@ -257,23 +256,6 @@ Cohort-level H-plot curve aggregated across all slides, produced by ``hplot``,
 
 Columns: ``id``, ``layer``, ``target_prop``, ``target_count``, ``base_prop``,
 ``base_count``, ``all_count``, ``distance``
-
-
-``hmetrics-outputs.csv``
-~~~~~~~~~~~~~~~~~~~~~~~~~
-
-Per-slide spatial interaction metrics.  One row per slide.
-
-Columns: ``id``, ``valid``,
-``convergence_distance (intra)``, ``abundance_score (intra)``, ``penetration_score (intra)``,
-``layerwise_enrichment_index (intra)``, ``global_enrichment_index (intra)``,
-``weighted_global_enrichment_index (intra)``,
-``convergence_distance (peri)``, ``abundance_score (peri)``, ``proximity_score (peri)``,
-``layerwise_enrichment_index (peri)``, ``global_enrichment_index (peri)``,
-``weighted_global_enrichment_index (peri)``,
-``exclusion_index``, ``desert_index``, ``inflammation_index``,
-``layerwise_enrichment_index``, ``global_enrichment_index``,
-``weighted_global_enrichment_index``
 
 
 ``ncomp-outputs-csv/<slide>.csv``
