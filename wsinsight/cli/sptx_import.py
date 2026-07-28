@@ -519,11 +519,11 @@ def sptx_import(
     write_runtime_metadata(
         results_dir,
         "import",
-        {
-            "platform": platform, "transform": transform, "genes": genes,
-            "include": list(include_sources),
-            "match_max_dist": match_max_dist, "dry_run": dry_run,
-            "n_ok": len(done), "n_skipped": len(skipped), "n_failed": len(failed),
-            "samples": done,
+        params=click.get_current_context().params,
+        extra={
+            "results": {
+                "n_ok": len(done), "n_skipped": len(skipped), "n_failed": len(failed),
+                "samples": done,
+            }
         },
     )

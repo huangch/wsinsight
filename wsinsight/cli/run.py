@@ -37,6 +37,7 @@ from ..uri_path import URIPath, URIPathType
 from ..write_geojson import write_geojsons
 from ..write_h5ad import write_h5ads
 from ..write_omecsv import write_omecsvs
+from ._meta import write_runtime_metadata
 from ._paths import default_storage_kwargs
 
 _STORAGE_KWARGS = default_storage_kwargs()
@@ -1032,5 +1033,20 @@ def run(
 
     # --- Final reconciliation summary ----------------------------------------
     _log_reconciliation_summary(status, stage="final")
+
+    # Thin top-level orchestration log; per-stage details live in the
+    # patch_metadata_*.json / infer_metadata_*.json / <analytics>_metadata_*.json
+    # written by each ctx.invoke()d stage.
+    write_runtime_metadata(
+        results_dir,
+        "run",
+        params=click.get_current_context().params,
+        extra={
+            "note": (
+                "Per-stage details are in patch_metadata_*.json, "
+                "infer_metadata_*.json and any <analytics>_metadata_*.json."
+            )
+        },
+    )
 
     click.secho("\nWSInsight run completed.\n", fg="green")

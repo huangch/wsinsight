@@ -121,7 +121,8 @@ _STORAGE_KWARGS = default_storage_kwargs()
     ),
 )
 @click.option(
-    "--geojson",
+    "--export-geojson",
+    "geojson",
     is_flag=True,
     default=False,
     show_default=True,
@@ -182,8 +183,8 @@ def reg(
     probabilities are appended in-place to the primary CSVs under
     ``region_<tag>_prob_*`` or ``object_<tag>_prob_*`` columns.
 
-    With ``--geojson`` or ``--omecsv``, all probability prefix groups present
-    in the registered CSVs are exported, one subfolder per group.
+    With ``--export-geojson`` or ``--omecsv``, all probability prefix groups
+    present in the registered CSVs are exported, one subfolder per group.
     """
     if (region_inference_dir is None) == (object_inference_dir is None):
         raise click.ClickException(

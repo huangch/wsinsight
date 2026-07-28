@@ -329,3 +329,9 @@ def cme_profile_cmd(*, results_dir: URIPath, top_genes: int, top_types: int) -> 
         f"\nWrote cme-profile-composition.csv (and markers, if any) to {results_dir}\n",
         fg="green",
     )
+
+    write_runtime_metadata(
+        results_dir,
+        "cme-profile",
+        params=click.get_current_context().params,
+    )

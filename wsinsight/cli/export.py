@@ -17,6 +17,7 @@ from ..uri_path import URIPath, URIPathType
 from ..write_geojson import write_geojsons
 from ..write_h5ad import write_h5ads
 from ..write_omecsv import write_omecsvs
+from ._meta import write_runtime_metadata
 from ._paths import default_storage_kwargs
 
 _STORAGE_KWARGS = default_storage_kwargs()
@@ -275,6 +276,12 @@ def export(
                 export_workers=export_workers,
                 overwrite=overwrite,
             )
+
+    write_runtime_metadata(
+        results_dir,
+        "export",
+        params=click.get_current_context().params,
+    )
 
     click.secho("\nExport complete.\n", fg="green")
 

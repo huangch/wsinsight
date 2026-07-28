@@ -688,7 +688,7 @@ Output structure
    results/
    ├── masks/                  # tissue masks with contours
    ├── model-outputs-csv/      # per-patch and per-cell classification tables
-   ├── model-outputs-geojson/  # GeoJSON from wsinsight reg --geojson
+  ├── model-outputs-geojson/  # GeoJSON from wsinsight reg --export-geojson
    ├── model-outputs-omecsv/   # OME-CSV from wsinsight reg --omecsv
    ├── patches/                # HDF5 with patch coordinates
    ├── hplot-outputs-csv/      # per-slide H-plot intermediates
@@ -705,7 +705,8 @@ Output structure
    ├── export-csv/             # merged per-cell CSV (inference + hplot + ncomp + cme)
    ├── export-geojson/         # GeoJSON export (wsinsight export --geojson)
    ├── export-omecsv/          # OME-CSV export (wsinsight export --omecsv)
-   └── run_metadata_*.json     # configuration and runtime info
+   └── <command>_metadata_*.json  # per-command run log (run/patch/infer/export/
+                               #   ncomp/hplot/cme/... each write one)
 
 GeoJSON/OME outputs can be loaded into QuPath, napari, or GIS tools for spatial analysis.
 

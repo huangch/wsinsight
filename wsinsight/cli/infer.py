@@ -33,6 +33,7 @@ from ..modellib.run_inference import run_inference
 # QuPath project export relies on optional dependencies; import remains disabled until re-enabled.
 from ..uri_path import URIPath, URIPathType
 from ._paths import default_storage_kwargs
+from ._meta import write_runtime_metadata
 
 _STORAGE_KWARGS = default_storage_kwargs()
 
@@ -1095,12 +1096,18 @@ def infer(
     #     #     annotation_shape="polygon",
     #     # )
 
-    timestamp = datetime.now().astimezone().strftime("%Y%m%dT%H%M%S")
-    run_metadata_outpath = results_dir / f"infer_metadata_{timestamp}.json"
-    click.echo(f"\nSaving metadata about run to {run_metadata_outpath}\n")
-    run_metadata = _get_info_for_save(model_obj)
-    with run_metadata_outpath.open("w") as f:
-        json.dump(run_metadata, f, indent=2)
+    _info = _get_info_for_save(model_obj)
+    write_runtime_metadata(
+        results_dir,
+        "infer",
+        params=click.get_current_context().params,
+        extra={"model": _info["model"]},
+        runtime_extra={
+            k: _info["runtime"][k]
+            for k in ("pytorch_version", "cuda_version", "wsinfer_zoo_version")
+            if k in _info["runtime"]
+        },
+    )
 
     # QuPath project export can be re-enabled once optional dependencies return.
     # if qupath:

@@ -1651,7 +1651,7 @@
     {
      "default": false,
      "flags": [
-      "--geojson"
+      "--export-geojson"
      ],
      "help": "Export registered object CSVs to GeoJSON files.  One subfolder is written per discovered probability prefix (prob, region_*_prob, object_*_prob) under model-outputs-geojson/.",
      "is_flag": true,

@@ -33,6 +33,7 @@ from ..modellib.models import resolve_zoo_registry_path
 from ..patchlib import segment_and_patch_directory_of_slides
 from ..uri_path import URIPathType, URIPath
 from ..wsi import _validate_wsi_directory
+from ._meta import write_runtime_metadata
 from ._paths import default_storage_kwargs, ensure_output_directory
 
 _STORAGE_KWARGS = default_storage_kwargs()
@@ -844,11 +845,17 @@ def patch(
             " be set."
         )
     
-    timestamp = datetime.now().astimezone().strftime("%Y%m%dT%H%M%S")
-    run_metadata_outpath = results_dir / f"patch_metadata_{timestamp}.json"
-    click.echo(f"\nSaving metadata about run to {run_metadata_outpath}\n")
-    run_metadata = _get_info_for_save(model_obj)
-    with run_metadata_outpath.open("w") as f:
-        json.dump(run_metadata, f, indent=2)
+    _info = _get_info_for_save(model_obj)
+    write_runtime_metadata(
+        results_dir,
+        "patch",
+        params=click.get_current_context().params,
+        extra={"model": _info["model"]},
+        runtime_extra={
+            k: _info["runtime"][k]
+            for k in ("pytorch_version", "cuda_version", "wsinfer_zoo_version")
+            if k in _info["runtime"]
+        },
+    )
 
     click.secho("\nWSInsight-patch tasks are all finished.\n", fg="green")

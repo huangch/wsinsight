@@ -95,36 +95,58 @@ def _jsonable(value: Any) -> Any:
 def get_runtime_metadata(
     command: str,
     params: Mapping[str, Any] | None = None,
+    *,
+    extra: Mapping[str, Any] | None = None,
+    runtime_extra: Mapping[str, Any] | None = None,
 ) -> dict[str, Any]:
-    """Build the metadata record written by analytics subcommands."""
-    return {
+    """Build the metadata record written by every WSInsight subcommand.
+
+    All commands share the same base schema ``{command, params, runtime,
+    timestamp}``.  ``runtime_extra`` is merged into the ``runtime`` block
+    (e.g. ``pytorch_version`` from ``patch`` / ``infer``); ``extra`` is merged
+    at the top level (e.g. a ``model`` block).  Both are JSON-coerced.
+    """
+    runtime: dict[str, Any] = {
+        "version": __version__,
+        "working_dir": os.getcwd(),
+        "args": " ".join(sys.argv),
+        "python_executable": sys.executable,
+        "python_version": platform.python_version(),
+        "in_container": _inside_container(),
+        "git": _get_git_info(),
+    }
+    if runtime_extra:
+        runtime.update({str(k): _jsonable(v) for k, v in runtime_extra.items()})
+    record: dict[str, Any] = {
         "command": command,
         "params": {k: _jsonable(v) for k, v in (params or {}).items()},
-        "runtime": {
-            "version": __version__,
-            "working_dir": os.getcwd(),
-            "args": " ".join(sys.argv),
-            "python_executable": sys.executable,
-            "python_version": platform.python_version(),
-            "in_container": _inside_container(),
-            "git": _get_git_info(),
-        },
+        "runtime": runtime,
         "timestamp": _get_timestamp_human(),
     }
+    if extra:
+        record.update({str(k): _jsonable(v) for k, v in extra.items()})
+    return record
 
 
 def write_runtime_metadata(
     results_dir: URIPath | Path,
     command: str,
     params: Mapping[str, Any] | None = None,
+    *,
+    extra: Mapping[str, Any] | None = None,
+    runtime_extra: Mapping[str, Any] | None = None,
 ) -> Path:
     """Serialize the metadata record to ``results_dir/<command>_metadata_<TS>.json``.
 
     ``command`` is also used as the filename prefix; dashes are replaced with
     underscores so the filename matches existing ``patch_metadata_*.json`` /
-    ``infer_metadata_*.json`` conventions.
+    ``infer_metadata_*.json`` conventions.  ``extra`` / ``runtime_extra`` let
+    ``patch`` and ``infer`` attach their model and framework details while
+    keeping the shared base schema.
     """
-    record = get_runtime_metadata(command, params)
+    record = get_runtime_metadata(
+        command, params, extra=extra, runtime_extra=runtime_extra
+    )
     safe = command.replace("-", "_")
     out = results_dir / f"{safe}_metadata_{_get_timestamp_filename()}.json"
     click.echo(f"\nSaving metadata about run to {out}\n")

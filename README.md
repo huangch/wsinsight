@@ -331,7 +331,7 @@ in control of every result.
 ├── model-outputs-csv/
 │   └── <slide>.csv                 Per-patch/cell inference results
 ├── model-outputs-geojson/
-│   └── <slide>.geojson             GeoJSON from reg --geojson (region-registered)
+│   └── <slide>.geojson             GeoJSON from reg --export-geojson (region-registered)
 ├── model-outputs-omecsv/
 │   └── <slide>.ome.csv.gz          OME-CSV from reg --omecsv (region-registered)
 ├── imported-xenium/
@@ -362,7 +362,12 @@ in control of every result.
 │   └── <slide>.geojson             GeoJSON export (wsinsight export --geojson)
 ├── export-omecsv/
 │   └── <slide>.ome.csv.gz          OME-CSV export (wsinsight export --omecsv)
-└── run_metadata_*.json             Configuration and runtime info
+└── <command>_metadata_*.json       Per-command run log — every subcommand (run,
+                                    patch, infer, export, reg, ncomp, ecomp,
+                                    tcomp, hplot, hplot-finalize, cme,
+                                    cme-profile, agg, import) writes one with the
+                                    same {command, params, runtime, timestamp}
+                                    schema; patch/infer also record the model.
 ```
 
 ## Output File Formats

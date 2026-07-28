@@ -375,7 +375,7 @@ wsinsight reg \
   [--object-inference-dir <OTHER_CELL_RESULTS>] \
   [--tag <NAMESPACE>] \
   [--radius-um 5.0] [--spacing-um-px 0.25] \
-  [--geojson] [--omecsv] [--export-workers 4] [--overwrite]
+  [--export-geojson] [--omecsv] [--export-workers 4] [--overwrite]
 ```
 
 For each cell, region matching adds `region_prob_*` columns from the patch
@@ -468,8 +468,11 @@ After a full pipeline run, `--results-dir` contains:
 │   └── <slide>.geojson             GeoJSON export
 ├── export-omecsv/
 │   └── <slide>.ome.csv.gz          OME-CSV export
-├── patch_metadata_<ts>.json        Patch-stage configuration & runtime info
-└── infer_metadata_<ts>.json        Inference-stage configuration & runtime info
+└── <command>_metadata_<ts>.json    Per-command run log; every subcommand (run,
+                                    patch, infer, export, ncomp, hplot, cme, …)
+                                    writes one with the same {command, params,
+                                    runtime, timestamp} schema (patch/infer also
+                                    embed the model record)
 ```
 
 > Experimental subcommands add their own subdirectories alongside the stable
