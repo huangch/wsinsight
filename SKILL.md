@@ -280,15 +280,24 @@ wsinsight run \
 | `--ncomp-k`                     | int       | k-hop radius for ncomp (default 2).                                                          |
 | `--export-geojson`              | flag      | After analytics merge per-cell tables → `export-geojson/`.                                   |
 | `--export-omecsv`               | flag      | Same, → `export-omecsv/`.                                                                    |
+| `--export-workers`              | int       | Worker processes for GeoJSON/OME-CSV export (default: auto).                                 |
+| `--export-object-type`          | choice    | Object type written to GeoJSON/OME-CSV: `detection` (default) or `annotation`.               |
+| `--stitch-workers`              | int       | Thread pool size for TileFuse object-based detection stitching (default: `min(8, CPU // 2)`).|
+| `--agg`                         | flag      | Run density-gated aggregate detection after inference (requires `--agg-name` + `--agg-types`).|
+| `--agg-name`                    | string    | Product label for the aggregate run (e.g. `tls`); namespaces every artifact.                 |
+| `--agg-types`                   | string    | Comma-separated ingredient cell types (e.g. `t_cell,b_cell`).                                |
+| `--agg-max-neighbor-distance`   | float     | Max Delaunay edge length (µm) for the aggregate gate (default 25.0).                          |
+| `--agg-k`                       | int       | k-hop radius for the density gate (default 2).                                               |
+| `--agg-n`                       | int       | Minimum neighborhood size for membership (default 8).                                        |
+| `--agg-r`                       | float     | Minimum ingredient-type fraction for membership (default 0.5).                               |
+| `--agg-min-size`                | int       | Drop aggregates with fewer than this many cells (default 10).                                |
 | `--overwrite`                   | flag      | Recompute existing outputs across every stage.                                               |
-
-**Experimental run flags** (require `WSINSIGHT_EXPERIMENTAL=1`):
 `--hplot` (+ `--hplot-max-neighbor-distance`, `--hplot-base-types`,
 `--hplot-target-types`, `--hplot-k`, `--hplot-n`, `--hplot-r`,
 `--hplot-range-min`, `--hplot-range-max`, `--hplot-samples-with-valid-range-only`),
 `--ecomp` (+ `--ecomp-max-edge`, `--ecomp-k`),
 `--tcomp` (+ `--tcomp-max-edge`, `--tcomp-k`),
-`--niche`   (+ `--niche-hoptimus`, `--niche-clusters`, `--niche-epochs`, `--niche-amp`, `--export-geojson`).
+`--niche`   (+ `--niche-hoptimus`, `--niche-clusters`, `--niche-epochs`, `--niche-patience`, `--niche-min-delta`, `--niche-min-epochs`, `--niche-amp`, `--niche-seed`, `--export-geojson`).
 
 These flags are accepted by `run` only when the corresponding subcommand is
 enabled; they remain undocumented and unstable.

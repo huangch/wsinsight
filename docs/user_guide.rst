@@ -123,7 +123,7 @@ Command                       Purpose
                               ``--agg-name``: an ``object_<name>_prob_<name>`` membership
                               column, an ``agg-<name>-outputs-csv/`` sidecar, and an
                               ``agg/<name>/`` graph-cache subgroup.  The name is selectable
-                              in ``hplot`` via ``--base-by aggregate`` / ``--target-by
+                              in ``hplot`` via ``--hplot-base-by aggregate`` / ``--hplot-target-by
                               aggregate``.
 ``wsinsight import``          Import spatial-transcriptomics (Xenium) gene expression onto
                               WSInsight cells.  Maps each transcriptomics cell onto the
@@ -638,12 +638,18 @@ Tuning options:
   k-hop cell-type composition.  Requires a GPU and the ``timm`` package.
 * ``--niche-clusters`` — number of KMeans clusters.  When omitted, the optimal number
   is determined automatically via a Leiden community-detection sweep.
-* ``--epochs`` (default 300) — upper bound on DGI encoder training epochs.  Early
-  stopping is always active (patience 20 epochs, minimum 50 epochs), so training may
-  finish sooner.  (In ``wsinsight run`` this option is ``--niche-epochs``.)
-* ``--amp`` — enable CUDA automatic mixed precision for DGI training (faster, lower GPU
-  memory; no effect on CPU/MPS).  Off by default.  (In ``wsinsight run`` this option is
-  ``--niche-amp``.)
+* ``--niche-epochs`` (default 300) — upper bound on DGI encoder training epochs.  Early
+  stopping is always active, so training may finish sooner.
+* ``--niche-patience`` (default 20) — stop after this many consecutive epochs without a
+  mean-loss improvement greater than ``--niche-min-delta``.
+* ``--niche-min-delta`` (default 1e-4) — minimum relative mean-loss improvement required
+  to reset the early-stopping patience counter.
+* ``--niche-min-epochs`` (default 50) — never trigger early stopping before this many
+  epochs have elapsed.
+* ``--niche-amp`` — enable CUDA automatic mixed precision for DGI training (faster, lower GPU
+  memory; no effect on CPU/MPS).  Off by default.
+* ``--niche-seed`` (default 0) — random seed for the niche pipeline (DGI training, Leiden
+  sweep, KMeans), for reproducible niche ids.
 * ``--overwrite`` — delete cached checkpoints and recompute all niche outputs.
 * ``--num-workers`` (default 8) — number of workers for GeoJSON export.
 

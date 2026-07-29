@@ -131,18 +131,52 @@ def _num_cpus() -> int:
     ),
 )
 @click.option(
-    "--epochs",
+    "--niche-epochs",
+    "epochs",
     default=300,
     show_default=True,
     type=click.IntRange(min=1),
     help=(
         "Upper bound on DGI encoder training epochs.  Early stopping is always "
-        "active (patience 20 epochs, min 50 epochs), so training may finish "
-        "sooner."
+        "active, so training may finish sooner (see --niche-patience, "
+        "--niche-min-delta and --niche-min-epochs)."
     ),
 )
 @click.option(
-    "--amp",
+    "--niche-patience",
+    "early_stop_patience",
+    default=20,
+    show_default=True,
+    type=click.IntRange(min=1),
+    help=(
+        "Early-stopping patience: stop after this many consecutive epochs "
+        "without a mean-loss improvement greater than --niche-min-delta."
+    ),
+)
+@click.option(
+    "--niche-min-delta",
+    "early_stop_min_delta",
+    default=1e-4,
+    show_default=True,
+    type=click.FloatRange(min=0),
+    help=(
+        "Minimum relative mean-loss improvement required to reset the "
+        "early-stopping patience counter."
+    ),
+)
+@click.option(
+    "--niche-min-epochs",
+    "early_stop_min_epochs",
+    default=50,
+    show_default=True,
+    type=click.IntRange(min=1),
+    help=(
+        "Never trigger early stopping before this many epochs have elapsed."
+    ),
+)
+@click.option(
+    "--niche-amp",
+    "amp",
     is_flag=True,
     default=False,
     show_default=True,
@@ -174,7 +208,8 @@ def _num_cpus() -> int:
     help="Number of workers for GeoJSON export.",
 )
 @click.option(
-    "--seed",
+    "--niche-seed",
+    "seed",
     default=0,
     show_default=True,
     type=int,
@@ -193,6 +228,9 @@ def niche(
     niche_leiden_res: list[float] | None = None,
     niche_embed_dim: int = 32,
     epochs: int = 300,
+    early_stop_patience: int = 20,
+    early_stop_min_delta: float = 1e-4,
+    early_stop_min_epochs: int = 50,
     amp: bool = False,
     overwrite: bool = False,
     export_geojson: bool = False,
@@ -249,6 +287,9 @@ def niche(
         hidden=64,
         out_dim=niche_embed_dim,
         epochs=epochs,
+        early_stop_patience=early_stop_patience,
+        early_stop_min_delta=early_stop_min_delta,
+        early_stop_min_epochs=early_stop_min_epochs,
         niche_cellular=True,
         niche_annotation=True,
         niche_clustering_k=niche_clusters,

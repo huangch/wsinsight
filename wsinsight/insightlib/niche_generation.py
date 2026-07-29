@@ -1219,6 +1219,10 @@ def niche_generation(
     niche_soft_mode: bool = False,
     overwrite: bool = False,
     seed: int = 0,
+    # early stopping (always active)
+    early_stop_patience: int = 20,
+    early_stop_min_delta: float = 1e-4,
+    early_stop_min_epochs: int = 50,
     # performance
     amp: bool = False,
 ) -> Dict[str, List[np.ndarray]]:
@@ -1423,6 +1427,9 @@ def niche_generation(
         
         # 3) Train shared DGI encoder and get embeddings per slide
         _, Z_list = train_dgi_multi(slides, hidden=hidden, out_dim=out_dim, epochs=epochs, seed=seed,
+                                    early_stop_patience=early_stop_patience,
+                                    early_stop_min_delta=early_stop_min_delta,
+                                    early_stop_min_epochs=early_stop_min_epochs,
                                     amp=amp)
         
         # with gzip.open(niche_dgi_embeddings_file, "wb") as f:

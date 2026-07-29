@@ -138,14 +138,16 @@ def _validate_types(
     help="Target cell type or cell type list whose layer-wise proportion is computed, e.g., lymphocytes.",
 )
 @click.option(
-    "--base-by",
+    "--hplot-base-by",
+    "base_by",
     default="celltype",
     show_default=True,
     type=click.Choice(["celltype", "niche", "aggregate"]),
     help="Interpret --hplot-base-types as cell types, niche ids, or aggregate names.",
 )
 @click.option(
-    "--target-by",
+    "--hplot-target-by",
+    "target_by",
     default="celltype",
     show_default=True,
     type=click.Choice(["celltype", "niche", "aggregate"]),

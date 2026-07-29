@@ -265,7 +265,7 @@ environment variable `WSINSIGHT_EXPERIMENTAL=1` is set; see
 
  Command            | Purpose
 --------------------|------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
- `wsinsight run`    | Segment tissue, extract patches, execute model inference, and optionally run ncomp analytics and export (one-shot orchestration of `patch` → `infer` → `ncomp` → `export`). Pass `--ncomp` to enable neighborhood composition and `--export-geojson` / `--export-omecsv` to write GeoJSON / OME-CSV files at the end of the run.  Experimental analytics (`--hplot`, `--niche`) require `WSINSIGHT_EXPERIMENTAL=1`.
+ `wsinsight run`    | Segment tissue, extract patches, execute model inference, and optionally run ncomp analytics and export (one-shot orchestration of `patch` → `infer` → `ncomp` → `export`). Pass `--ncomp` to enable neighborhood composition and `--export-geojson` / `--export-omecsv` to write GeoJSON / OME-CSV files at the end of the run.  Pass `--agg` (with `--agg-name` / `--agg-types`) to run density-gated aggregate detection as part of the same command. Experimental analytics (`--hplot`, `--niche`) require `WSINSIGHT_EXPERIMENTAL=1`.
  `wsinsight patch`  | Perform tissue segmentation, cache/crop patches to HDF5, and prepare metadata for later inference runs. By default, slides with existing patch outputs are skipped; pass `--overwrite` to regenerate.
  `wsinsight infer`  | Load cached patches, run the selected model, and produce per-cell CSV outputs. By default, slides with existing CSV outputs are skipped; pass `--overwrite` to regenerate. Enrich object CSVs with region-level probabilities via `--region-inference-dir`. Use the standalone `ncomp`/`export` commands (or `run`) for downstream analytics. Does **not** run analytics or export — use `run` for one-shot orchestration.
  `wsinsight reg`    | Post-hoc object-to-region registration: enrich existing object-level CSV outputs with `region_prob_*` columns derived from a separate region-level inference run (`-r`). Equivalent to running `infer` with `--region-inference-dir`, but works on already-completed runs without re-running inference. Use `--overwrite` to replace existing `region_*` columns.
@@ -521,8 +521,9 @@ Merged per-cell CSV produced by `build_export_csvs()` (called programmatically v
 ----------------------|---------|----------------|----------------------------------------------------------------------------------------------------
  `-b / --batch-size`  | `32`    | `run`, `infer` | Batch size for model inference. Increase for multi-GPU setups.
  `-n / --num-workers` | auto    | `run`, `infer` | Dataloader workers feeding patches to PyTorch. Default heuristic: `min(2 × GPU count, CPU count)`.
- `--export-workers`   | auto    | `infer`        | Worker processes for GeoJSON/OME-CSV export. Default reserves headroom for inference.
- `--stitch-workers`   | auto    | `infer`        | Thread pool size for TileFuse object-based detection stitching. Default: `min(8, CPU // 2)`.
+ `--export-workers`   | auto    | `run`, `infer`, `export` | Worker processes for GeoJSON/OME-CSV export. Default reserves headroom for inference.
+ `--export-object-type` | `detection` | `run`, `export` | Object type written to GeoJSON / OME-CSV (`detection` or `annotation`).
+ `--stitch-workers`   | auto    | `run`, `infer`  | Thread pool size for TileFuse object-based detection stitching. Default: `min(8, CPU // 2)`.
 
 ## Example Workflows
 
@@ -646,7 +647,7 @@ QuPath extension, etc.) can discover every command; only invocation is gated.
  `wsinsight ecomp`          | Edge-level composition analysis. For each Delaunay edge, builds the line graph, collects k-hop edge neighbors, and records the composition of edge types in the local neighborhood. Outputs per-edge CSVs under `ecomp-outputs-csv/`.
  `wsinsight tcomp`          | Triad-level composition analysis. For each Delaunay triangle, builds the dual graph (triads sharing ≥1 vertex), collects k-hop triad neighbors, and records the composition of triad types plus per-triad geometry (area, perimeter, regularity). Outputs per-triad CSVs under `tcomp-outputs-csv/`.
  `wsinsight niche`            | Niche analysis across a cohort of slides. Builds per-slide Delaunay cell graphs, trains a global Deep Graph Infomax (DGI) encoder, clusters the resulting embeddings, and writes per-cell niche labels plus annotation-level region merges under `niche-outputs-csv/`. Pass `--export-geojson` to also write GeoJSON files under `niche-outputs-geojson/`. Cross-slide analysis — cannot be parallelized across GPU shards.
- `wsinsight agg`            | Cell-type aggregate analysis on existing inference outputs. Detects connected, density-gated aggregates of a chosen cell-type set (`--agg-types`, e.g. `t_cell,b_cell` → TLS) over the cached Delaunay graph, contracts them into a quotient graph, and writes namespaced outputs under the product label `--agg-name`: an `object_<name>_prob_<name>` per-cell membership column (upserted into `model-outputs-csv/`), a per-aggregate sidecar under `agg-<name>-outputs-csv/`, and an `agg/<name>/` subgroup in `graphs/<slide>.h5`. The name is selectable in `hplot` via `--base-by aggregate` / `--target-by aggregate`.
+ `wsinsight agg`            | Cell-type aggregate analysis on existing inference outputs. Detects connected, density-gated aggregates of a chosen cell-type set (`--agg-types`, e.g. `t_cell,b_cell` → TLS) over the cached Delaunay graph, contracts them into a quotient graph, and writes namespaced outputs under the product label `--agg-name`: an `object_<name>_prob_<name>` per-cell membership column (upserted into `model-outputs-csv/`), a per-aggregate sidecar under `agg-<name>-outputs-csv/`, and an `agg/<name>/` subgroup in `graphs/<slide>.h5`. The name is selectable in `hplot` via `--hplot-base-by aggregate` / `--hplot-target-by aggregate`.
 
 Experimental stages can also be invoked inline from `wsinsight run` via
 `--hplot` / `--niche` (when `WSINSIGHT_EXPERIMENTAL=1`).  `ecomp` / `tcomp` / `agg` are
@@ -676,8 +677,8 @@ where 1.0 is equilateral).  Edges and triads are **not** merged into
 -----------------------------------------|----------|-------------------------------------------------------------------------------
  `--hplot-base-types`                    | required | Comma-separated base cell types that define the tumour cluster (e.g. `tumor`)
  `--hplot-target-types`                  | required | Comma-separated target cell types to track across layers (e.g. `lymphocyte`)
- `--hplot-base-by` (`--base-by` in `wsinsight hplot`)   | `celltype` | Interpret `--hplot-base-types` as `celltype`, `niche`, or `aggregate` names
- `--hplot-target-by` (`--target-by` in `wsinsight hplot`) | `celltype` | Interpret `--hplot-target-types` as `celltype`, `niche`, or `aggregate` names
+ `--hplot-base-by`   | `celltype` | Interpret `--hplot-base-types` as `celltype`, `niche`, or `aggregate` names
+ `--hplot-target-by` | `celltype` | Interpret `--hplot-target-types` as `celltype`, `niche`, or `aggregate` names
  `--hplot-max-neighbor-distance`         | `25.0`   | Maximum Delaunay edge length in µm
  `--hplot-k`                             | `2`      | k-hop neighborhood radius for region detection
  `--hplot-n`                             | `8`      | Minimum neighborhood size for base-region membership
@@ -693,7 +694,7 @@ where 1.0 is equilateral).  Edges and triads are **not** merged into
 --------------------|---------|--------------------------------------
  `--ecomp-max-edge` | `25.0`  | Maximum Delaunay edge length in µm
  `--ecomp-k`        | `2`     | k-hop neighborhood radius (line graph)
- `--ecomp-no-neighborhood` (`--no-neighborhood` in `wsinsight ecomp`) | off | Skip k-hop aggregation; one row per edge, no `neighborhood_*` columns (much faster)
+ `--ecomp-no-neighborhood` | off | Skip k-hop aggregation; one row per edge, no `neighborhood_*` columns (much faster)
  `--overwrite`      | off     | Recompute existing per-slide outputs
 
 ### Triad Composition parameters (`--tcomp-*` options)
@@ -702,7 +703,7 @@ where 1.0 is equilateral).  Edges and triads are **not** merged into
 --------------------|---------|-------------------------------------------------------------------------
  `--tcomp-max-edge` | `25.0`  | Longest-edge threshold (µm); triads with any edge above this are pruned
  `--tcomp-k`        | `2`     | k-hop neighborhood radius (dual graph)
- `--tcomp-no-neighborhood` (`--no-neighborhood` in `wsinsight tcomp`) | off | Skip k-hop aggregation; one row per triad, no `neighborhood_*` columns (much faster)
+ `--tcomp-no-neighborhood` | off | Skip k-hop aggregation; one row per triad, no `neighborhood_*` columns (much faster)
  `--overwrite`      | off     | Recompute existing per-slide outputs
 
 ### niche parameters (`--niche-*` options in `run` and `wsinsight niche`)
@@ -713,9 +714,12 @@ where 1.0 is equilateral).  Edges and triads are **not** merged into
  `--niche-clusters`   | auto    | Number of KMeans clusters; when omitted, determined via Leiden community detection
  `--niche-leiden-res` | `0.5,1.0,2.0` | Comma-separated Leiden resolutions to sweep when `--niche-clusters` is omitted
  `--niche-embed-dim`  | `32`    | Dimensionality of the DGI cell embedding (8–256)
- `--niche-epochs` (`--epochs` in `wsinsight niche`) | `300` | Upper bound on DGI encoder training epochs. Early stopping is always active (patience 20, min 50 epochs), so training may finish sooner
- `--niche-amp` (`--amp` in `wsinsight niche`) | off | Enable CUDA automatic mixed precision for DGI training (faster, lower GPU memory; no effect on CPU/MPS)
- `--niche-seed` (`--seed` in `wsinsight niche`) | `0` | Random seed for the niche pipeline (DGI training, Leiden sweep, KMeans), for reproducible niche ids
+ `--niche-epochs`     | `300`   | Upper bound on DGI encoder training epochs. Early stopping is always active, so training may finish sooner
+ `--niche-patience`   | `20`    | Early-stopping patience: stop after this many consecutive epochs without a mean-loss improvement > `--niche-min-delta`
+ `--niche-min-delta`  | `1e-4`  | Minimum relative mean-loss improvement required to reset the early-stopping patience counter
+ `--niche-min-epochs` | `50`    | Never trigger early stopping before this many epochs have elapsed
+ `--niche-amp`        | off     | Enable CUDA automatic mixed precision for DGI training (faster, lower GPU memory; no effect on CPU/MPS)
+ `--niche-seed`       | `0`     | Random seed for the niche pipeline (DGI training, Leiden sweep, KMeans), for reproducible niche ids
  `--export-geojson` | off     | Export niche results to GeoJSON files under `niche-outputs-geojson/`
  `--overwrite`      | off     | Delete cached checkpoints and recompute from scratch
 
@@ -723,7 +727,7 @@ where 1.0 is equilateral).  Edges and triads are **not** merged into
 
  Option                          | Default  | Description
 ---------------------------------|----------|---------------------------------------------------------------------------------
- `--agg-name`                    | required | Product label (lower-case `[a-z0-9_]+`, e.g. `tls`); namespaces every artifact and is selectable in `hplot` via `--base-by aggregate` / `--target-by aggregate`
+ `--agg-name`                    | required | Product label (lower-case `[a-z0-9_]+`, e.g. `tls`); namespaces every artifact and is selectable in `hplot` via `--hplot-base-by aggregate` / `--hplot-target-by aggregate`
  `--agg-types`                   | required | Comma-separated ingredient cell types that may join the aggregate (e.g. `t_cell,b_cell`)
  `--agg-max-neighbor-distance`   | `25.0`   | Maximum Delaunay edge length in µm
  `--agg-k`                       | `2`      | k-hop neighborhood radius for the density gate
@@ -787,7 +791,7 @@ wsinsight agg \
 wsinsight hplot \
   --wsi-dir slides/ --results-dir results/ \
   --hplot-base-types tumor --hplot-target-types tls \
-  --target-by aggregate \
+  --hplot-target-by aggregate \
   --hplot-range-min -5 --hplot-range-max 5
 ```
 

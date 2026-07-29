@@ -24,6 +24,7 @@ import tqdm
 import wsinfer_zoo.client
 from ..modellib.models import resolve_zoo_registry_path
 from .infer import infer as infer_command
+from .infer import DEFAULT_STITCH_WORKERS as _DEFAULT_STITCH_WORKERS
 from .niche import niche as niche_command
 from .niche import FLOAT_LIST as _NICHE_LEIDEN_LIST
 from .niche import _DEFAULT_LEIDEN_RESOLUTIONS as _NICHE_DEFAULT_LEIDEN
@@ -32,6 +33,7 @@ from .hplot import hplot as hplot_command
 from .ncomp import ncomp as ncomp_command
 from .patch import patch as patch_command
 from .tcomp import tcomp as tcomp_command
+from .agg import agg as agg_command
 from ..export_helpers import build_export_csvs
 from ..qupath import make_qupath_project
 from ..cancel import raise_if_cancelled
@@ -283,6 +285,7 @@ _INFER_PARAM_NAMES: tuple[str, ...] = (
     "batch_size",
     "num_workers",
     "pin_memory",
+    "stitch_workers",
     # "speedup",
     "patch_overlap_ratio",
     "patch_size_um",
@@ -342,6 +345,20 @@ _NICHE_PARAM_NAMES: tuple[str, ...] = (
     "niche_embed_dim",
     "overwrite",
     "export_geojson",
+    "num_workers",
+)
+
+_AGG_PARAM_NAMES: tuple[str, ...] = (
+    "wsi_dir",
+    "results_dir",
+    "agg_name",
+    "agg_types",
+    "agg_max_neighbor_distance",
+    "agg_k",
+    "agg_n",
+    "agg_r",
+    "agg_min_size",
+    "overwrite",
     "num_workers",
 )
 
@@ -833,6 +850,37 @@ def _select_kwargs(values: dict[str, Any], keys: tuple[str, ...]) -> dict[str, A
     ),
 )
 @click.option(
+    "--niche-patience",
+    default=20,
+    show_default=True,
+    type=click.IntRange(min=1),
+    help=(
+        "Early-stopping patience for niche DGI training: stop after this many "
+        "consecutive epochs without a mean-loss improvement greater than "
+        "--niche-min-delta.  Ignored unless --niche is set."
+    ),
+)
+@click.option(
+    "--niche-min-delta",
+    default=1e-4,
+    show_default=True,
+    type=click.FloatRange(min=0),
+    help=(
+        "Minimum relative mean-loss improvement required to reset the niche "
+        "early-stopping patience counter.  Ignored unless --niche is set."
+    ),
+)
+@click.option(
+    "--niche-min-epochs",
+    default=50,
+    show_default=True,
+    type=click.IntRange(min=1),
+    help=(
+        "Never trigger niche early stopping before this many epochs have "
+        "elapsed.  Ignored unless --niche is set."
+    ),
+)
+@click.option(
     "--niche-amp",
     is_flag=True,
     default=False,
@@ -885,6 +933,85 @@ def _select_kwargs(values: dict[str, Any], keys: tuple[str, ...]) -> dict[str, A
         ".h5ad files (export-h5ad/).  Equivalent to running "
         "'wsinsight export --h5ad'."
     ),
+)
+@click.option(
+    "--stitch-workers",
+    default=_DEFAULT_STITCH_WORKERS,
+    show_default=True,
+    type=click.IntRange(min=1),
+    help="Thread pool size used when TileFuse stitches object-based detections during inference.",
+)
+@click.option(
+    "--export-workers",
+    default=None,
+    type=click.IntRange(min=1),
+    help=(
+        "Worker processes for the merged export stage.  When omitted, defaults "
+        "to min(4, CPU count)."
+    ),
+)
+@click.option(
+    "--export-object-type",
+    default="detection",
+    show_default=True,
+    type=click.Choice(["detection", "annotation"]),
+    help="Object type recorded for exported GeoJSON/h5ad features.",
+)
+@click.option(
+    "--agg",
+    is_flag=True,
+    default=False,
+    show_default=True,
+    help="Run cell-type aggregate (agg) analysis after inference.  Requires --agg-name and --agg-types.",
+)
+@click.option(
+    "--agg-name",
+    default=None,
+    help=(
+        "Product label for the aggregate (lower-case [a-z0-9_]+), e.g. 'tls'.  "
+        "Required when --agg is set."
+    ),
+)
+@click.option(
+    "--agg-types",
+    callback=_csv_to_list,
+    default=None,
+    help="Comma-separated ingredient cell types for the aggregate, e.g. 't_cell,b_cell'.  Required when --agg is set.",
+)
+@click.option(
+    "--agg-max-neighbor-distance",
+    default=25.0,
+    type=click.FloatRange(min=0),
+    show_default=True,
+    help="Maximum distance (µm) between neighboring cells in the Delaunay graph for agg.",
+)
+@click.option(
+    "--agg-k",
+    default=2,
+    type=click.IntRange(min=1),
+    show_default=True,
+    help="k-hop neighborhood radius for the agg density gate.",
+)
+@click.option(
+    "--agg-n",
+    default=8,
+    type=click.IntRange(min=0),
+    show_default=True,
+    help="Minimum neighborhood size for a cell to be inside an aggregate region.",
+)
+@click.option(
+    "--agg-r",
+    default=0.5,
+    type=click.FloatRange(min=0, max=1),
+    show_default=True,
+    help="Minimum fraction of ingredient cells in the neighborhood (agg density gate).",
+)
+@click.option(
+    "--agg-min-size",
+    default=10,
+    type=click.IntRange(min=1),
+    show_default=True,
+    help="Drop aggregates with fewer than this many cells.",
 )
 def run(
     ctx: click.Context,
@@ -950,11 +1077,25 @@ def run(
     niche_leiden_res: List | None = None,
     niche_embed_dim: int = 32,
     niche_epochs: int = 300,
+    niche_patience: int = 20,
+    niche_min_delta: float = 1e-4,
+    niche_min_epochs: int = 50,
     niche_amp: bool = False,
     niche_seed: int = 0,
+    stitch_workers: int = _DEFAULT_STITCH_WORKERS,
+    agg: bool = False,
+    agg_name: str | None = None,
+    agg_types: List | None = None,
+    agg_max_neighbor_distance: float = 25.0,
+    agg_k: int = 2,
+    agg_n: int = 8,
+    agg_r: float = 0.5,
+    agg_min_size: int = 10,
     export_geojson: bool = False,
     export_omecsv: bool = False,
     export_h5ad: bool = False,
+    export_workers: int | None = None,
+    export_object_type: str = "detection",
 ) -> None:
     """Run both patch extraction and inference workflows for a slide directory.
 
@@ -1069,9 +1210,21 @@ def run(
     if niche:
         niche_kwargs = _select_kwargs(params, _NICHE_PARAM_NAMES)
         niche_kwargs["epochs"] = niche_epochs
+        niche_kwargs["early_stop_patience"] = niche_patience
+        niche_kwargs["early_stop_min_delta"] = niche_min_delta
+        niche_kwargs["early_stop_min_epochs"] = niche_min_epochs
         niche_kwargs["amp"] = niche_amp
         niche_kwargs["seed"] = niche_seed
         ctx.invoke(niche_command, **niche_kwargs)
+        raise_if_cancelled()
+
+    # --- Stage 5b (optional): cell-type aggregate (agg) analysis -------------
+    if agg:
+        if not agg_name or not agg_types:
+            raise click.UsageError(
+                "--agg requires both --agg-name and --agg-types."
+            )
+        ctx.invoke(agg_command, **_select_kwargs(params, _AGG_PARAM_NAMES))
         raise_if_cancelled()
 
     # --- Stage 6 (optional): merged export to GeoJSON / OME-CSV / h5ad -------
@@ -1089,7 +1242,7 @@ def run(
 
         if export_csvs:
             click.echo(f"  {len(export_csvs)} slide(s) ready for export.")
-            num_export_workers = min(4, _num_cpus() or 4)
+            num_export_workers = export_workers or min(4, _num_cpus() or 4)
 
             if export_geojson:
                 click.echo("\nWriting results to GeoJSON files...\n")
@@ -1100,7 +1253,7 @@ def run(
                     output_dir="export-geojson",
                     prefix="prob",
                     num_workers=num_export_workers,
-                    object_type="detection",
+                    object_type=export_object_type,
                     set_classification=True,
                     overwrite=True,
                 )
@@ -1133,7 +1286,7 @@ def run(
                     results_dir=results_dir,
                     output_dir="export-h5ad",
                     prefix="prob",
-                    object_type="detection",
+                    object_type=export_object_type,
                     overwrite=True,
                 )
 

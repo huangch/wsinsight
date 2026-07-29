@@ -85,8 +85,8 @@ Command                       Purpose
                               outputs.  Requires both ``--hplot-base-types`` and
                               ``--hplot-target-types``.  Computes layer-wise cell-type
                               proportions from tumour boundary outward.  Can also run inline
-                              via ``wsinsight run --hplot``.  Use ``--base-by`` /
-                              ``--target-by`` (``celltype`` | ``niche``) to plot the
+                              via ``wsinsight run --hplot``.  Use ``--hplot-base-by`` /
+                              ``--hplot-target-by`` (``celltype`` | ``niche``) to plot the
                               fraction of cells in a discovered niche across layers
                               instead of a cell type; niche ids may be given as ``7`` or
                               ``niche_7``.

@@ -75,7 +75,8 @@ _STORAGE_KWARGS = default_storage_kwargs()
     help="Number of slides to process concurrently.",
 )
 @click.option(
-    "--no-neighborhood",
+    "--tcomp-no-neighborhood",
+    "no_neighborhood",
     is_flag=True,
     default=False,
     show_default=True,
