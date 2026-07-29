@@ -561,8 +561,18 @@ class DGIModule(nn.Module):
 
 
 
-def train_dgi_multi(slides, hidden=64, out_dim=32, epochs=300, lr=1e-3, wd=1e-4, seed=0):
-    """Train a shared DGI encoder across slide graphs and return embeddings."""
+def train_dgi_multi(slides, hidden=64, out_dim=32, epochs=300, lr=1e-3, wd=1e-4, seed=0,
+                    amp=False,
+                    early_stop_patience=20, early_stop_min_delta=1e-4,
+                    early_stop_min_epochs=50):
+    """Train a shared DGI encoder across slide graphs and return embeddings.
+
+    ``amp`` enables CUDA automatic mixed precision (no-op on CPU/MPS).  Early
+    stopping is always active: ``epochs`` is the upper bound, and training stops
+    once the mean epoch loss fails to improve by more than ``early_stop_min_delta``
+    (relative to the best loss) for ``early_stop_patience`` consecutive epochs,
+    but never before ``early_stop_min_epochs``.
+    """
     # Seed all RNGs so the encoder init, mini-batch shuffling and DGI corruption
     # are reproducible across runs for a given seed.
     import random as _random
@@ -632,24 +642,53 @@ def train_dgi_multi(slides, hidden=64, out_dim=32, epochs=300, lr=1e-3, wd=1e-4,
 
     opt = torch.optim.Adam(model.parameters(), lr=lr, weight_decay=wd)
 
-    # training (works for single or multi-GPU)
-    for _ in tqdm(range(epochs)):
-        for batch in loader:
-            opt.zero_grad()
-    
-            if ngpu > 1:
-                pos_z, neg_z, s = model(batch)
-                loss = model.module.loss(pos_z, neg_z, s)
-            else:
-                batch = batch.to(primary)
-                pos_z, neg_z, s = model(batch)
-                loss = model.loss(pos_z, neg_z, s)
+    # Automatic mixed precision (CUDA only). The GradScaler/autocast are gated by
+    # ``enabled`` so that with amp=False the math path is identical to plain FP32.
+    use_amp = bool(amp) and primary.type == "cuda"
+    if primary.type == "cuda":
+        torch.backends.cudnn.benchmark = True
+    scaler = torch.cuda.amp.GradScaler(enabled=use_amp)
 
-    
-        
-    
-            loss.backward()
-            opt.step()
+    # Early-stopping state (patience on the mean epoch loss; --epochs is the cap).
+    best_loss = float("inf")
+    epochs_no_improve = 0
+
+    # training (works for single or multi-GPU)
+    for epoch in tqdm(range(epochs)):
+        epoch_loss_sum = 0.0
+        n_batches = 0
+        for batch in loader:
+            opt.zero_grad(set_to_none=True)
+
+            with torch.cuda.amp.autocast(enabled=use_amp):
+                if ngpu > 1:
+                    pos_z, neg_z, s = model(batch)
+                    loss = model.module.loss(pos_z, neg_z, s)
+                else:
+                    batch = batch.to(primary)
+                    pos_z, neg_z, s = model(batch)
+                    loss = model.loss(pos_z, neg_z, s)
+
+            scaler.scale(loss).backward()
+            scaler.step(opt)
+            scaler.update()
+
+            epoch_loss_sum += float(loss.detach())
+            n_batches += 1
+
+        if n_batches > 0:
+            epoch_loss = epoch_loss_sum / n_batches
+            # Relative improvement threshold so it adapts to the loss scale.
+            if epoch_loss < best_loss - early_stop_min_delta * max(abs(best_loss), 1.0):
+                best_loss = epoch_loss
+                epochs_no_improve = 0
+            else:
+                epochs_no_improve += 1
+            if (epoch + 1) >= early_stop_min_epochs and epochs_no_improve >= early_stop_patience:
+                print(f"[DGI early-stop] no improvement > {early_stop_min_delta} (relative) for "
+                      f"{early_stop_patience} epochs; stopping at epoch {epoch + 1}/{epochs} "
+                      f"(best mean loss={best_loss:.4f}).")
+                break
 
 
 
@@ -826,7 +865,54 @@ def prepare_slide_graph(
 # End-to-end multi-image training + clustering
 # =============================================================================
 
-def _knn_graph_connectivity(Z: np.ndarray, k_nn: int = 15):
+def _approx_knn_connectivity(Z: np.ndarray, k_nn: int = 15, seed: int = 0):
+    """Approximate symmetric kNN connectivity via pynndescent (then faiss).
+
+    Returns a symmetric CSR connectivity matrix with the same semantics as
+    :func:`_knn_graph_connectivity` (unweighted, self-loops removed), or
+    ``None`` if no approximate-NN backend is importable.
+    """
+    import scipy.sparse as sp
+    n = Z.shape[0]
+    Zf = np.ascontiguousarray(Z, dtype=np.float32)
+    idx = None
+    try:
+        from pynndescent import NNDescent
+        index = NNDescent(Zf, n_neighbors=k_nn + 1, metric="euclidean",
+                          random_state=seed)
+        idx, _ = index.neighbor_graph            # idx: [n, k_nn+1] incl. self
+    except Exception:
+        try:
+            import faiss
+            fi = faiss.IndexFlatL2(Zf.shape[1])
+            fi.add(Zf)
+            _, idx = fi.search(Zf, k_nn + 1)     # idx: [n, k_nn+1] incl. self
+        except Exception:
+            return None
+    idx = np.asarray(idx)
+    rows = np.repeat(np.arange(n, dtype=np.int64), idx.shape[1])
+    cols = idx.reshape(-1).astype(np.int64)
+    keep = rows != cols                          # drop self-matches
+    rows, cols = rows[keep], cols[keep]
+    data = np.ones(rows.shape[0], dtype=np.float32)
+    A = sp.coo_matrix((data, (rows, cols)), shape=(n, n)).tocsr()
+    A = A.maximum(A.T).tocsr()                   # symmetrize
+    return A
+
+
+def _knn_graph_connectivity(Z: np.ndarray, k_nn: int = 15, seed: int = 0):
+    """Symmetric kNN connectivity using approximate NN (pynndescent, then faiss).
+
+    Approximate NN is the only intended path; the exact sklearn kNN is kept
+    solely as a safety net for environments where neither pynndescent nor faiss
+    is importable, so the pipeline never hard-fails.
+    """
+    A = _approx_knn_connectivity(Z, k_nn=k_nn, seed=seed)
+    if A is not None:
+        return A
+    click.secho(
+        "  no approximate-kNN backend (pynndescent/faiss) is available; "
+        "falling back to exact sklearn kNN.", fg="yellow")
     A = kneighbors_graph(Z, n_neighbors=k_nn, mode='connectivity', include_self=False)
     A = A.maximum(A.T).tocsr()  # symmetrize
     return A
@@ -968,7 +1054,7 @@ def estimate_niches_from_Z_list(
         # concat for a single clustering (consistent niche IDs across slides)
         offsets = np.cumsum([0] + [Z.shape[0] for Z in Z_list[:-1]])
         Z_all = np.vstack(Z_list)
-        A = _knn_graph_connectivity(Z_all, k_nn=k_nn)
+        A = _knn_graph_connectivity(Z_all, k_nn=k_nn, seed=seed)
         g = _igraph_from_sparse(A)
         sweep = _leiden_sweep_on_graph(Z_all, 
                                        g, 
@@ -995,7 +1081,7 @@ def estimate_niches_from_Z_list(
         all_logs = []
         n_clusters_list = []
         for Z in Z_list:
-            A = _knn_graph_connectivity(Z, k_nn=k_nn)
+            A = _knn_graph_connectivity(Z, k_nn=k_nn, seed=seed)
             g = _igraph_from_sparse(A)
             sweep = _leiden_sweep_on_graph(Z, 
                                            g, 
@@ -1042,7 +1128,66 @@ def _prepare_slide_graph_worker(i, wsi_path, csv_path, ds,
         mode="soft" if niche_soft_mode else "hard",
     )
     return i, s
-        
+
+
+def _niche_cellular_worker(args):
+    """Background worker: write one slide's per-cell niche CSV (Phase 4).
+
+    Each slide is independent, so this is safe to run in a process pool. The CSV
+    is written to a temp file and atomically renamed to protect against partial
+    writes on interruption (the parent handles cancellation between futures).
+    """
+    (wsi_path, model_output_csv, kept_idx, X_norm, X_raw, classes,
+     labels, k_hops, niche_clustering_k, cell_csv, overwrite) = args
+    cell_csv = Path(cell_csv)
+    if not overwrite and cell_csv.exists():
+        return str(cell_csv), "skip"
+
+    niche_detection_df = pd.read_csv(model_output_csv)
+    feature_normalized_cols = [f"feature_normalized_k{k}_{c.replace('prob_', '')}"
+                               for k in range(k_hops + 1) for c in classes]
+    feature_cols = [f"feature_raw_k{k}_{c.replace('prob_', '')}"
+                    for k in range(k_hops + 1) for c in classes]
+    niche_detection_df.loc[kept_idx, feature_normalized_cols] = X_norm
+    niche_detection_df.loc[kept_idx, feature_cols] = X_raw
+    niche_cols = [f"niche_{l}" for l in range(niche_clustering_k)]
+    label_one_hot = np.eye(niche_clustering_k, dtype=np.float32)[labels]
+    niche_detection_df.loc[kept_idx, niche_cols] = label_one_hot
+
+    tmp = str(cell_csv) + ".tmp"
+    niche_detection_df.to_csv(tmp, index=False)
+    os.replace(tmp, cell_csv)
+    return str(cell_csv), "ok"
+
+
+def _niche_annotation_worker(args):
+    """Background worker: write one slide's annotation-level niche CSV (Phase 5)."""
+    (wsi_path, cell_csv, niche_csv, kept_idx, edges_df,
+     niche_clustering_k, max_cell_radius_um, overwrite) = args
+    niche_csv = Path(niche_csv)
+    if not overwrite and niche_csv.exists():
+        return str(niche_csv), "skip"
+
+    mpp = get_avg_mpp(wsi_path)
+    niche_detection_df = pd.read_csv(cell_csv)
+    valid_mask = np.zeros(len(niche_detection_df), dtype=bool)
+    valid_mask[np.asarray(kept_idx, dtype=int)] = True
+    edges_df = remap_edges_to_valid_indices(edges_df, valid_mask)
+
+    niche_annotation_df = merge_same_label_by_shared_edges_iterative(
+        niche_detection_df,
+        edges_df,
+        niche_clustering_k=niche_clustering_k,
+        mpp=mpp,
+        max_radius_um=max_cell_radius_um,
+    )
+
+    tmp = str(niche_csv) + ".tmp"
+    niche_annotation_df.to_csv(tmp, index=False)
+    os.replace(tmp, niche_csv)
+    return str(niche_csv), "ok"
+
+
 def niche_generation(
     wsi_dir: str | URIPath | None,
     wsi_paths: Sequence[Path | URIPath] | None,
@@ -1074,6 +1219,8 @@ def niche_generation(
     niche_soft_mode: bool = False,
     overwrite: bool = False,
     seed: int = 0,
+    # performance
+    amp: bool = False,
 ) -> Dict[str, List[np.ndarray]]:
     """
     Prepare graphs for multiple slides, global-standardize features, train one DGI, and cluster per slide.
@@ -1140,10 +1287,11 @@ def niche_generation(
     niche_niches_output_dir.mkdir(exist_ok=True)
     niche_slide_graph_file = results_dir / "slide-graphs.joblib"
     niche_dgi_embeddings_file = results_dir / "dgi-embeddings.joblib"
+    niche_labels_file = results_dir / "niche-labels.joblib"
 
     # If overwrite requested, remove cached checkpoints so all phases re-run.
     if overwrite:
-        for _ckpt in (niche_slide_graph_file, niche_dgi_embeddings_file):
+        for _ckpt in (niche_slide_graph_file, niche_dgi_embeddings_file, niche_labels_file):
             if _ckpt.exists():
                 _ckpt.unlink()
     
@@ -1274,14 +1422,22 @@ def niche_generation(
         click.secho("\nPhase 2/5: Train shared DGI encoder and get DGI embeddings per slide.\n", fg="green")
         
         # 3) Train shared DGI encoder and get embeddings per slide
-        _, Z_list = train_dgi_multi(slides, hidden=hidden, out_dim=out_dim, epochs=epochs, seed=seed)
+        _, Z_list = train_dgi_multi(slides, hidden=hidden, out_dim=out_dim, epochs=epochs, seed=seed,
+                                    amp=amp)
         
         # with gzip.open(niche_dgi_embeddings_file, "wb") as f:
         #     pickle.dump(Z_list, f, protocol=pickle.HIGHEST_PROTOCOL)
 
         joblib.dump(Z_list, niche_dgi_embeddings_file, compress=("lz4", 3))
         
-    if not niche_clustering_k:
+    _labels_cached = niche_labels_file.exists() and not overwrite
+    if _labels_cached:
+        click.secho("\nPhase 3/5: Load cached niche labels.\n"
+                    f"Load existing niche labels file: {niche_labels_file}\n", fg="green")
+        _cached = joblib.load(niche_labels_file)
+        labels_list = _cached["labels_list"]
+        niche_clustering_k = _cached["niche_clustering_k"]
+    elif not niche_clustering_k:
         # Resolution selection. When several resolutions are supplied we sweep
         # them and keep the most stable "winner"; when a SINGLE resolution is
         # given there is nothing to compare, so we skip the repeat/scoring
@@ -1329,75 +1485,51 @@ def niche_generation(
                             ).fit_predict(Z_all).astype(np.int32)
         labels_list = [labels_all[off:off + Z.shape[0]]
                        for off, Z in zip(offsets, Z_list)]
-    
+
+    # Cache the per-slide labels so repeated Phase 4/5 runs skip re-clustering.
+    if not _labels_cached:
+        joblib.dump({"labels_list": labels_list,
+                     "niche_clustering_k": int(niche_clustering_k)},
+                    niche_labels_file, compress=("lz4", 3))
+
     click.secho("\nPhase 4/5: Perform cellular-level niche analysis per slide.\n", fg="green")
 
     if niche_cellular:
-        for i, (wsi_path, model_output_csv) in tqdm(enumerate(zip(slide_paths, model_output_paths)), total=len(slide_paths)):
-            raise_if_cancelled()
+        # Each slide's per-cell CSV is independent -> build in a process pool.
+        _p4_tasks = []
+        for i, wsi_path in enumerate(slide_paths):
             niche_csv_name = Path(wsi_path).with_suffix(".csv").name
             cell_csv = niche_cells_output_dir / niche_csv_name
-            niche_csv = niche_niches_output_dir / niche_csv_name
-            
-            if not overwrite and cell_csv.exists():
-                continue
-            
-            mpp = get_avg_mpp(wsi_path)
-            
-            model_output_df = pd.read_csv(model_output_csv)
-            niche_detection_df = model_output_df
-            
-            feature_normalized_cols = [f"feature_normalized_k{k}_{c.replace('prob_', '')}" for k in range(k_hops+1) for c in slides[i]["classes"]]
-            feature_cols = [f"feature_raw_k{k}_{c.replace('prob_', '')}" for k in range(k_hops+1) for c in slides[i]["classes"]]
-            niche_detection_df.loc[slides[i]["kept_idx"], feature_normalized_cols] = slides[i]["X_normalized"]
-            niche_detection_df.loc[slides[i]["kept_idx"], feature_cols] = slides[i]["X"]
-            niche_cols = [f"niche_{l}" for l in range(niche_clustering_k)]
-            label_one_hot = np.eye(niche_clustering_k, dtype=np.float32)[labels_list[i]]
-            niche_detection_df.loc[slides[i]["kept_idx"], niche_cols] = label_one_hot
-            
-            with critical_section(f"saving niche cell output for {wsi_path.stem}"):
-                niche_detection_df.to_csv(cell_csv, index=False)
-            
-            # valid_mask = np.zeros(len(niche_detection_df), dtype=bool)
-            # valid_mask[np.asarray(slides[i]["kept_idx"], dtype=int)] = True
-            # edges_df = remap_edges_to_valid_indices(slides[i]['edges_df'], valid_mask)
-            
-            # niche_annotation_df = merge_same_label_by_shared_edges_iterative(niche_detection_df, 
-            #                                                                  edges_df,
-            #                                                                  niche_clustering_k=niche_clustering_k,
-            #                                                                  mpp=mpp,
-            #                                                                  max_radius_um=max_cell_radius_um)
-            #
-            # niche_annotation_df.to_csv(niche_csv, index=False)
-        
-    
+            _p4_tasks.append((wsi_path, model_output_paths[i], slides[i]["kept_idx"],
+                              slides[i]["X_normalized"], slides[i]["X"], slides[i]["classes"],
+                              labels_list[i], k_hops, niche_clustering_k, cell_csv, overwrite))
+        _p4_workers = pick_workers_safe(max_workers=os.cpu_count() - 2, min_workers=2)
+        _p4_ctx = mp.get_context("spawn")
+        with ProcessPoolExecutor(max_workers=_p4_workers, mp_context=_p4_ctx) as _ex:
+            _futs = [_ex.submit(_niche_cellular_worker, t) for t in _p4_tasks]
+            for _f in tqdm(as_completed(_futs), total=len(_futs)):
+                raise_if_cancelled()
+                _f.result()          # surfaces worker exceptions
+
     click.secho("\nPhase 5/5: Perform annotation-level niche analysis per slide.\n", fg="green")
    
     if niche_annotation:
-        for i, (wsi_path, model_output_csv) in tqdm(enumerate(zip(slide_paths, model_output_paths)), total=len(slide_paths)):
-            raise_if_cancelled()
+        # Annotation-level region merge is per-slide independent -> process pool.
+        _p5_tasks = []
+        for i, wsi_path in enumerate(slide_paths):
             niche_csv_name = Path(wsi_path).with_suffix(".csv").name
             cell_csv = niche_cells_output_dir / niche_csv_name
             niche_csv = niche_niches_output_dir / niche_csv_name
-            
-            if not overwrite and niche_csv.exists():
-                continue
-            
-            mpp = get_avg_mpp(wsi_path)
-            niche_detection_df = pd.read_csv(cell_csv)
-            valid_mask = np.zeros(len(niche_detection_df), dtype=bool)
-            valid_mask[np.asarray(slides[i]["kept_idx"], dtype=int)] = True
-            edges_df = remap_edges_to_valid_indices(slides[i]['edges_df'], valid_mask)
-            
-            niche_annotation_df = merge_same_label_by_shared_edges_iterative(niche_detection_df, 
-                                                                             edges_df,
-                                                                             niche_clustering_k=niche_clustering_k,
-                                                                             mpp=mpp,
-                                                                             max_radius_um=max_cell_radius_um)
-            
-            with critical_section(f"saving niche annotation output for {wsi_path.stem}"):
-                niche_annotation_df.to_csv(niche_csv, index=False)
-            
-        
+            _p5_tasks.append((wsi_path, cell_csv, niche_csv, slides[i]["kept_idx"],
+                              slides[i]["edges_df"], niche_clustering_k,
+                              max_cell_radius_um, overwrite))
+        _p5_workers = pick_workers_safe(max_workers=os.cpu_count() - 2, min_workers=2)
+        _p5_ctx = mp.get_context("spawn")
+        with ProcessPoolExecutor(max_workers=_p5_workers, mp_context=_p5_ctx) as _ex:
+            _futs = [_ex.submit(_niche_annotation_worker, t) for t in _p5_tasks]
+            for _f in tqdm(as_completed(_futs), total=len(_futs)):
+                raise_if_cancelled()
+                _f.result()          # surfaces worker exceptions
+
         # print("-" * 40)
             

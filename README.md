@@ -707,6 +707,8 @@ where 1.0 is equilateral).  Edges and triads are **not** merged into
 --------------------|---------|------------------------------------------------------------------------------------
  `--niche-hoptimus`   | off     | Enable H-Optimus tissue morphology features (requires GPU + timm)
  `--niche-clusters`   | auto    | Number of KMeans clusters; when omitted, determined via Leiden community detection
+ `--niche-epochs` (`--epochs` in `wsinsight niche`) | `300` | Upper bound on DGI encoder training epochs. Early stopping is always active (patience 20, min 50 epochs), so training may finish sooner
+ `--niche-amp` (`--amp` in `wsinsight niche`) | off | Enable CUDA automatic mixed precision for DGI training (faster, lower GPU memory; no effect on CPU/MPS)
  `--export-geojson` | off     | Export niche results to GeoJSON files under `niche-outputs-geojson/`
  `--overwrite`      | off     | Delete cached checkpoints and recompute from scratch
 

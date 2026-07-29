@@ -638,6 +638,12 @@ Tuning options:
   k-hop cell-type composition.  Requires a GPU and the ``timm`` package.
 * ``--niche-clusters`` — number of KMeans clusters.  When omitted, the optimal number
   is determined automatically via a Leiden community-detection sweep.
+* ``--epochs`` (default 300) — upper bound on DGI encoder training epochs.  Early
+  stopping is always active (patience 20 epochs, minimum 50 epochs), so training may
+  finish sooner.  (In ``wsinsight run`` this option is ``--niche-epochs``.)
+* ``--amp`` — enable CUDA automatic mixed precision for DGI training (faster, lower GPU
+  memory; no effect on CPU/MPS).  Off by default.  (In ``wsinsight run`` this option is
+  ``--niche-amp``.)
 * ``--overwrite`` — delete cached checkpoints and recompute all niche outputs.
 * ``--num-workers`` (default 8) — number of workers for GeoJSON export.
 

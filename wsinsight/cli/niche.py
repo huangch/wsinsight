@@ -131,6 +131,28 @@ def _num_cpus() -> int:
     ),
 )
 @click.option(
+    "--epochs",
+    default=300,
+    show_default=True,
+    type=click.IntRange(min=1),
+    help=(
+        "Upper bound on DGI encoder training epochs.  Early stopping is always "
+        "active (patience 20 epochs, min 50 epochs), so training may finish "
+        "sooner."
+    ),
+)
+@click.option(
+    "--amp",
+    is_flag=True,
+    default=False,
+    show_default=True,
+    help=(
+        "Enable CUDA automatic mixed precision for DGI training (faster, lower "
+        "GPU memory).  Off by default.  No effect on CPU/MPS.  Note: FP16 math "
+        "changes results very slightly versus full FP32."
+    ),
+)
+@click.option(
     "--overwrite",
     is_flag=True,
     default=False,
@@ -170,6 +192,8 @@ def niche(
     niche_clusters: int | None = None,
     niche_leiden_res: list[float] | None = None,
     niche_embed_dim: int = 32,
+    epochs: int = 300,
+    amp: bool = False,
     overwrite: bool = False,
     export_geojson: bool = False,
     num_workers: int = 8,
@@ -224,12 +248,13 @@ def niche(
         use_hoptimus=niche_hoptimus,
         hidden=64,
         out_dim=niche_embed_dim,
-        epochs=300,
+        epochs=epochs,
         niche_cellular=True,
         niche_annotation=True,
         niche_clustering_k=niche_clusters,
         niche_clustering_resolutions=niche_leiden_res,
         overwrite=overwrite,
+        amp=amp,
         seed=seed,
     )
 

@@ -288,7 +288,7 @@ wsinsight run \
 `--hplot-range-min`, `--hplot-range-max`, `--hplot-samples-with-valid-range-only`),
 `--ecomp` (+ `--ecomp-max-edge`, `--ecomp-k`),
 `--tcomp` (+ `--tcomp-max-edge`, `--tcomp-k`),
-`--niche`   (+ `--niche-hoptimus`, `--niche-clusters`, `--export-geojson`).
+`--niche`   (+ `--niche-hoptimus`, `--niche-clusters`, `--niche-epochs`, `--niche-amp`, `--export-geojson`).
 
 These flags are accepted by `run` only when the corresponding subcommand is
 enabled; they remain undocumented and unstable.

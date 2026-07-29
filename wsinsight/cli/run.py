@@ -761,6 +761,28 @@ def _select_kwargs(values: dict[str, Any], keys: tuple[str, ...]) -> dict[str, A
     ),
 )
 @click.option(
+    "--niche-epochs",
+    default=300,
+    show_default=True,
+    type=click.IntRange(min=1),
+    help=(
+        "Upper bound on DGI encoder training epochs for niche.  Early stopping "
+        "is always active, so training may finish sooner.  Ignored unless "
+        "--niche is set."
+    ),
+)
+@click.option(
+    "--niche-amp",
+    is_flag=True,
+    default=False,
+    show_default=True,
+    help=(
+        "Enable CUDA automatic mixed precision for niche DGI training (faster, "
+        "lower GPU memory).  Off by default.  No effect on CPU/MPS.  Ignored "
+        "unless --niche is set."
+    ),
+)
+@click.option(
     "--export-geojson",
     is_flag=True,
     default=False,
@@ -849,6 +871,8 @@ def run(
     niche: bool = False,
     niche_hoptimus: bool = False,
     niche_clusters: int | None = None,
+    niche_epochs: int = 300,
+    niche_amp: bool = False,
     export_geojson: bool = False,
     export_omecsv: bool = False,
     export_h5ad: bool = False,
@@ -957,7 +981,10 @@ def run(
 
     # --- Stage 5 (optional): niche analysis --------
     if niche:
-        ctx.invoke(niche_command, **_select_kwargs(params, _NICHE_PARAM_NAMES))
+        niche_kwargs = _select_kwargs(params, _NICHE_PARAM_NAMES)
+        niche_kwargs["epochs"] = niche_epochs
+        niche_kwargs["amp"] = niche_amp
+        ctx.invoke(niche_command, **niche_kwargs)
         raise_if_cancelled()
 
     # --- Stage 6 (optional): merged export to GeoJSON / OME-CSV / h5ad -------
