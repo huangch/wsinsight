@@ -676,6 +676,8 @@ where 1.0 is equilateral).  Edges and triads are **not** merged into
 -----------------------------------------|----------|-------------------------------------------------------------------------------
  `--hplot-base-types`                    | required | Comma-separated base cell types that define the tumour cluster (e.g. `tumor`)
  `--hplot-target-types`                  | required | Comma-separated target cell types to track across layers (e.g. `lymphocyte`)
+ `--hplot-base-by` (`--base-by` in `wsinsight hplot`)   | `celltype` | Interpret `--hplot-base-types` as `celltype`, `niche`, or `aggregate` names
+ `--hplot-target-by` (`--target-by` in `wsinsight hplot`) | `celltype` | Interpret `--hplot-target-types` as `celltype`, `niche`, or `aggregate` names
  `--hplot-max-neighbor-distance`         | `25.0`   | Maximum Delaunay edge length in µm
  `--hplot-k`                             | `2`      | k-hop neighborhood radius for region detection
  `--hplot-n`                             | `8`      | Minimum neighborhood size for base-region membership
@@ -691,6 +693,7 @@ where 1.0 is equilateral).  Edges and triads are **not** merged into
 --------------------|---------|--------------------------------------
  `--ecomp-max-edge` | `25.0`  | Maximum Delaunay edge length in µm
  `--ecomp-k`        | `2`     | k-hop neighborhood radius (line graph)
+ `--ecomp-no-neighborhood` (`--no-neighborhood` in `wsinsight ecomp`) | off | Skip k-hop aggregation; one row per edge, no `neighborhood_*` columns (much faster)
  `--overwrite`      | off     | Recompute existing per-slide outputs
 
 ### Triad Composition parameters (`--tcomp-*` options)
@@ -699,6 +702,7 @@ where 1.0 is equilateral).  Edges and triads are **not** merged into
 --------------------|---------|-------------------------------------------------------------------------
  `--tcomp-max-edge` | `25.0`  | Longest-edge threshold (µm); triads with any edge above this are pruned
  `--tcomp-k`        | `2`     | k-hop neighborhood radius (dual graph)
+ `--tcomp-no-neighborhood` (`--no-neighborhood` in `wsinsight tcomp`) | off | Skip k-hop aggregation; one row per triad, no `neighborhood_*` columns (much faster)
  `--overwrite`      | off     | Recompute existing per-slide outputs
 
 ### niche parameters (`--niche-*` options in `run` and `wsinsight niche`)
@@ -707,8 +711,11 @@ where 1.0 is equilateral).  Edges and triads are **not** merged into
 --------------------|---------|------------------------------------------------------------------------------------
  `--niche-hoptimus`   | off     | Enable H-Optimus tissue morphology features (requires GPU + timm)
  `--niche-clusters`   | auto    | Number of KMeans clusters; when omitted, determined via Leiden community detection
+ `--niche-leiden-res` | `0.5,1.0,2.0` | Comma-separated Leiden resolutions to sweep when `--niche-clusters` is omitted
+ `--niche-embed-dim`  | `32`    | Dimensionality of the DGI cell embedding (8–256)
  `--niche-epochs` (`--epochs` in `wsinsight niche`) | `300` | Upper bound on DGI encoder training epochs. Early stopping is always active (patience 20, min 50 epochs), so training may finish sooner
  `--niche-amp` (`--amp` in `wsinsight niche`) | off | Enable CUDA automatic mixed precision for DGI training (faster, lower GPU memory; no effect on CPU/MPS)
+ `--niche-seed` (`--seed` in `wsinsight niche`) | `0` | Random seed for the niche pipeline (DGI training, Leiden sweep, KMeans), for reproducible niche ids
  `--export-geojson` | off     | Export niche results to GeoJSON files under `niche-outputs-geojson/`
  `--overwrite`      | off     | Delete cached checkpoints and recompute from scratch
 

@@ -25,6 +25,8 @@ import wsinfer_zoo.client
 from ..modellib.models import resolve_zoo_registry_path
 from .infer import infer as infer_command
 from .niche import niche as niche_command
+from .niche import FLOAT_LIST as _NICHE_LEIDEN_LIST
+from .niche import _DEFAULT_LEIDEN_RESOLUTIONS as _NICHE_DEFAULT_LEIDEN
 from .ecomp import ecomp as ecomp_command
 from .hplot import hplot as hplot_command
 from .ncomp import ncomp as ncomp_command
@@ -336,6 +338,8 @@ _NICHE_PARAM_NAMES: tuple[str, ...] = (
     "results_dir",
     "niche_hoptimus",
     "niche_clusters",
+    "niche_leiden_res",
+    "niche_embed_dim",
     "overwrite",
     "export_geojson",
     "num_workers",
@@ -628,6 +632,22 @@ def _select_kwargs(values: dict[str, Any], keys: tuple[str, ...]) -> dict[str, A
     help="Target cell type or cell type list whose layer-wise proportion is computed, e.g., lymphocytes.",
 )
 @click.option(
+    "--hplot-base-by",
+    default="celltype",
+    show_default=True,
+    type=click.Choice(["celltype", "niche", "aggregate"]),
+    help="Interpret --hplot-base-types as cell types, niche ids, or aggregate names.",
+)
+@click.option(
+    "--hplot-target-by",
+    default="celltype",
+    show_default=True,
+    type=click.Choice(["celltype", "niche", "aggregate"]),
+    help="Interpret --hplot-target-types as cell types, niche ids, or aggregate names. "
+    "Use 'niche' for a niche's layer-wise fraction (requires --niche); "
+    "use 'aggregate' for an aggregate's member-cell fraction (requires 'wsinsight agg').",
+)
+@click.option(
     "--hplot-k",
     default=2,
     type=click.IntRange(min=0),
@@ -714,6 +734,16 @@ def _select_kwargs(values: dict[str, Any], keys: tuple[str, ...]) -> dict[str, A
     help="Number of hops defining the ecomp neighborhood radius (k-hop on the line graph).",
 )
 @click.option(
+    "--ecomp-no-neighborhood",
+    is_flag=True,
+    default=False,
+    show_default=True,
+    help=(
+        "Skip line-graph construction and k-hop aggregation for ecomp.  Output one row "
+        "per Delaunay edge; much faster, no neighborhood_* columns are written."
+    ),
+)
+@click.option(
     "--tcomp",
     is_flag=True,
     default=False,
@@ -733,6 +763,16 @@ def _select_kwargs(values: dict[str, Any], keys: tuple[str, ...]) -> dict[str, A
     type=click.IntRange(min=1),
     show_default=True,
     help="Number of hops defining the tcomp neighborhood radius (k-hop on the dual graph).",
+)
+@click.option(
+    "--tcomp-no-neighborhood",
+    is_flag=True,
+    default=False,
+    show_default=True,
+    help=(
+        "Skip dual-graph construction and k-hop aggregation for tcomp.  Output one row "
+        "per Delaunay triad; much faster, no neighborhood_* columns are written."
+    ),
 )
 @click.option(
     "--niche",
@@ -761,6 +801,27 @@ def _select_kwargs(values: dict[str, Any], keys: tuple[str, ...]) -> dict[str, A
     ),
 )
 @click.option(
+    "--niche-leiden-res",
+    default=_NICHE_DEFAULT_LEIDEN,
+    show_default=True,
+    type=_NICHE_LEIDEN_LIST,
+    help=(
+        "Comma-separated Leiden resolutions to sweep when choosing the number of "
+        "niches automatically (e.g. '0.2,0.5,1.0,2.0').  Ignored when "
+        "--niche-clusters is set or --niche is not set."
+    ),
+)
+@click.option(
+    "--niche-embed-dim",
+    default=32,
+    show_default=True,
+    type=click.IntRange(min=8, max=256),
+    help=(
+        "Dimensionality of the niche DGI cell embedding.  Typical range: 16-64.  "
+        "Ignored unless --niche is set."
+    ),
+)
+@click.option(
     "--niche-epochs",
     default=300,
     show_default=True,
@@ -779,6 +840,17 @@ def _select_kwargs(values: dict[str, Any], keys: tuple[str, ...]) -> dict[str, A
     help=(
         "Enable CUDA automatic mixed precision for niche DGI training (faster, "
         "lower GPU memory).  Off by default.  No effect on CPU/MPS.  Ignored "
+        "unless --niche is set."
+    ),
+)
+@click.option(
+    "--niche-seed",
+    default=0,
+    show_default=True,
+    type=int,
+    help=(
+        "Random seed for the niche pipeline (DGI training, Leiden sweep and "
+        "KMeans clustering), making discovered niche ids reproducible.  Ignored "
         "unless --niche is set."
     ),
 )
@@ -852,6 +924,8 @@ def run(
     hplot_max_neighbor_distance: float = 25.0,
     hplot_base_types: List | None = None,
     hplot_target_types: List | None = None,
+    hplot_base_by: str = "celltype",
+    hplot_target_by: str = "celltype",
     hplot_k: int = 2,
     hplot_n: int = 8,
     hplot_r: float = 0.5,
@@ -865,14 +939,19 @@ def run(
     ecomp: bool = False,
     ecomp_max_edge: float = 25.0,
     ecomp_k: int = 2,
+    ecomp_no_neighborhood: bool = False,
     tcomp: bool = False,
     tcomp_max_edge: float = 25.0,
     tcomp_k: int = 2,
+    tcomp_no_neighborhood: bool = False,
     niche: bool = False,
     niche_hoptimus: bool = False,
     niche_clusters: int | None = None,
+    niche_leiden_res: List | None = None,
+    niche_embed_dim: int = 32,
     niche_epochs: int = 300,
     niche_amp: bool = False,
+    niche_seed: int = 0,
     export_geojson: bool = False,
     export_omecsv: bool = False,
     export_h5ad: bool = False,
@@ -961,7 +1040,10 @@ def run(
 
     # --- Stage 3 (optional): H-Plot spatial analytics ------------------------
     if hplot:
-        ctx.invoke(hplot_command, **_select_kwargs(params, _HPLOT_PARAM_NAMES))
+        hplot_kwargs = _select_kwargs(params, _HPLOT_PARAM_NAMES)
+        hplot_kwargs["base_by"] = hplot_base_by
+        hplot_kwargs["target_by"] = hplot_target_by
+        ctx.invoke(hplot_command, **hplot_kwargs)
         raise_if_cancelled()
 
     # --- Stage 4 (optional): node-level (cell) composition analytics ---------
@@ -971,12 +1053,16 @@ def run(
 
     # --- Stage 4b (optional): edge-level composition analytics ---------------
     if ecomp:
-        ctx.invoke(ecomp_command, **_select_kwargs(params, _ECOMP_PARAM_NAMES))
+        ecomp_kwargs = _select_kwargs(params, _ECOMP_PARAM_NAMES)
+        ecomp_kwargs["no_neighborhood"] = ecomp_no_neighborhood
+        ctx.invoke(ecomp_command, **ecomp_kwargs)
         raise_if_cancelled()
 
     # --- Stage 4c (optional): triad-level composition analytics --------------
     if tcomp:
-        ctx.invoke(tcomp_command, **_select_kwargs(params, _TCOMP_PARAM_NAMES))
+        tcomp_kwargs = _select_kwargs(params, _TCOMP_PARAM_NAMES)
+        tcomp_kwargs["no_neighborhood"] = tcomp_no_neighborhood
+        ctx.invoke(tcomp_command, **tcomp_kwargs)
         raise_if_cancelled()
 
     # --- Stage 5 (optional): niche analysis --------
@@ -984,6 +1070,7 @@ def run(
         niche_kwargs = _select_kwargs(params, _NICHE_PARAM_NAMES)
         niche_kwargs["epochs"] = niche_epochs
         niche_kwargs["amp"] = niche_amp
+        niche_kwargs["seed"] = niche_seed
         ctx.invoke(niche_command, **niche_kwargs)
         raise_if_cancelled()
 

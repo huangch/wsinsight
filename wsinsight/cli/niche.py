@@ -283,13 +283,13 @@ def niche(
         # --- GeoJSON: annotation-level niche regions ---------------------------
         niche_niches_dir = Path(str(results_dir)) / "niche-outputs-csv" / "niches"
         if niche_niches_dir.exists():
-            niche_niche_csvs = sorted(niche_niches_dir.glob("*.csv"))
-            if niche_niche_csvs:
+            niche_csvs = sorted(niche_niches_dir.glob("*.csv"))
+            if niche_csvs:
                 click.echo(
                     "\nWriting niche annotation regions to GeoJSON files...\n"
                 )
                 write_geojsons(
-                    csvs=niche_niche_csvs,
+                    csvs=niche_csvs,
                     overlap=0,
                     results_dir=results_dir,
                     output_dir=Path("niche-outputs-geojson") / "niches",
