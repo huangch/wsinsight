@@ -132,18 +132,18 @@ def _worker(
                 resolved.add(actual)
         return resolved
 
-    # CME one-hot columns (present only in cme-outputs-csv/cells/<id>.csv).
-    cme_columns = [c for c in nodes_df.columns.to_list() if c.startswith("cme_")]
-    _cme_lower_to_actual = {c.lower(): c for c in cme_columns}
+    # niche one-hot columns (present only in niche-outputs-csv/cells/<id>.csv).
+    niche_columns = [c for c in nodes_df.columns.to_list() if c.startswith("niche_")]
+    _niche_lower_to_actual = {c.lower(): c for c in niche_columns}
 
-    def _resolve_cmes(type_list: Sequence[str]) -> list[str]:
-        """Map CME ids ("2" or "cme_2") to actual cme_ columns, case-insensitively."""
+    def _resolve_niches(type_list: Sequence[str]) -> list[str]:
+        """Map niche ids ("2" or "niche_2") to actual niche_ columns, case-insensitively."""
         resolved = []
         for t in type_list:
             key = str(t).strip().lower()
-            if not key.startswith("cme_"):
-                key = f"cme_{key}"
-            actual = _cme_lower_to_actual.get(key)
+            if not key.startswith("niche_"):
+                key = f"niche_{key}"
+            actual = _niche_lower_to_actual.get(key)
             if actual is not None and actual not in resolved:
                 resolved.append(actual)
         return resolved
@@ -166,19 +166,19 @@ def _worker(
                 resolved.append(actual)
         return resolved
 
-    # ---- base membership: cell type (prob idxmax) OR cme one-hot ----
-    if base_by == "cme":
-        base_cme_cols = _resolve_cmes(base_type_list)
-        if not base_cme_cols:
+    # ---- base membership: cell type (prob idxmax) OR niche one-hot ----
+    if base_by == "niche":
+        base_niche_cols = _resolve_niches(base_type_list)
+        if not base_niche_cols:
             _logger.warning(
-                "[%s] None of the base CMEs %s matched cme_ columns %s. Skipping slide.",
+                "[%s] None of the base niches %s matched niche_ columns %s. Skipping slide.",
                 slide_id,
                 sorted(base_type_list),
-                sorted(cme_columns),
+                sorted(niche_columns),
             )
             inner.close()
             return slide_id, None, None
-        nodes_df["is_base_type"] = nodes_df[base_cme_cols].fillna(0).max(axis=1) > 0
+        nodes_df["is_base_type"] = nodes_df[base_niche_cols].fillna(0).max(axis=1) > 0
     elif base_by == "aggregate":
         base_agg_cols = _resolve_aggregates(base_type_list)
         if not base_agg_cols:
@@ -205,21 +205,21 @@ def _worker(
             return slide_id, None, None
         nodes_df["is_base_type"] = predicted_labels.isin(base_targets)
 
-    # ---- target membership: cell type (prob idxmax) OR cme one-hot ----
-    if target_by == "cme":
-        target_cme_cols = _resolve_cmes(target_type_list)
-        if not target_cme_cols:
+    # ---- target membership: cell type (prob idxmax) OR niche one-hot ----
+    if target_by == "niche":
+        target_niche_cols = _resolve_niches(target_type_list)
+        if not target_niche_cols:
             _logger.warning(
-                "[%s] None of the target CMEs %s matched cme_ columns %s. Skipping slide.",
+                "[%s] None of the target niches %s matched niche_ columns %s. Skipping slide.",
                 slide_id,
                 sorted(target_type_list),
-                sorted(cme_columns),
+                sorted(niche_columns),
             )
             inner.close()
             return slide_id, None, None
-        # One-hot membership: max over requested cme_ columns is 0/1 per cell, so
+        # One-hot membership: max over requested niche_ columns is 0/1 per cell, so
         # its per-layer mean is exactly the niche fraction.
-        nodes_df["is_target_type"] = nodes_df[target_cme_cols].fillna(0).max(axis=1) > 0
+        nodes_df["is_target_type"] = nodes_df[target_niche_cols].fillna(0).max(axis=1) > 0
     elif target_by == "aggregate":
         target_agg_cols = _resolve_aggregates(target_type_list)
         if not target_agg_cols:

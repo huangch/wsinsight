@@ -1,4 +1,4 @@
-"""Voronoi-based CME region helpers for merging cell clusters into polygons."""
+"""Voronoi-based niche region helpers for merging cell clusters into polygons."""
 
 from __future__ import annotations
 from typing import Dict, List, Tuple, Any
@@ -144,7 +144,7 @@ def build_capped_voronoi_from_df(
     *,
     mpp: float,
     max_radius_um: float = 15.0,
-    cme_prefix: str = "cme_",
+    niche_prefix: str = "niche_",
     circle_resolution: int = 64,
     min_area: float = 0.0
 ) -> Tuple[Dict[int, List[Polygon]], np.ndarray]:
@@ -153,15 +153,15 @@ def build_capped_voronoi_from_df(
     cy = df["miny"].to_numpy(float) + df["height"].to_numpy(float)/2.0
     pts_all = np.column_stack([cx, cy])
 
-    cme_cols = [c for c in df.columns if c.startswith(cme_prefix)]
-    if not cme_cols:
-        raise ValueError(f"No columns start with '{cme_prefix}'.")
-    cme_mat = df[cme_cols].to_numpy(float)
-    valid_mask = np.asarray(cme_mat.sum(axis=1) > 0.0, dtype=bool)
+    niche_cols = [c for c in df.columns if c.startswith(niche_prefix)]
+    if not niche_cols:
+        raise ValueError(f"No columns start with '{niche_prefix}'.")
+    niche_mat = df[niche_cols].to_numpy(float)
+    valid_mask = np.asarray(niche_mat.sum(axis=1) > 0.0, dtype=bool)
     if not np.any(valid_mask):
         return {}, np.array([], dtype=int)
 
-    labels_full = cme_mat.argmax(axis=1)
+    labels_full = niche_mat.argmax(axis=1)
     pts = pts_all[valid_mask]
     labels = labels_full[valid_mask]
 
@@ -433,11 +433,11 @@ def _shared_boundary_len(a: Polygon, b: Polygon, tol_len_px: float, boundary_buf
 def merge_same_label_by_shared_edges_iterative(
     df: pd.DataFrame,
     edges_df: pd.DataFrame,          # ['source','target'] from your filtered Delaunay
-    cme_clustering_k = 10,
+    niche_clustering_k = 10,
     *,
     mpp: float,
     max_radius_um: float = 15.0,
-    cme_prefix: str = "cme_",
+    niche_prefix: str = "niche_",
     circle_resolution: int = 64,
     min_area: float = 0.0,
     # exact-edge (orientation-free) snapping grid
@@ -455,26 +455,26 @@ def merge_same_label_by_shared_edges_iterative(
     # NEW: use GeoPandas+sindex for tolerant overlap (keeps same thresholds)
     # use_gpd_overlap: bool = False
 ) -> pd.DataFrame:
-    """Merge CME Voronoi pieces of the same label using exact and tolerant edges."""
+    """Merge niche Voronoi pieces of the same label using exact and tolerant edges."""
     # Step 0: centers & labels
     cx = df["minx"].to_numpy(float) + df["width"].to_numpy(float)/2.0
     cy = df["miny"].to_numpy(float) + df["height"].to_numpy(float)/2.0
     pts_all = np.column_stack([cx, cy])
 
-    cme_cols = [c for c in df.columns if c.startswith(cme_prefix)]
-    if not cme_cols:
-        raise ValueError(f"No columns start with '{cme_prefix}'.")
-    cme_mat = df[cme_cols].to_numpy(float)
-    valid_mask = cme_mat.sum(axis=1) > 0.0
+    niche_cols = [c for c in df.columns if c.startswith(niche_prefix)]
+    if not niche_cols:
+        raise ValueError(f"No columns start with '{niche_prefix}'.")
+    niche_mat = df[niche_cols].to_numpy(float)
+    valid_mask = niche_mat.sum(axis=1) > 0.0
     if not np.any(valid_mask):
-        return _pieces_dict_to_dataframe({}, cme_clustering_k=cme_clustering_k)
+        return _pieces_dict_to_dataframe({}, niche_clustering_k=niche_clustering_k)
 
-    labels_full = cme_mat.argmax(axis=1)
+    labels_full = niche_mat.argmax(axis=1)
     pts = pts_all[valid_mask]
     labels = labels_full[valid_mask]
     N = len(pts)
     if N < 2:
-        return _pieces_dict_to_dataframe({}, cme_clustering_k=cme_clustering_k)
+        return _pieces_dict_to_dataframe({}, niche_clustering_k=niche_clustering_k)
 
     if edges_df["source"].max() >= N or edges_df["target"].max() >= N:
         edges_df = remap_edges_to_valid_indices(edges_df, valid_mask)
@@ -594,7 +594,7 @@ def merge_same_label_by_shared_edges_iterative(
         if grow_buffer != 1.0 and buf > 0:
             buf = buf * float(grow_buffer)
 
-    return _pieces_dict_to_dataframe(out, cme_clustering_k=cme_clustering_k)
+    return _pieces_dict_to_dataframe(out, niche_clustering_k=niche_clustering_k)
 
 
 # ============================ Output serialization ============================
@@ -602,13 +602,13 @@ def merge_same_label_by_shared_edges_iterative(
 def _pieces_dict_to_dataframe(
     pieces_dict: dict,
     *,
-    cme_clustering_k: int,
+    niche_clustering_k: int,
     geom_col: str = "polygon_wkt",
     geom_format: str = "wkt",
 ) -> pd.DataFrame:
-    """Serialize merged polygons back to a DataFrame with CME one-hot columns."""
+    """Serialize merged polygons back to a DataFrame with niche one-hot columns."""
     import json, binascii
-    cme_cols = [f"cme_{i}" for i in range(cme_clustering_k)]
+    niche_cols = [f"niche_{i}" for i in range(niche_clustering_k)]
     rows = []
 
     def serialize_geom(poly: Polygon):
@@ -626,14 +626,14 @@ def _pieces_dict_to_dataframe(
 
     def label_to_one_hot(lab: Any):
         if isinstance(lab, str):
-            if lab.startswith("cme_"):
+            if lab.startswith("niche_"):
                 lab = int(lab.split("_", 1)[1])
             else:
-                raise ValueError(f"String label '{lab}' not in 'cme_i' form.")
+                raise ValueError(f"String label '{lab}' not in 'niche_i' form.")
         lab = int(lab)
-        if not (0 <= lab < cme_clustering_k):
-            raise ValueError(f"Label {lab} out of range for K={cme_clustering_k}.")
-        vec = np.zeros(cme_clustering_k, dtype=np.float32); vec[lab] = 1.0
+        if not (0 <= lab < niche_clustering_k):
+            raise ValueError(f"Label {lab} out of range for K={niche_clustering_k}.")
+        vec = np.zeros(niche_clustering_k, dtype=np.float32); vec[lab] = 1.0
         return vec
 
     for lab, polys in pieces_dict.items():
@@ -642,9 +642,9 @@ def _pieces_dict_to_dataframe(
                 continue
             geom_val = serialize_geom(poly)
             one_hot = label_to_one_hot(lab)
-            row = {n: float(v) for n, v in zip(cme_cols, one_hot)}
+            row = {n: float(v) for n, v in zip(niche_cols, one_hot)}
             row[geom_col] = geom_val
             row["area"] = float(poly.area)
             rows.append(row)
 
-    return pd.DataFrame(rows, columns=cme_cols + [geom_col, "area"])
+    return pd.DataFrame(rows, columns=niche_cols + [geom_col, "area"])

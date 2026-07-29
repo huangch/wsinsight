@@ -141,16 +141,16 @@ def _validate_types(
     "--base-by",
     default="celltype",
     show_default=True,
-    type=click.Choice(["celltype", "cme", "aggregate"]),
-    help="Interpret --hplot-base-types as cell types, CME (niche) ids, or aggregate names.",
+    type=click.Choice(["celltype", "niche", "aggregate"]),
+    help="Interpret --hplot-base-types as cell types, niche ids, or aggregate names.",
 )
 @click.option(
     "--target-by",
     default="celltype",
     show_default=True,
-    type=click.Choice(["celltype", "cme", "aggregate"]),
-    help="Interpret --hplot-target-types as cell types, CME (niche) ids, or aggregate names. "
-    "Use 'cme' for a niche's layer-wise fraction (requires `wsinsight cme`); "
+    type=click.Choice(["celltype", "niche", "aggregate"]),
+    help="Interpret --hplot-target-types as cell types, niche ids, or aggregate names. "
+    "Use 'niche' for a niche's layer-wise fraction (requires `wsinsight niche`); "
     "use 'aggregate' for an aggregate's member-cell fraction (requires `wsinsight agg`).",
 )
 @click.option(
@@ -234,18 +234,18 @@ def hplot(
     if not slide_paths:
         raise click.ClickException(f"no files exist in the slide directory: {wsi_dir}")
 
-    cme_involved = (base_by == "cme") or (target_by == "cme")
-    # CME (niche) one-hot columns live in cme-outputs-csv/cells/, a superset of
+    niche_involved = (base_by == "niche") or (target_by == "niche")
+    # niche one-hot columns live in niche-outputs-csv/cells/, a superset of
     # model-outputs-csv that also carries the prob_ columns. Read from there
-    # whenever either axis is a CME.
+    # whenever either axis is a niche.
     model_output_subdir = (
-        "cme-outputs-csv/cells" if cme_involved else "model-outputs-csv"
+        "niche-outputs-csv/cells" if niche_involved else "model-outputs-csv"
     )
     model_output_dir = results_dir / model_output_subdir
     if not model_output_dir.exists():
         raise click.ClickException(
             f"The '{model_output_subdir}' directory was not found in results directory."
-            + (" Run `wsinsight cme` first." if cme_involved else "")
+            + (" Run `wsinsight niche` first." if niche_involved else "")
         )
 
     if not hplot_base_types or not hplot_target_types:
@@ -253,8 +253,8 @@ def hplot(
             "H-Plot requires both --hplot-base-types and --hplot-target-types."
         )
 
-    # Cell-type names are normalised against prob_ columns; CME ids ("7" or
-    # "cme_7") are passed through verbatim and resolved later.  Aggregate names
+    # Cell-type names are normalised against prob_ columns; niche ids ("7" or
+    # "niche_7") are passed through verbatim and resolved later.  Aggregate names
     # are normalised to lower-case snake (matching `wsinsight agg --agg-name`).
     base_type_list = (
         _normalize_types(hplot_base_types)

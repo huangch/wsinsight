@@ -1,7 +1,7 @@
-"""Profile discovered CMEs (niches) so each ``cme_n`` can be named.
+"""Profile discovered niches so each ``niche_n`` can be named.
 
-Reads ``cme-outputs-csv/cells/<id>.csv`` produced by ``wsinsight cme`` and, for
-each CME cluster, summarises:
+Reads ``niche-outputs-csv/cells/<id>.csv`` produced by ``wsinsight niche`` and, for
+each niche cluster, summarises:
 
 * the mean cell-type composition (from ``prob_*`` columns), and
 * the most enriched marker genes (from ``expr_*`` columns, if present).
@@ -12,7 +12,7 @@ biological names (tumor nest, immune-stroma, ...) to the otherwise arbitrary
 cluster ids.
 
 This module deliberately depends only on numpy/pandas so it can be imported and
-run without the deep-learning stack used by ``wsinsight cme``.
+run without the deep-learning stack used by ``wsinsight niche``.
 """
 
 from __future__ import annotations
@@ -24,9 +24,9 @@ import numpy as np
 import pandas as pd
 
 
-def _cme_columns(columns: List[str]) -> List[str]:
-    """Return ``cme_*`` columns ordered by their integer index."""
-    cols = [c for c in columns if c.startswith("cme_")]
+def _niche_columns(columns: List[str]) -> List[str]:
+    """Return ``niche_*`` columns ordered by their integer index."""
+    cols = [c for c in columns if c.startswith("niche_")]
 
     def _idx(c: str) -> int:
         try:
@@ -37,43 +37,43 @@ def _cme_columns(columns: List[str]) -> List[str]:
     return sorted(cols, key=_idx)
 
 
-def cme_profile(
+def niche_profile(
     results_dir: str | Path,
     top_genes: int = 10,
     top_types: int = 5,
     write: bool = True,
 ) -> Tuple[pd.DataFrame, Optional[pd.DataFrame]]:
-    """Aggregate per-cell CME labels into per-cluster composition + marker tables.
+    """Aggregate per-cell niche labels into per-cluster composition + marker tables.
 
     Returns ``(composition_df, markers_df)``. ``markers_df`` is ``None`` when the
     cells CSVs carry no ``expr_`` columns. When ``write`` is True the tables are
-    saved to ``<results-dir>/cme-profile-composition.csv`` and
-    ``<results-dir>/cme-profile-markers.csv``.
+    saved to ``<results-dir>/niche-profile-composition.csv`` and
+    ``<results-dir>/niche-profile-markers.csv``.
     """
     results_dir = Path(str(results_dir))
-    cells_dir = results_dir / "cme-outputs-csv" / "cells"
+    cells_dir = results_dir / "niche-outputs-csv" / "cells"
     csvs = sorted(cells_dir.glob("*.csv"))
     if not csvs:
         raise FileNotFoundError(
-            f"No CME cell CSVs found under {cells_dir}. Run `wsinsight cme` first."
+            f"No niche cell CSVs found under {cells_dir}. Run `wsinsight niche` first."
         )
 
     head = pd.read_csv(csvs[0], nrows=1)
-    cme_cols = _cme_columns(list(head.columns))
-    if not cme_cols:
-        raise ValueError(f"No cme_ columns in {csvs[0]}; was this produced by `wsinsight cme`?")
+    niche_cols = _niche_columns(list(head.columns))
+    if not niche_cols:
+        raise ValueError(f"No niche_ columns in {csvs[0]}; was this produced by `wsinsight niche`?")
     prob_cols = [c for c in head.columns if c.startswith("prob_")]
     expr_cols = [c for c in head.columns if c.startswith("expr_")]
 
-    K = len(cme_cols)
+    K = len(niche_cols)
     counts = np.zeros(K, dtype=np.float64)
     sum_prob = np.zeros((K, len(prob_cols)), dtype=np.float64)
     sum_expr = np.zeros((K, len(expr_cols)), dtype=np.float64) if expr_cols else None
 
-    usecols = cme_cols + prob_cols + expr_cols
+    usecols = niche_cols + prob_cols + expr_cols
     for csv in csvs:
         df = pd.read_csv(csv, usecols=lambda c: c in usecols)
-        oh = df[cme_cols].fillna(0).to_numpy()
+        oh = df[niche_cols].fillna(0).to_numpy()
         assigned = oh.sum(axis=1) > 0
         if not assigned.any():
             continue
@@ -98,7 +98,7 @@ def cme_profile(
     comp = pd.DataFrame(
         sum_prob / denom,
         columns=[c[len("prob_"):] for c in prob_cols],
-        index=[f"cme_{k}" for k in range(K)],
+        index=[f"niche_{k}" for k in range(K)],
     )
     comp.insert(0, "n_cells", counts.astype(int))
     comp.insert(1, "frac", counts / total)
@@ -125,7 +125,7 @@ def cme_profile(
             order = np.argsort(-enr[k])[:top_genes]
             for rank, gi in enumerate(order, start=1):
                 rows.append({
-                    "cme": f"cme_{k}",
+                    "niche": f"niche_{k}",
                     "rank": rank,
                     "gene": genes[gi],
                     "mean_expr": float(mean_expr[k, gi]),
@@ -134,8 +134,8 @@ def cme_profile(
         markers = pd.DataFrame(rows)
 
     if write:
-        comp.to_csv(results_dir / "cme-profile-composition.csv")
+        comp.to_csv(results_dir / "niche-profile-composition.csv")
         if markers is not None:
-            markers.to_csv(results_dir / "cme-profile-markers.csv", index=False)
+            markers.to_csv(results_dir / "niche-profile-markers.csv", index=False)
 
     return comp, markers

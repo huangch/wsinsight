@@ -24,7 +24,7 @@ import tqdm
 import wsinfer_zoo.client
 from ..modellib.models import resolve_zoo_registry_path
 from .infer import infer as infer_command
-from .cme import cme as cme_command
+from .niche import niche as niche_command
 from .ecomp import ecomp as ecomp_command
 from .hplot import hplot as hplot_command
 from .ncomp import ncomp as ncomp_command
@@ -331,11 +331,11 @@ _TCOMP_PARAM_NAMES: tuple[str, ...] = (
     "num_workers",
 )
 
-_CME_PARAM_NAMES: tuple[str, ...] = (
+_NICHE_PARAM_NAMES: tuple[str, ...] = (
     "wsi_dir",
     "results_dir",
-    "cme_hoptimus",
-    "cme_clusters",
+    "niche_hoptimus",
+    "niche_clusters",
     "overwrite",
     "export_geojson",
     "num_workers",
@@ -735,29 +735,29 @@ def _select_kwargs(values: dict[str, Any], keys: tuple[str, ...]) -> dict[str, A
     help="Number of hops defining the tcomp neighborhood radius (k-hop on the dual graph).",
 )
 @click.option(
-    "--cme",
+    "--niche",
     is_flag=True,
     default=False,
     show_default=True,
-    help="Run cellular microenvironment (CME) analysis after inference.",
+    help="Run niche analysis after inference.",
 )
 @click.option(
-    "--cme-hoptimus",
+    "--niche-hoptimus",
     is_flag=True,
     default=False,
     show_default=True,
     help=(
-        "Enable H-Optimus tissue morphology features for CME.  "
-        "Requires a GPU and the timm package.  Ignored unless --cme is set."
+        "Enable H-Optimus tissue morphology features for niche.  "
+        "Requires a GPU and the timm package.  Ignored unless --niche is set."
     ),
 )
 @click.option(
-    "--cme-clusters",
+    "--niche-clusters",
     default=None,
     type=click.IntRange(min=2),
     help=(
-        "Number of CME clusters (KMeans).  When omitted, determined "
-        "automatically via Leiden community detection.  Ignored unless --cme is set."
+        "Number of niche clusters (KMeans).  When omitted, determined "
+        "automatically via Leiden community detection.  Ignored unless --niche is set."
     ),
 )
 @click.option(
@@ -846,9 +846,9 @@ def run(
     tcomp: bool = False,
     tcomp_max_edge: float = 25.0,
     tcomp_k: int = 2,
-    cme: bool = False,
-    cme_hoptimus: bool = False,
-    cme_clusters: int | None = None,
+    niche: bool = False,
+    niche_hoptimus: bool = False,
+    niche_clusters: int | None = None,
     export_geojson: bool = False,
     export_omecsv: bool = False,
     export_h5ad: bool = False,
@@ -955,9 +955,9 @@ def run(
         ctx.invoke(tcomp_command, **_select_kwargs(params, _TCOMP_PARAM_NAMES))
         raise_if_cancelled()
 
-    # --- Stage 5 (optional): cellular microenvironment (CME) analysis --------
-    if cme:
-        ctx.invoke(cme_command, **_select_kwargs(params, _CME_PARAM_NAMES))
+    # --- Stage 5 (optional): niche analysis --------
+    if niche:
+        ctx.invoke(niche_command, **_select_kwargs(params, _NICHE_PARAM_NAMES))
         raise_if_cancelled()
 
     # --- Stage 6 (optional): merged export to GeoJSON / OME-CSV / h5ad -------

@@ -26,7 +26,7 @@ import wsinfer_zoo.client
 from wsinfer_zoo.client import HFModel, Model, ModelConfiguration
 
 from .. import errors
-# from ..insightlib.cme_generation import cme_generation
+# from ..insightlib.niche_generation import niche_generation
 from ..modellib import models
 from ..modellib.models import resolve_zoo_registry_path
 from ..modellib.run_inference import run_inference
@@ -579,37 +579,37 @@ def _optional_uri_paths(ctx: click.Context, param: click.Option, value):
     " full patch size of the chosen model.",
 )
 # @click.option(
-#     "--cme-cellular",
+#     "--niche-cellular",
 #     is_flag=True,
 #     default=False,
 #     show_default=True,
-#     help="Run cellular-level CME analysis to produce per-cell embeddings/labels.",
+#     help="Run cellular-level niche analysis to produce per-cell embeddings/labels.",
 # )
 # @click.option(
-#     "--cme-annotation",
+#     "--niche-annotation",
 #     is_flag=True,
 #     default=False,
 #     show_default=True,
-#     help="Run annotation-level CME analysis to cluster higher-level regions.",
+#     help="Run annotation-level niche analysis to cluster higher-level regions.",
 # )
 # @click.option(
-#     "--cme-soft-mode",
+#     "--niche-soft-mode",
 #     is_flag=True,
 #     default=False,
 #     show_default=True,
-#     help="CME clustering weights class probabilities instead of hard labels; otherwise categorical assignments are used.",
+#     help="niche clustering weights class probabilities instead of hard labels; otherwise categorical assignments are used.",
 # )
 # @click.option(
-#     "--cme-clustering-k",
+#     "--niche-clustering-k",
 #     default=None,
 #     type=click.IntRange(min=0),
-#     help="k-nearest-neighbor count used when building CME clustering graphs.",
+#     help="k-nearest-neighbor count used when building niche clustering graphs.",
 # )
 # @click.option(
-#     "--cme-clustering-resolutions",
+#     "--niche-clustering-resolutions",
 #     callback=_csv_to_list,
 #     default="0.5,1.0,2.0",
-#     help="Resolution parameter using in clustering for cmes.",
+#     help="Resolution parameter using in clustering for niches.",
 # )
 @click.option(
     "--overwrite",
@@ -656,11 +656,11 @@ def infer(
     # stardist_normalization_pmin: float = 1.0,
     # stardist_normalization_pmax: float = 99.8,
     overwrite: bool = False,
-    # cme_cellular: bool = False,
-    # cme_annotation: bool = False,
-    # cme_soft_mode: bool = False,
-    # cme_clustering_k: int | None = None,
-    # cme_clustering_resolutions = [0.5,1.0,2.0],
+    # niche_cellular: bool = False,
+    # niche_annotation: bool = False,
+    # niche_soft_mode: bool = False,
+    # niche_clustering_k: int | None = None,
+    # niche_clustering_resolutions = [0.5,1.0,2.0],
 ) -> None:
     """Execute WSInsight inference and optional post-processing on prepared patches.
 
@@ -1019,11 +1019,11 @@ def infer(
         )
         click.secho("\n".join(failed_inference), fg="yellow")
 
-    # if cme_cellular or cme_annotation:
-    #     click.secho("\nRunning cme generation.\n", fg="green")
+    # if niche_cellular or niche_annotation:
+    #     click.secho("\nRunning niche generation.\n", fg="green")
     #     wsi_paths = _selected_wsi_paths()
-    #     # Default flow: run CME with the graph-based pipeline (H-Optimus disabled).
-    #     cme_generation(
+    #     # Default flow: run niche with the graph-based pipeline (H-Optimus disabled).
+    #     niche_generation(
     #         wsi_dir=None,
     #         wsi_paths=wsi_paths,
     #         results_dir=results_dir,
@@ -1032,11 +1032,11 @@ def infer(
     #         k_hops=2, alpha=1.0,
     #         use_hoptimus=False,                 # ← off
     #         hidden=64, out_dim=32, epochs=300,
-    #         cme_cellular=cme_cellular,
-    #         cme_annotation=cme_annotation,
-    #         cme_clustering_k=cme_clustering_k,
-    #         cme_clustering_resolutions=cme_clustering_resolutions,
-    #         cme_soft_mode=cme_soft_mode,
+    #         niche_cellular=niche_cellular,
+    #         niche_annotation=niche_annotation,
+    #         niche_clustering_k=niche_clustering_k,
+    #         niche_clustering_resolutions=niche_clustering_resolutions,
+    #         niche_soft_mode=niche_soft_mode,
     #         # seed=0,
     #     )
     #
@@ -1044,7 +1044,7 @@ def infer(
     #     # patch_datasets = [DummyPatchDataset(num_cells=len(slides_inputs[0][0])),
     #     #                   DummyPatchDataset(num_cells=len(slides_inputs[1][0]))]
     #     #
-    #     # res_h0 = cme_generation(
+    #     # res_h0 = niche_generation(
     #     #     slides_inputs,
     #     #     max_edge_len_um=70.0,
     #     #     k_hops=2, alpha=1.0,
@@ -1061,35 +1061,35 @@ def infer(
     #     # kept_idx0 = res_h0["kept_idx"][0]         # map to original rows in slideA_cells.csv
     #
     #     if geojson:
-    #         click.echo("\nWriting CME detection cellular results to GeoJSON files\n")
-    #         # Export CME cell-level outputs for quick map overlays.
-    #         cme_cell_csvs = _materialize_local_files(
+    #         click.echo("\nWriting niche detection cellular results to GeoJSON files\n")
+    #         # Export niche cell-level outputs for quick map overlays.
+    #         niche_cell_csvs = _materialize_local_files(
     #             [
     #                 p
-    #                 for p in (results_dir / "cme-outputs-csv" / "cells").iterdir(files_only=True)
+    #                 for p in (results_dir / "niche-outputs-csv" / "cells").iterdir(files_only=True)
     #                 if p.suffix == ".csv"
     #             ]
     #         )
     #         write_geojsons(
-    #             csvs=cme_cell_csvs,
+    #             csvs=niche_cell_csvs,
     #             overlap=overlap,
     #             results_dir=results_dir,
-    #             output_dir=URIPath("cme-outputs-geojson") / "cells",
-    #             prefix="cme",
+    #             output_dir=URIPath("niche-outputs-geojson") / "cells",
+    #             prefix="niche",
     #             num_workers=1 if export_workers == 0 else export_workers,
     #             object_type="detection",
     #             set_classification=True,
     #             annotation_shape="box",
     #         )
     #
-    #     # Example annotation-level exports can be re-enabled when CME polygons are finalized.
-    #     # cme_cme_csvs = list((results_dir / "cme-outputs-csv" / "cmes").glob("*.csv"))
+    #     # Example annotation-level exports can be re-enabled when niche polygons are finalized.
+    #     # niche_niche_csvs = list((results_dir / "niche-outputs-csv" / "niches").glob("*.csv"))
     #     # write_geojsons(
-    #     #     csvs=cme_cme_csvs,
+    #     #     csvs=niche_niche_csvs,
     #     #     overlap=overlap,
     #     #     results_dir=results_dir,
-    #     #     output_dir=Path("cme-outputs-geojson") / "cmes",
-    #     #     prefix="cme",
+    #     #     output_dir=Path("niche-outputs-geojson") / "niches",
+    #     #     prefix="niche",
     #     #     num_workers=1 if num_workers == 0 else num_workers,
     #     #     object_type="annotation",
     #     #     set_classification=True,

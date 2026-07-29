@@ -50,7 +50,7 @@ _WSI_EXTS = (".svs", ".tif", ".tiff", ".ndpi", ".scn", ".mrxs", ".vms", ".vmu",
 # ``model`` is always imported (mandatory, canonical owner of the geometry and
 # ``prob_*`` columns) and is intentionally NOT listed here.
 _ADDON_SOURCES: dict[str, tuple[str, tuple[str, ...]]] = {
-    "cme":   ("cme_",   ("cme-outputs-csv", "cells")),
+    "niche":   ("niche_",   ("niche-outputs-csv", "cells")),
     "hplot": ("hplot_", ("hplot-outputs-csv", "cells")),
     "ncomp": ("ncomp_", ("ncomp-outputs-csv",)),
 }
@@ -221,7 +221,7 @@ def _process_sample(sample_id: str, xdir: Path, wsi_path: Optional[URIPath],
     model_rows.index = obs.index
     obs = pd.concat([obs, model_rows], axis=1)
     # ``claimed`` tracks ORIGINAL (unprefixed) column names already emitted, so
-    # optional add-on sources that echo the model geometry (cme/hplot re-list
+    # optional add-on sources that echo the model geometry (niche/hplot re-list
     # ``minx``, ``prob_*`` …) don't duplicate them; model is the canonical owner.
     claimed: set[str] = set(md.columns)
     # Explicit link id == WSInsight's own export-h5ad obs index (<slide>-<row>);
@@ -354,9 +354,9 @@ def _write_h5ad(adata, out_path: URIPath) -> None:
     default="",
     show_default=True,
     help="Comma-separated optional per-cell sources to merge into obs, each "
-         "under its own prefix: cme (cme_), hplot (hplot_), ncomp (ncomp_). "
+         "under its own prefix: niche (niche_), hplot (hplot_), ncomp (ncomp_). "
          "The mandatory 'model' source (model_*) is always imported and need "
-         "not be listed. Empty = model only. Example: --include cme,hplot",
+         "not be listed. Empty = model only. Example: --include niche,hplot",
 )
 @click.option(
     "--match-max-dist",
@@ -406,7 +406,7 @@ def sptx_import(
         ``model_cell_id`` (== WSInsight's export-h5ad obs index), so the h5ad is
         self-contained and needs no join back to the CSV. Optional per-cell
         sources requested via ``--include`` are merged the same way under their
-        own prefixes (``cme_`` / ``hplot_`` / ``ncomp_``).
+        own prefixes (``niche_`` / ``hplot_`` / ``ncomp_``).
 
     \b
     Output written to <results-dir>/:

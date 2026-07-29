@@ -175,7 +175,7 @@ air-gapped networks the first variable is mandatory.
 | `WSINSIGHT_REMOTE_CACHE_DIR`   | No       | Local cache dir for remote assets. Default: `~/.cache/wsinsight`.                        |
 | `KERAS_HOME`                   | No       | Override Keras config/weights directory.                                                  |
 | `CUDA_VISIBLE_DEVICES`         | No       | Pin to specific GPU(s) (e.g. `0` or `0,1`).                                             |
-| `WSINSIGHT_EXPERIMENTAL`       | No       | Set to `1` to unlock experimental subcommands (`hplot`, `hplot-finalize`, `ecomp`, `tcomp`, `cme`, `cme-profile`). Not needed for normal use. |
+| `WSINSIGHT_EXPERIMENTAL`       | No       | Set to `1` to unlock experimental subcommands (`hplot`, `hplot-finalize`, `ecomp`, `tcomp`, `niche`, `niche-profile`). Not needed for normal use. |
 
 \* Required when HuggingFace Hub is unreachable (SSL errors, air-gapped).
 
@@ -196,8 +196,8 @@ wsinsight
 └── describe          Emit a machine-readable JSON schema of every subcommand
 ```
 
-> Additional subcommands — `hplot`, `hplot-finalize`, `ecomp`, `tcomp`, `cme`,
-> `cme-profile`, `import` — are gated as **experimental**. They are hidden from `--help`
+> Additional subcommands — `hplot`, `hplot-finalize`, `ecomp`, `tcomp`, `niche`,
+> `niche-profile`, `import` — are gated as **experimental**. They are hidden from `--help`
 > and cannot be
 > executed unless `WSINSIGHT_EXPERIMENTAL=1` is exported. Their CLI flags,
 > output schemas, and metric definitions may change without notice. This
@@ -211,8 +211,8 @@ wsinsight
 > and writes one AnnData `.h5ad` per slide under `imported-xenium/`
 > (`model-outputs-csv/` is never modified). Every matched `model-outputs-csv`
 > column is carried onto the cell under a `model_` prefix (plus `model_cell_id`);
-> optional per-cell sidecars requested with `--include cme,hplot,ncomp` are
-> merged the same way under their own `cme_` / `hplot_` / `ncomp_` prefixes
+> optional per-cell sidecars requested with `--include niche,hplot,ncomp` are
+> merged the same way under their own `niche_` / `hplot_` / `ncomp_` prefixes
 > (`model` is always imported and need not be listed). Supports
 > `--transform affine|affine+bspline` (default), `--genes`, `--include`,
 > `--match-max-dist`, and `--dry-run` (report the cell↔detection hit-rate only,
@@ -288,7 +288,7 @@ wsinsight run \
 `--hplot-range-min`, `--hplot-range-max`, `--hplot-samples-with-valid-range-only`),
 `--ecomp` (+ `--ecomp-max-edge`, `--ecomp-k`),
 `--tcomp` (+ `--tcomp-max-edge`, `--tcomp-k`),
-`--cme`   (+ `--cme-hoptimus`, `--cme-clusters`, `--export-geojson`).
+`--niche`   (+ `--niche-hoptimus`, `--niche-clusters`, `--export-geojson`).
 
 These flags are accepted by `run` only when the corresponding subcommand is
 enabled; they remain undocumented and unstable.
@@ -461,7 +461,7 @@ After a full pipeline run, `--results-dir` contains:
 ├── ncomp-outputs-csv/
 │   └── <slide>.csv                 Per-cell composition (node-level)
 ├── graphs/
-│   └── <slide>.h5                  Delaunay cache (produced by ncomp/ecomp/tcomp/cme)
+│   └── <slide>.h5                  Delaunay cache (produced by ncomp/ecomp/tcomp/niche)
 ├── export-csv/
 │   └── <slide>.csv                 Merged per-cell CSV (model + ncomp [+ hplot])
 ├── export-geojson/
@@ -469,7 +469,7 @@ After a full pipeline run, `--results-dir` contains:
 ├── export-omecsv/
 │   └── <slide>.ome.csv.gz          OME-CSV export
 └── <command>_metadata_<ts>.json    Per-command run log; every subcommand (run,
-                                    patch, infer, export, ncomp, hplot, cme, …)
+                                    patch, infer, export, ncomp, hplot, niche, …)
                                     writes one with the same {command, params,
                                     runtime, timestamp} schema (patch/infer also
                                     embed the model record)
@@ -477,7 +477,7 @@ After a full pipeline run, `--results-dir` contains:
 
 > Experimental subcommands add their own subdirectories alongside the stable
 > ones: `hplot-outputs-csv/{cells,...}/`, `ecomp-outputs-csv/<slide>.csv`,
-> `tcomp-outputs-csv/<slide>.csv`, `cme-outputs-csv/{cells,cmes}/<slide>.csv`,
+> `tcomp-outputs-csv/<slide>.csv`, `niche-outputs-csv/{cells,niches}/<slide>.csv`,
 > and matching `*-outputs-geojson/` folders. Schemas for these are
 > intentionally not pinned here.
 
@@ -1109,7 +1109,7 @@ Has the user provided WSIs?
    Liu et al. 2018 for curated survival endpoints, and cBioPortal for
    molecular subtypes. Join on the first 12 characters of the slide filename.
 8. **Do not recommend the experimental subcommands** (`hplot`,
-   `hplot-finalize`, `ecomp`, `tcomp`, `cme`) unless the user has explicitly
+   `hplot-finalize`, `ecomp`, `tcomp`, `niche`) unless the user has explicitly
    opted in via `WSINSIGHT_EXPERIMENTAL=1`. Their CLI surfaces and output
    schemas are unstable.
 
@@ -1167,7 +1167,7 @@ Auto-registered tools (stable surface):
 - **Prompt**: `reproduce_tcga_crc`.
 
 With `wsinsight-mcp --experimental` the server additionally exposes
-`hplot`, `ecomp`, `tcomp`, `cme` (long-running) and `hplot-finalize`
+`hplot`, `ecomp`, `tcomp`, `niche` (long-running) and `hplot-finalize`
 (short-running). Child processes inherit `WSINSIGHT_EXPERIMENTAL=1`
 automatically. The set of long-running commands lives in
 `wsinsight/mcp/schema.py::LONG_RUNNING_COMMANDS`.

@@ -1,8 +1,8 @@
-"""Standalone CLI for cellular microenvironment (CME) analysis.
+"""Standalone CLI for niche analysis.
 
-``wsinsight cme`` discovers recurring cellular microenvironments across a cohort
+``wsinsight niche`` discovers recurring niches across a cohort
 of whole slide images.  It builds per-slide Delaunay graphs, trains a global DGI
-encoder, clusters the resulting embeddings, and writes per-cell CME labels plus
+encoder, clusters the resulting embeddings, and writes per-cell niche labels plus
 optional annotation-level region merges.
 """
 
@@ -14,7 +14,7 @@ from pathlib import Path
 import click
 import pandas as pd
 
-from ..insightlib.cme_generation import cme_generation
+from ..insightlib.niche_generation import niche_generation
 from ..uri_path import URIPath, URIPathType
 from ..write_geojson import write_geojsons
 from ._meta import write_runtime_metadata
@@ -74,7 +74,7 @@ def _num_cpus() -> int:
     required=True,
     help=(
         "Directory containing whole slide images.  Used for slide enumeration "
-        "and um-per-pixel resolution; images are read only when --cme-hoptimus "
+        "and um-per-pixel resolution; images are read only when --niche-hoptimus "
         "is set."
     ),
 )
@@ -90,7 +90,7 @@ def _num_cpus() -> int:
     ),
 )
 @click.option(
-    "--cme-hoptimus",
+    "--niche-hoptimus",
     is_flag=True,
     default=False,
     show_default=True,
@@ -100,7 +100,7 @@ def _num_cpus() -> int:
     ),
 )
 @click.option(
-    "--cme-clusters",
+    "--niche-clusters",
     default=None,
     type=click.IntRange(min=2),
     help=(
@@ -110,18 +110,18 @@ def _num_cpus() -> int:
     ),
 )
 @click.option(
-    "--cme-leiden-res",
+    "--niche-leiden-res",
     default=_DEFAULT_LEIDEN_RESOLUTIONS,
     show_default=True,
     type=FLOAT_LIST,
     help=(
         "Comma-separated Leiden resolutions to sweep when choosing the number "
-        "of CMEs automatically (e.g. '0.2,0.5,1.0,2.0').  Higher resolutions "
-        "yield more, smaller clusters.  Ignored when --cme-clusters is set."
+        "of niches automatically (e.g. '0.2,0.5,1.0,2.0').  Higher resolutions "
+        "yield more, smaller clusters.  Ignored when --niche-clusters is set."
     ),
 )
 @click.option(
-    "--cme-embed-dim",
+    "--niche-embed-dim",
     default=32,
     show_default=True,
     type=click.IntRange(min=8, max=256),
@@ -135,14 +135,14 @@ def _num_cpus() -> int:
     is_flag=True,
     default=False,
     show_default=True,
-    help="Delete cached checkpoints and recompute all CME outputs from scratch.",
+    help="Delete cached checkpoints and recompute all niche outputs from scratch.",
 )
 @click.option(
     "--export-geojson",
     is_flag=True,
     default=False,
     show_default=True,
-    help="Export CME results to GeoJSON files (cme-outputs-geojson/).",
+    help="Export niche results to GeoJSON files (niche-outputs-geojson/).",
 )
 @click.option(
     "--num-workers",
@@ -151,30 +151,42 @@ def _num_cpus() -> int:
     type=click.IntRange(min=0),
     help="Number of workers for GeoJSON export.",
 )
-def cme(
+@click.option(
+    "--seed",
+    default=0,
+    show_default=True,
+    type=int,
+    help=(
+        "Random seed for the full niche pipeline (DGI encoder training, Leiden "
+        "sweep and KMeans clustering), making the discovered niche ids "
+        "reproducible across runs."
+    ),
+)
+def niche(
     *,
     wsi_dir: URIPath,
     results_dir: URIPath,
-    cme_hoptimus: bool = False,
-    cme_clusters: int | None = None,
-    cme_leiden_res: list[float] | None = None,
-    cme_embed_dim: int = 32,
+    niche_hoptimus: bool = False,
+    niche_clusters: int | None = None,
+    niche_leiden_res: list[float] | None = None,
+    niche_embed_dim: int = 32,
     overwrite: bool = False,
     export_geojson: bool = False,
     num_workers: int = 8,
+    seed: int = 0,
 ) -> None:
-    """Discover cellular microenvironments (CMEs) across a cohort of slides.
+    """Discover niches across a cohort of slides.
 
     Builds per-slide Delaunay cell graphs, trains a global Deep Graph Infomax
     (DGI) encoder across all slides, clusters the resulting embeddings, and
-    writes per-cell CME labels and annotation-level region merges.
+    writes per-cell niche labels and annotation-level region merges.
 
     \b
     Outputs written to <results-dir>/:
-      cme-outputs-csv/cells/<slide>.csv   per-cell CME labels + features
-      cme-outputs-csv/cmes/<slide>.csv    annotation-level merged CME regions
-      cme-outputs-geojson/cells/          GeoJSON cell detections with CME labels
-      cme-outputs-geojson/cmes/           GeoJSON CME region annotations
+      niche-outputs-csv/cells/<slide>.csv   per-cell niche labels + features
+      niche-outputs-csv/niches/<slide>.csv    annotation-level merged niche regions
+      niche-outputs-geojson/cells/          GeoJSON cell detections with niche labels
+      niche-outputs-geojson/niches/           GeoJSON niche region annotations
     """
 
     wsi_dir = wsi_dir.coerce_image_list()
@@ -198,10 +210,10 @@ def cme(
         )
 
     click.secho(
-        "\nRunning cellular microenvironment (CME) analysis.\n", fg="green"
+        "\nRunning niche analysis.\n", fg="green"
     )
 
-    cme_generation(
+    niche_generation(
         wsi_dir=wsi_dir,
         wsi_paths=slide_paths,
         results_dir=results_dir,
@@ -209,32 +221,33 @@ def cme(
         max_cell_radius_um=15.0,
         k_hops=2,
         alpha=1.0,
-        use_hoptimus=cme_hoptimus,
+        use_hoptimus=niche_hoptimus,
         hidden=64,
-        out_dim=cme_embed_dim,
+        out_dim=niche_embed_dim,
         epochs=300,
-        cme_cellular=True,
-        cme_annotation=True,
-        cme_clustering_k=cme_clusters,
-        cme_clustering_resolutions=cme_leiden_res,
+        niche_cellular=True,
+        niche_annotation=True,
+        niche_clustering_k=niche_clusters,
+        niche_clustering_resolutions=niche_leiden_res,
         overwrite=overwrite,
+        seed=seed,
     )
 
-    # --- GeoJSON: cell-level detections with CME labels ----------------------
+    # --- GeoJSON: cell-level detections with niche labels ----------------------
     if export_geojson:
-        cme_cells_dir = Path(str(results_dir)) / "cme-outputs-csv" / "cells"
-        if cme_cells_dir.exists():
-            cme_cell_csvs = sorted(cme_cells_dir.glob("*.csv"))
-            if cme_cell_csvs:
+        niche_cells_dir = Path(str(results_dir)) / "niche-outputs-csv" / "cells"
+        if niche_cells_dir.exists():
+            niche_cell_csvs = sorted(niche_cells_dir.glob("*.csv"))
+            if niche_cell_csvs:
                 click.echo(
-                    "\nWriting CME cell detections to GeoJSON files...\n"
+                    "\nWriting niche cell detections to GeoJSON files...\n"
                 )
                 write_geojsons(
-                    csvs=cme_cell_csvs,
+                    csvs=niche_cell_csvs,
                     overlap=0,
                     results_dir=results_dir,
-                    output_dir=Path("cme-outputs-geojson") / "cells",
-                    prefix="cme",
+                    output_dir=Path("niche-outputs-geojson") / "cells",
+                    prefix="niche",
                     num_workers=num_workers,
                     object_type="detection",
                     set_classification=True,
@@ -242,20 +255,20 @@ def cme(
                     overwrite=overwrite,
                 )
 
-        # --- GeoJSON: annotation-level CME regions ---------------------------
-        cme_cmes_dir = Path(str(results_dir)) / "cme-outputs-csv" / "cmes"
-        if cme_cmes_dir.exists():
-            cme_cme_csvs = sorted(cme_cmes_dir.glob("*.csv"))
-            if cme_cme_csvs:
+        # --- GeoJSON: annotation-level niche regions ---------------------------
+        niche_niches_dir = Path(str(results_dir)) / "niche-outputs-csv" / "niches"
+        if niche_niches_dir.exists():
+            niche_niche_csvs = sorted(niche_niches_dir.glob("*.csv"))
+            if niche_niche_csvs:
                 click.echo(
-                    "\nWriting CME annotation regions to GeoJSON files...\n"
+                    "\nWriting niche annotation regions to GeoJSON files...\n"
                 )
                 write_geojsons(
-                    csvs=cme_cme_csvs,
+                    csvs=niche_niche_csvs,
                     overlap=0,
                     results_dir=results_dir,
-                    output_dir=Path("cme-outputs-geojson") / "cmes",
-                    prefix="cme",
+                    output_dir=Path("niche-outputs-geojson") / "niches",
+                    prefix="niche",
                     num_workers=num_workers,
                     object_type="annotation",
                     set_classification=True,
@@ -265,59 +278,59 @@ def cme(
 
     write_runtime_metadata(
         results_dir,
-        "cme",
+        "niche",
         params=click.get_current_context().params,
     )
 
-    click.secho("\nCME analysis completed.\n", fg="green")
+    click.secho("\nniche analysis completed.\n", fg="green")
 
 
 # ---------------------------------------------------------------------------
-# wsinsight cme-profile
+# wsinsight niche-profile
 # ---------------------------------------------------------------------------
 
-@click.command(name="cme-profile")
+@click.command(name="niche-profile")
 @click.option(
     "-o",
     "--results-dir",
     type=URIPathType(exists=True, **_STORAGE_KWARGS),
     required=True,
-    help="Results directory containing cme-outputs-csv/cells/ from `wsinsight cme`.",
+    help="Results directory containing niche-outputs-csv/cells/ from `wsinsight niche`.",
 )
 @click.option(
     "--top-genes",
     default=10,
     show_default=True,
     type=click.IntRange(min=1),
-    help="Number of top enriched marker genes to report per CME (if expr_ columns exist).",
+    help="Number of top enriched marker genes to report per niche (if expr_ columns exist).",
 )
 @click.option(
     "--top-types",
     default=5,
     show_default=True,
     type=click.IntRange(min=1),
-    help="Number of top cell types to summarise per CME.",
+    help="Number of top cell types to summarise per niche.",
 )
-def cme_profile_cmd(*, results_dir: URIPath, top_genes: int, top_types: int) -> None:
-    """Summarise each CME's cell composition (and marker genes, if any) to help name niches."""
-    # Imported lazily: cme_profile is torch-free, so this keeps the command
+def niche_profile_cmd(*, results_dir: URIPath, top_genes: int, top_types: int) -> None:
+    """Summarise each niche's cell composition (and marker genes, if any) to help name niches."""
+    # Imported lazily: niche_profile is torch-free, so this keeps the command
     # usable even without the deep-learning stack.
-    from ..insightlib.cme_profile import cme_profile
+    from ..insightlib.niche_profile import niche_profile
 
-    comp, markers = cme_profile(
+    comp, markers = niche_profile(
         str(results_dir), top_genes=top_genes, top_types=top_types, write=True,
     )
 
-    click.secho("\nCME composition (mean cell-type fractions):\n", fg="green")
+    click.secho("\nniche composition (mean cell-type fractions):\n", fg="green")
     cols = [c for c in ("n_cells", "frac", "top_types") if c in comp.columns]
     with pd.option_context("display.max_colwidth", 80, "display.width", 200):
         click.echo(comp[cols].to_string())
 
     if markers is not None:
-        click.secho("\nTop enriched marker genes per CME:\n", fg="green")
-        for cme_id, grp in markers.groupby("cme", sort=False):
+        click.secho("\nTop enriched marker genes per niche:\n", fg="green")
+        for niche_id, grp in markers.groupby("niche", sort=False):
             top = ", ".join(f"{r.gene}({r.log2_enrichment:+.1f})" for r in grp.itertuples())
-            click.echo(f"  {cme_id}: {top}")
+            click.echo(f"  {niche_id}: {top}")
     else:
         click.secho(
             "\n(No expr_ columns found; this is expected for whole-slide H&E "
@@ -326,12 +339,12 @@ def cme_profile_cmd(*, results_dir: URIPath, top_genes: int, top_types: int) -> 
         )
 
     click.secho(
-        f"\nWrote cme-profile-composition.csv (and markers, if any) to {results_dir}\n",
+        f"\nWrote niche-profile-composition.csv (and markers, if any) to {results_dir}\n",
         fg="green",
     )
 
     write_runtime_metadata(
         results_dir,
-        "cme-profile",
+        "niche-profile",
         params=click.get_current_context().params,
     )

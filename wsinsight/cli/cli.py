@@ -13,8 +13,8 @@ import click
 
 from ..wsi import set_backend
 from .agg import agg
-from .cme import cme
-from .cme import cme_profile_cmd
+from .niche import niche
+from .niche import niche_profile_cmd
 from .ecomp import ecomp
 
 # from .convert_csv_to_sbubmi import tosbu
@@ -34,7 +34,7 @@ _logging_levels = ["debug", "info", "warning", "error", "critical"]
 # Subcommands hidden unless the user opts into experimental features by
 # setting the WSINSIGHT_EXPERIMENTAL environment variable. Keep this list in
 # sync with qupath-extension-wsinsight/commands/WSInsightCommands.EXPERIMENTAL.
-_EXPERIMENTAL_COMMANDS = ("hplot", "hplot-finalize", "cme", "tcomp", "ecomp", "agg", "import")
+_EXPERIMENTAL_COMMANDS = ("hplot", "hplot-finalize", "niche", "tcomp", "ecomp", "agg", "import")
 
 
 def _experimental_enabled() -> bool:
@@ -96,8 +96,8 @@ cli.add_command(reg)
 cli.add_command(ncomp)
 cli.add_command(ecomp)
 cli.add_command(tcomp)
-cli.add_command(cme)
-cli.add_command(cme_profile_cmd)
+cli.add_command(niche)
+cli.add_command(niche_profile_cmd)
 cli.add_command(agg)
 cli.add_command(sptx_import)
 

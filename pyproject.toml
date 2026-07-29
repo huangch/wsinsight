@@ -65,7 +65,7 @@ dependencies = [
   "boto3",
   "platformdirs",
   "joblib",
-  "lz4",  # required by joblib.dump(compress=("lz4", ...)) in cme_generation
+  "lz4",  # required by joblib.dump(compress=("lz4", ...)) in niche_generation
 
   # Graph & clustering
   "igraph",

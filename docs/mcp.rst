@@ -60,7 +60,7 @@ Run
   # Cap concurrency (defaults to the number of visible GPUs)
   wsinsight-mcp --max-concurrent 1
 
-  # Expose experimental tools (hplot, ecomp, tcomp, cme, hplot-finalize)
+  # Expose experimental tools (hplot, ecomp, tcomp, niche, hplot-finalize)
   wsinsight-mcp --experimental
 
 .. warning::

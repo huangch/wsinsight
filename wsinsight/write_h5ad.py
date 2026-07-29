@@ -7,7 +7,7 @@ Each slide's merged ``export-csv/<slide>.csv`` table becomes one AnnData object:
                      non-geometry measurement columns.
 * ``var_names``    — class / feature names (the ``<prefix>_`` stripped off).
 * ``obs``          — ``slide_id``, ``object_type``, argmax ``classification``,
-                     plus every geometry and extra (hplot / ncomp / cme) column.
+                     plus every geometry and extra (hplot / ncomp / niche) column.
 * ``obsm["spatial"]`` — cell centroid coordinates ``[center_x, center_y]``.
 * ``uns["wsinsight"]`` — provenance metadata.
 

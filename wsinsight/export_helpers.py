@@ -46,7 +46,7 @@ def _ensure_center(df: pd.DataFrame) -> pd.DataFrame:
 
 
 # Per-cell analysis sources that can be merged into export CSVs.
-CELL_SOURCES = frozenset({"hplot", "ncomp", "cme", "xenium"})
+CELL_SOURCES = frozenset({"hplot", "ncomp", "niche", "xenium"})
 
 # Simplex-level sources (edges, triads, aggregates) — exported separately.
 SIMPLEX_SOURCES = frozenset({"ecomp", "tcomp"})  # agg:<name> handled dynamically
@@ -62,7 +62,7 @@ def parse_include_sources(
     """Parse and validate --include sources.
 
     Returns (cell_sources, simplex_sources) where:
-    - cell_sources: set of per-cell source names (hplot, ncomp, cme, xenium)
+    - cell_sources: set of per-cell source names (hplot, ncomp, niche, xenium)
     - simplex_sources: set of simplex source names (ecomp, tcomp, agg:<name>)
 
     Special values:
@@ -192,14 +192,14 @@ def build_export_csvs(
     overwrite
         Re-build even if export-csv/ already contains up-to-date files.
     include
-        Set of source names to include: {"hplot", "ncomp", "cme", "xenium"}.
+        Set of source names to include: {"hplot", "ncomp", "niche", "xenium"}.
         If None or empty, all available sources are included.
 
     Sources (all optional — skipped when absent or not in ``include``):
     * ``model-outputs-csv/<slide>.csv``  — base inference + reg columns (always)
     * ``hplot-outputs-csv/cells/<slide>.csv`` — H-Plot per-cell features
     * ``ncomp-outputs-csv/<slide>.csv`` — neighbourhood composition
-    * ``cme-outputs-csv/cells/<slide>.csv`` — cell morphology embeddings
+    * ``niche-outputs-csv/cells/<slide>.csv`` — cell morphology embeddings
     * ``imported-xenium/<slide>.h5ad`` — Xenium per-cell summaries
 
     Returns the list of combined CSV paths that were written.
@@ -214,7 +214,7 @@ def build_export_csvs(
     # Source directories
     hplot_cells_dir = results_dir / "hplot-outputs-csv" / "cells"
     ncomp_dir = results_dir / "ncomp-outputs-csv"
-    cme_cells_dir = results_dir / "cme-outputs-csv" / "cells"
+    niche_cells_dir = results_dir / "niche-outputs-csv" / "cells"
     xenium_dir = results_dir / "imported-xenium"
 
     export_dir = results_dir / "export-csv"
@@ -264,11 +264,11 @@ def build_export_csvs(
                         how="left",
                     )
 
-        # --- cme (join on minx, miny) ----------------------------------------
-        if "cme" in include:
-            cme_csv = cme_cells_dir / f"{slide_id}.csv"
-            if cme_csv.exists():
-                cdf = _read_csv(cme_csv)
+        # --- niche (join on minx, miny) ----------------------------------------
+        if "niche" in include:
+            niche_csv = niche_cells_dir / f"{slide_id}.csv"
+            if niche_csv.exists():
+                cdf = _read_csv(niche_csv)
                 new_cols = [c for c in cdf.columns if c not in df.columns]
                 if new_cols and "minx" in cdf.columns and "miny" in cdf.columns:
                     df = df.merge(

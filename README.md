@@ -10,8 +10,8 @@ WSInsight is a whole-slide pathology toolkit for giga-pixel H&E images. It start
 ## Highlights
 
 - **Two model families.** WSInfer-compatible region/patch classifiers from the WSInfer Model Zoo *and* WSInsight-native cell-level Vision Transformers (CellViT-256, CellViT-SAM-H, CellViT-Virchow, HoverNet-PanNuke) for single-cell detection and classification.
-- **End-to-end CLI.** `wsinsight run` chains tissue segmentation → patch extraction → inference → downstream analytics in one resumable command; every stage is also available as a standalone subcommand (`patch`, `infer`, `reg`, `hplot`, `ncomp`, `ecomp`, `tcomp`, `cme`, `agg`, `export`).
-- **Spatial analytics.** Built-in neighborhood / edge / triad composition (`ncomp` / `ecomp` / `tcomp`) on Delaunay cell graphs, H-Plot layer-wise composition curves (which can plot a cell type **or a discovered niche** across tissue layers), unsupervised cellular-microenvironment discovery + profiling (`cme` / `cme-profile`), and density-gated cell-type aggregate detection (`agg`, e.g. T+B cells → tertiary lymphoid structures).
+- **End-to-end CLI.** `wsinsight run` chains tissue segmentation → patch extraction → inference → downstream analytics in one resumable command; every stage is also available as a standalone subcommand (`patch`, `infer`, `reg`, `hplot`, `ncomp`, `ecomp`, `tcomp`, `niche`, `agg`, `export`).
+- **Spatial analytics.** Built-in neighborhood / edge / triad composition (`ncomp` / `ecomp` / `tcomp`) on Delaunay cell graphs, H-Plot layer-wise composition curves (which can plot a cell type **or a discovered niche** across tissue layers), unsupervised niche discovery + profiling (`niche` / `niche-profile`), and density-gated cell-type aggregate detection (`agg`, e.g. T+B cells → tertiary lymphoid structures).
 - **QuPath integration.** A companion extension ([`qupath-extension-wsinsight`](https://github.com/huangch/qupath-extension-wsinsight)) drives every CLI subcommand from a generated form, so adding a CLI option propagates to the GUI without Java changes.
 - **Transparent URIs.** Read WSIs from local disks, S3 buckets, or GDC manifests and write outputs to local paths or S3 using the same flags. GeoJSON / OME-CSV exports interoperate with QuPath, OMERO, and standard pathology viewers.
 - **Reproducible runs.** Per-run metadata capture, deterministic configuration, container-friendly execution, and an idempotent `patch → infer` split for caching expensive stages.
@@ -259,20 +259,20 @@ The editable install enables rapid iteration on CLI commands, model definitions,
 ## CLI Overview
 
 Stable commands are available by default.  Experimental commands (`hplot`,
-`hplot-finalize`, `cme`, `cme-profile`, `ecomp`, `tcomp`, `agg`) are hidden unless the
+`hplot-finalize`, `niche`, `niche-profile`, `ecomp`, `tcomp`, `agg`) are hidden unless the
 environment variable `WSINSIGHT_EXPERIMENTAL=1` is set; see
 [Experimental Features](#experimental-features) below.
 
  Command            | Purpose
 --------------------|------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
- `wsinsight run`    | Segment tissue, extract patches, execute model inference, and optionally run ncomp analytics and export (one-shot orchestration of `patch` → `infer` → `ncomp` → `export`). Pass `--ncomp` to enable neighborhood composition and `--export-geojson` / `--export-omecsv` to write GeoJSON / OME-CSV files at the end of the run.  Experimental analytics (`--hplot`, `--cme`) require `WSINSIGHT_EXPERIMENTAL=1`.
+ `wsinsight run`    | Segment tissue, extract patches, execute model inference, and optionally run ncomp analytics and export (one-shot orchestration of `patch` → `infer` → `ncomp` → `export`). Pass `--ncomp` to enable neighborhood composition and `--export-geojson` / `--export-omecsv` to write GeoJSON / OME-CSV files at the end of the run.  Experimental analytics (`--hplot`, `--niche`) require `WSINSIGHT_EXPERIMENTAL=1`.
  `wsinsight patch`  | Perform tissue segmentation, cache/crop patches to HDF5, and prepare metadata for later inference runs. By default, slides with existing patch outputs are skipped; pass `--overwrite` to regenerate.
  `wsinsight infer`  | Load cached patches, run the selected model, and produce per-cell CSV outputs. By default, slides with existing CSV outputs are skipped; pass `--overwrite` to regenerate. Enrich object CSVs with region-level probabilities via `--region-inference-dir`. Use the standalone `ncomp`/`export` commands (or `run`) for downstream analytics. Does **not** run analytics or export — use `run` for one-shot orchestration.
  `wsinsight reg`    | Post-hoc object-to-region registration: enrich existing object-level CSV outputs with `region_prob_*` columns derived from a separate region-level inference run (`-r`). Equivalent to running `infer` with `--region-inference-dir`, but works on already-completed runs without re-running inference. Use `--overwrite` to replace existing `region_*` columns.
  `wsinsight ncomp`  | Neighborhood composition analysis on existing cell-detection outputs. For each target cell, builds a Delaunay graph, collects k-hop neighbors, and records the cell-type composition of the local neighborhood. Outputs per-cell CSVs under `ncomp-outputs-csv/`.
- `wsinsight cme-profile` | Summarise each discovered CME (niche) by its dominant cell types, writing `cme-profile-composition.csv` under the results directory. Reads the per-cell labels produced by `cme`. Whole-slide H&E cohorts have no transcriptome, so no marker-gene table is produced. Experimental (`WSINSIGHT_EXPERIMENTAL=1`).
- `wsinsight export` | Merge all available per-cell analytics (inference, ncomp, and — when enabled — H-plot / CME) into `export-csv/` and write GeoJSON and/or OME-CSV files. Can be run any time after inference without repeating the full pipeline.
- `wsinsight import` | **Experimental** (`WSINSIGHT_EXPERIMENTAL=1`). Import spatial-transcriptomics (Xenium) gene expression onto WSInsight cells: map each transcriptomics cell onto the registered H&E via the ST2WSI (SIFT affine + bUnwarpJ B-spline) transform, match it to the nearest `model-outputs-csv` detection, and write one AnnData `.h5ad` per slide under `imported-xenium/` (never modifies `model-outputs-csv/`). Each matched detection's `model-outputs-csv` columns are carried onto the cell under a `model_` prefix (plus `model_cell_id`); optional per-cell sidecars added with `--include cme,hplot,ncomp` are merged under their own `cme_`/`hplot_`/`ncomp_` prefixes (`model` is always imported). Reads a `sptx-list://` manifest via `-s`/`--sptx-dir`; supports `--transform affine\|affine+bspline`, `--genes`, `--include`, `--match-max-dist`, and `--dry-run` (report the cell↔detection hit-rate only, writing nothing).
+ `wsinsight niche-profile` | Summarise each discovered niche by its dominant cell types, writing `niche-profile-composition.csv` under the results directory. Reads the per-cell labels produced by `niche`. Whole-slide H&E cohorts have no transcriptome, so no marker-gene table is produced. Experimental (`WSINSIGHT_EXPERIMENTAL=1`).
+ `wsinsight export` | Merge all available per-cell analytics (inference, ncomp, and — when enabled — H-plot / niche) into `export-csv/` and write GeoJSON and/or OME-CSV files. Can be run any time after inference without repeating the full pipeline.
+ `wsinsight import` | **Experimental** (`WSINSIGHT_EXPERIMENTAL=1`). Import spatial-transcriptomics (Xenium) gene expression onto WSInsight cells: map each transcriptomics cell onto the registered H&E via the ST2WSI (SIFT affine + bUnwarpJ B-spline) transform, match it to the nearest `model-outputs-csv` detection, and write one AnnData `.h5ad` per slide under `imported-xenium/` (never modifies `model-outputs-csv/`). Each matched detection's `model-outputs-csv` columns are carried onto the cell under a `model_` prefix (plus `model_cell_id`); optional per-cell sidecars added with `--include niche,hplot,ncomp` are merged under their own `niche_`/`hplot_`/`ncomp_` prefixes (`model` is always imported). Reads a `sptx-list://` manifest via `-s`/`--sptx-dir`; supports `--transform affine\|affine+bspline`, `--genes`, `--include`, `--match-max-dist`, and `--dry-run` (report the cell↔detection hit-rate only, writing nothing).
 
 Pick `run` when you want a one-liner for single slides or small batches; switch
 to the explicit `patch` → `infer` → `ncomp` → `export` flow to resume large
@@ -346,24 +346,24 @@ in control of every result.
 │   └── <slide>.csv                 Per-edge composition
 ├── tcomp-outputs-csv/
 │   └── <slide>.csv                 Per-triad composition + geometry
-├── cme-outputs-csv/
-│   ├── cells/<slide>.csv           Per-cell CME labels + features
-│   └── cmes/<slide>.csv            Annotation-level merged CME regions
-├── cme-outputs-geojson/                (with --export-geojson)
-│   ├── cells/<slide>.geojson        GeoJSON cell detections with CME labels
-│   └── cmes/<slide>.geojson         GeoJSON CME region annotations
+├── niche-outputs-csv/
+│   ├── cells/<slide>.csv           Per-cell niche labels + features
+│   └── niches/<slide>.csv            Annotation-level merged niche regions
+├── niche-outputs-geojson/                (with --export-geojson)
+│   ├── cells/<slide>.geojson        GeoJSON cell detections with niche labels
+│   └── niches/<slide>.geojson         GeoJSON niche region annotations
 ├── graphs/
-│   └── <slide>.h5                  Cached Delaunay triangulation (shared by hplot/ncomp/cme)
+│   └── <slide>.h5                  Cached Delaunay triangulation (shared by hplot/ncomp/niche)
 ├── export-csv/
-│   └── <slide>.csv                 Merged per-cell CSV (inference + hplot + ncomp + cme)
+│   └── <slide>.csv                 Merged per-cell CSV (inference + hplot + ncomp + niche)
 ├── export-geojson/
 │   └── <slide>.geojson             GeoJSON export (wsinsight export --geojson)
 ├── export-omecsv/
 │   └── <slide>.ome.csv.gz          OME-CSV export (wsinsight export --omecsv)
 └── <command>_metadata_*.json       Per-command run log — every subcommand (run,
                                     patch, infer, export, reg, ncomp, ecomp,
-                                    tcomp, hplot, hplot-finalize, cme,
-                                    cme-profile, agg, import) writes one with the
+                                    tcomp, hplot, hplot-finalize, niche,
+                                    niche-profile, agg, import) writes one with the
                                     same {command, params, runtime, timestamp}
                                     schema; patch/infer also record the model.
 ```
@@ -447,24 +447,24 @@ Per-cell neighborhood composition produced by `ncomp` or `run --ncomp`.
  `neighborhood_<class>_count` | Count of neighbors of each class; one column per model class
  `neighborhood_<class>_prop`  | Proportion of neighbors of each class; one column per model class
 
-### `cme-outputs-csv/cells/<slide>.csv`
+### `niche-outputs-csv/cells/<slide>.csv`
 
-Per-cell CME labels and features produced by `cme` or `run --cme`.
+Per-cell niche labels and features produced by `niche` or `run --niche`.
 
  Column                               | Description
 --------------------------------------|----------------------------------------------------------------
  All columns from `model-outputs-csv` | Inherited inference + region columns
- `cme_cluster`                        | Integer cluster label assigned by KMeans (or Leiden-derived k)
+ `niche_cluster`                        | Integer cluster label assigned by KMeans (or Leiden-derived k)
  `feature_normalized_*`               | Normalized DGI embedding features (one column per dimension)
  `feature_raw_*`                      | Raw DGI embedding features (one column per dimension)
 
-### `cme-outputs-csv/cmes/<slide>.csv`
+### `niche-outputs-csv/niches/<slide>.csv`
 
-Annotation-level merged CME regions produced by `cme` or `run --cme`. Adjacent cells sharing the same `cme_cluster` are dissolved into contiguous polygonal regions.
+Annotation-level merged niche regions produced by `niche` or `run --niche`. Adjacent cells sharing the same `niche_cluster` are dissolved into contiguous polygonal regions.
 
 ### `graphs/<slide>.h5`
 
-Cached Delaunay triangulation shared by `hplot`, `ncomp`, and `cme`. Created on the first run and reused on subsequent runs to skip the expensive `scipy.spatial.Delaunay` computation. The cache stores **unpruned** edges; each command applies its own distance threshold at load time.
+Cached Delaunay triangulation shared by `hplot`, `ncomp`, and `niche`. Created on the first run and reused on subsequent runs to skip the expensive `scipy.spatial.Delaunay` computation. The cache stores **unpruned** edges; each command applies its own distance threshold at load time.
 
 The file is automatically invalidated and rebuilt when the underlying `model-outputs-csv/<slide>.csv` changes (detected via cell count and a SHA-256 hash of cell centres).
 
@@ -483,7 +483,7 @@ HDF5 layout:
 
 ### `export-csv/<slide>.csv`
 
-Merged per-cell CSV produced by `build_export_csvs()` (called programmatically via `wsinsight.export_helpers`). Left-joins `model-outputs-csv`, `hplot-outputs-csv/cells`, `ncomp-outputs-csv`, and `cme-outputs-csv/cells` on shared geometry keys.
+Merged per-cell CSV produced by `build_export_csvs()` (called programmatically via `wsinsight.export_helpers`). Left-joins `model-outputs-csv`, `hplot-outputs-csv/cells`, `ncomp-outputs-csv`, and `niche-outputs-csv/cells` on shared geometry keys.
 
  Column                                                    | Description
 -----------------------------------------------------------|-------------------------------------------
@@ -493,8 +493,8 @@ Merged per-cell CSV produced by `build_export_csvs()` (called programmatically v
  `signed_distance_to_border`                               | From H-plot cells output (when available)
  `cell_type`, `neighborhood_size`                          | From ncomp output (when available)
  `neighborhood_<class>_count`, `neighborhood_<class>_prop` | From ncomp output (when available)
- `cme_*`                                                   | From CME cell output (when available)
- `feature_normalized_*`, `feature_raw_*`                   | From CME cell output (when available)
+ `niche_*`                                                   | From niche cell output (when available)
+ `feature_normalized_*`, `feature_raw_*`                   | From niche cell output (when available)
 
 ## Key Parameters
 
@@ -645,11 +645,11 @@ QuPath extension, etc.) can discover every command; only invocation is gated.
  `wsinsight hplot-finalize` | Aggregate per-slide H-plot intermediates into a single `hplot-outputs.csv`. Use after running parallel `hplot` jobs that share the same `--results-dir`.
  `wsinsight ecomp`          | Edge-level composition analysis. For each Delaunay edge, builds the line graph, collects k-hop edge neighbors, and records the composition of edge types in the local neighborhood. Outputs per-edge CSVs under `ecomp-outputs-csv/`.
  `wsinsight tcomp`          | Triad-level composition analysis. For each Delaunay triangle, builds the dual graph (triads sharing ≥1 vertex), collects k-hop triad neighbors, and records the composition of triad types plus per-triad geometry (area, perimeter, regularity). Outputs per-triad CSVs under `tcomp-outputs-csv/`.
- `wsinsight cme`            | Cellular microenvironment (CME) analysis across a cohort of slides. Builds per-slide Delaunay cell graphs, trains a global Deep Graph Infomax (DGI) encoder, clusters the resulting embeddings, and writes per-cell CME labels plus annotation-level region merges under `cme-outputs-csv/`. Pass `--export-geojson` to also write GeoJSON files under `cme-outputs-geojson/`. Cross-slide analysis — cannot be parallelized across GPU shards.
+ `wsinsight niche`            | Niche analysis across a cohort of slides. Builds per-slide Delaunay cell graphs, trains a global Deep Graph Infomax (DGI) encoder, clusters the resulting embeddings, and writes per-cell niche labels plus annotation-level region merges under `niche-outputs-csv/`. Pass `--export-geojson` to also write GeoJSON files under `niche-outputs-geojson/`. Cross-slide analysis — cannot be parallelized across GPU shards.
  `wsinsight agg`            | Cell-type aggregate analysis on existing inference outputs. Detects connected, density-gated aggregates of a chosen cell-type set (`--agg-types`, e.g. `t_cell,b_cell` → TLS) over the cached Delaunay graph, contracts them into a quotient graph, and writes namespaced outputs under the product label `--agg-name`: an `object_<name>_prob_<name>` per-cell membership column (upserted into `model-outputs-csv/`), a per-aggregate sidecar under `agg-<name>-outputs-csv/`, and an `agg/<name>/` subgroup in `graphs/<slide>.h5`. The name is selectable in `hplot` via `--base-by aggregate` / `--target-by aggregate`.
 
 Experimental stages can also be invoked inline from `wsinsight run` via
-`--hplot` / `--cme` (when `WSINSIGHT_EXPERIMENTAL=1`).  `ecomp` / `tcomp` / `agg` are
+`--hplot` / `--niche` (when `WSINSIGHT_EXPERIMENTAL=1`).  `ecomp` / `tcomp` / `agg` are
 standalone only.
 
 ### Simplicial composition hierarchy — `ncomp` / `ecomp` / `tcomp`
@@ -701,13 +701,13 @@ where 1.0 is equilateral).  Edges and triads are **not** merged into
  `--tcomp-k`        | `2`     | k-hop neighborhood radius (dual graph)
  `--overwrite`      | off     | Recompute existing per-slide outputs
 
-### CME parameters (`--cme-*` options in `run` and `wsinsight cme`)
+### niche parameters (`--niche-*` options in `run` and `wsinsight niche`)
 
  Option             | Default | Description
 --------------------|---------|------------------------------------------------------------------------------------
- `--cme-hoptimus`   | off     | Enable H-Optimus tissue morphology features (requires GPU + timm)
- `--cme-clusters`   | auto    | Number of KMeans clusters; when omitted, determined via Leiden community detection
- `--export-geojson` | off     | Export CME results to GeoJSON files under `cme-outputs-geojson/`
+ `--niche-hoptimus`   | off     | Enable H-Optimus tissue morphology features (requires GPU + timm)
+ `--niche-clusters`   | auto    | Number of KMeans clusters; when omitted, determined via Leiden community detection
+ `--export-geojson` | off     | Export niche results to GeoJSON files under `niche-outputs-geojson/`
  `--overwrite`      | off     | Delete cached checkpoints and recompute from scratch
 
 ### Aggregate parameters (`--agg-*` options in `wsinsight agg`)
@@ -747,15 +747,15 @@ wsinsight run \
   --hplot-range-min -5 \
   --hplot-range-max 5 \
   --ncomp \
-  --cme \
+  --niche \
   --export-geojson \
   --export-omecsv
 ```
 
-Run CME analysis on existing inference outputs:
+Run niche analysis on existing inference outputs:
 
 ```bash
-wsinsight cme --wsi-dir slides/ --results-dir results/
+wsinsight niche --wsi-dir slides/ --results-dir results/
 ```
 
 Run H-plot on existing inference outputs:
@@ -802,7 +802,7 @@ WSInsight reads the following environment variables at startup. Set them in your
  Variable                     | Purpose                                                                                                                                                                             | Example
 ------------------------------|-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|---------------------------------------------------------------------------------------------
  `WSINSIGHT_ZOO_REGISTRY_PATH` | Path to a local `wsinsight-zoo-registry.json` file. **Required in air-gapped / restricted-SSL environments.** When set (and the file exists), no network call to HuggingFace is made. The legacy name `WSINFER_ZOO_REGISTRY_PATH` is still honored for one release (emits a `DeprecationWarning`). | `export WSINSIGHT_ZOO_REGISTRY_PATH=/workspace/wsinsight/devel/zoo/wsinsight-zoo-registry.json`
- `WSINSIGHT_EXPERIMENTAL`     | Set to `1` (or `true`/`yes`/`on`) to unhide experimental subcommands (`hplot`, `hplot-finalize`, `cme`, `ecomp`, `tcomp`, `agg`) and the `--hplot` / `--cme` flags on `wsinsight run`. Without it, experimental commands are hidden from `--help` and refuse to run.  See [Experimental Features](#experimental-features). | `export WSINSIGHT_EXPERIMENTAL=1`
+ `WSINSIGHT_EXPERIMENTAL`     | Set to `1` (or `true`/`yes`/`on`) to unhide experimental subcommands (`hplot`, `hplot-finalize`, `niche`, `ecomp`, `tcomp`, `agg`) and the `--hplot` / `--niche` flags on `wsinsight run`. Without it, experimental commands are hidden from `--help` and refuse to run.  See [Experimental Features](#experimental-features). | `export WSINSIGHT_EXPERIMENTAL=1`
  `S3_STORAGE_OPTIONS`         | JSON object passed verbatim to `s3fs` / `fsspec` (e.g. AWS profile, endpoint URL). Required to read/write S3 URIs.                                                                  | `export S3_STORAGE_OPTIONS='{"profile":"saml"}'`
  `GS_STORAGE_OPTIONS`         | JSON object passed verbatim to `gcsfs` / `fsspec` for Google Cloud Storage (`gs://`) URIs. Optional: auth defaults to Application Default Credentials (`GOOGLE_APPLICATION_CREDENTIALS`); set this only to override (e.g. a service-account key).                         | `export GS_STORAGE_OPTIONS='{"token":"/path/to/service-account.json"}'`
  `WSINSIGHT_REMOTE_CACHE_DIR` | Local directory where remote assets (S3 tiles, GDC downloads) are materialised. Defaults to `~/.cache/wsinsight`. Point it at a fast SSD for large cohorts.                         | `export WSINSIGHT_REMOTE_CACHE_DIR=/scratch/wsinsight-cache`

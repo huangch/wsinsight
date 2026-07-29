@@ -9,7 +9,7 @@ Examples::
     wsinsight-mcp                       # stdio (default)
     wsinsight-mcp --http 127.0.0.1:8765 # streamable HTTP, loopback only
     wsinsight-mcp --max-concurrent 1    # serialise GPU jobs
-    wsinsight-mcp --experimental        # expose hplot/ecomp/tcomp/cme tools
+    wsinsight-mcp --experimental        # expose hplot/ecomp/tcomp/niche tools
 
 For multi-user / remote deployments, run behind a reverse proxy that
 adds authentication; the server itself binds to the supplied host
@@ -56,7 +56,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument(
         "--experimental",
         action="store_true",
-        help="Expose experimental subcommands (hplot/hplot-finalize/ecomp/tcomp/cme).",
+        help="Expose experimental subcommands (hplot/hplot-finalize/ecomp/tcomp/niche).",
     )
     parser.add_argument(
         "--log-level",

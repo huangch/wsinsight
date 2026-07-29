@@ -151,9 +151,9 @@
     }
    ]
   },
-  "cme": {
-   "help": "Discover cellular microenvironments (CMEs) across a cohort of slides.\n\n    Builds per-slide Delaunay cell graphs, trains a global Deep Graph Infomax\n    (DGI) encoder across all slides, clusters the resulting embeddings, and\n    writes per-cell CME labels and annotation-level region merges.\n\n    \b\n    Outputs written to <results-dir>/:\n      cme-outputs-csv/cells/<slide>.csv   per-cell CME labels + features\n      cme-outputs-csv/cmes/<slide>.csv    annotation-level merged CME regions\n      cme-outputs-geojson/cells/          GeoJSON cell detections with CME labels\n      cme-outputs-geojson/cmes/           GeoJSON CME region annotations",
-   "name": "cme",
+  "niche": {
+   "help": "Discover niches across a cohort of slides.\n\n    Builds per-slide Delaunay cell graphs, trains a global Deep Graph Infomax\n    (DGI) encoder across all slides, clusters the resulting embeddings, and\n    writes per-cell niche labels and annotation-level region merges.\n\n    \b\n    Outputs written to <results-dir>/:\n      niche-outputs-csv/cells/<slide>.csv   per-cell niche labels + features\n      niche-outputs-csv/niches/<slide>.csv    annotation-level merged niche regions\n      niche-outputs-geojson/cells/          GeoJSON cell detections with niche labels\n      niche-outputs-geojson/niches/           GeoJSON niche region annotations",
+   "name": "niche",
    "params": [
     {
      "default": null,
@@ -161,7 +161,7 @@
       "-i",
       "--wsi-dir"
      ],
-     "help": "Directory containing whole slide images.  Used for slide enumeration and um-per-pixel resolution; images are read only when --cme-hoptimus is set.",
+     "help": "Directory containing whole slide images.  Used for slide enumeration and um-per-pixel resolution; images are read only when --niche-hoptimus is set.",
      "is_flag": false,
      "kind": "string",
      "multiple": false,
@@ -186,26 +186,26 @@
     {
      "default": false,
      "flags": [
-      "--cme-hoptimus"
+      "--niche-hoptimus"
      ],
      "help": "Enable H-Optimus tissue morphology features in addition to k-hop cell-type composition.  Requires a GPU and the timm package.",
      "is_flag": true,
      "kind": "bool",
      "multiple": false,
-     "name": "cme_hoptimus",
+     "name": "niche_hoptimus",
      "param_type": "option",
      "required": false
     },
     {
      "default": null,
      "flags": [
-      "--cme-clusters"
+      "--niche-clusters"
      ],
      "help": "Number of microenvironment clusters (KMeans).  When omitted, the optimal number is determined automatically via a Leiden community-detection sweep.",
      "is_flag": false,
      "kind": "int",
      "multiple": false,
-     "name": "cme_clusters",
+     "name": "niche_clusters",
      "param_type": "option",
      "required": false
     },
@@ -214,7 +214,7 @@
      "flags": [
       "--overwrite"
      ],
-     "help": "Delete cached checkpoints and recompute all CME outputs from scratch.",
+     "help": "Delete cached checkpoints and recompute all niche outputs from scratch.",
      "is_flag": true,
      "kind": "bool",
      "multiple": false,
@@ -237,9 +237,9 @@
     }
    ]
   },
-  "cme-profile": {
-   "help": "Summarise each CME's cell composition (and marker genes, if any) to help name niches.",
-   "name": "cme-profile",
+  "niche-profile": {
+   "help": "Summarise each niche's cell composition (and marker genes, if any) to help name niches.",
+   "name": "niche-profile",
    "params": [
     {
      "default": null,
@@ -247,7 +247,7 @@
       "-o",
       "--results-dir"
      ],
-     "help": "Results directory containing cme-outputs-csv/cells/ from `wsinsight cme`.",
+     "help": "Results directory containing niche-outputs-csv/cells/ from `wsinsight niche`.",
      "is_flag": false,
      "kind": "string",
      "multiple": false,
@@ -260,7 +260,7 @@
      "flags": [
       "--top-genes"
      ],
-     "help": "Number of top enriched marker genes to report per CME (if expr_ columns exist).",
+     "help": "Number of top enriched marker genes to report per niche (if expr_ columns exist).",
      "is_flag": false,
      "kind": "int",
      "multiple": false,
@@ -273,7 +273,7 @@
      "flags": [
       "--top-types"
      ],
-     "help": "Number of top cell types to summarise per CME.",
+     "help": "Number of top cell types to summarise per niche.",
      "is_flag": false,
      "kind": "int",
      "multiple": false,
@@ -383,7 +383,7 @@
    ]
   },
   "export": {
-   "help": "Merge all available per-cell analytics and export to GeoJSON / OME-CSV.\n\n    Reads whatever analysis outputs are present under RESULTS_DIR:\n\n    \b\n      model-outputs-csv/       — base inference probabilities (+ reg columns)\n      hplot-outputs-csv/cells/ — H-Plot per-cell layer features\n      ncomp-outputs-csv/       — node-level (cell) composition features\n      cme-outputs-csv/cells/   — cell morphology embeddings\n      imported-xenium/         — Xenium per-cell summaries\n\n    All per-cell sources above are left-joined into export-csv/, then\n    written to export-geojson/, export-omecsv/, and/or export-h5ad/. Use --include to select specific sources including simplex outputs (ecomp, tcomp, agg:<name>) depending on the\n    flags provided.\n\n    Edge-level (``ecomp-outputs-csv/``) and triad-level\n    (``tcomp-outputs-csv/``) composition outputs are standalone\n    simplicial deliverables and are NOT merged into the per-cell\n    export (they have different primary keys).  Consume them\n    directly from their respective subdirectories.\n\n    At least one of --geojson, --omecsv, or --h5ad must be supplied.\n\n    This command can be run at any time after inference — and optionally after\n    hplot / ncomp — without re-running the full inference pipeline.",
+   "help": "Merge all available per-cell analytics and export to GeoJSON / OME-CSV.\n\n    Reads whatever analysis outputs are present under RESULTS_DIR:\n\n    \b\n      model-outputs-csv/       — base inference probabilities (+ reg columns)\n      hplot-outputs-csv/cells/ — H-Plot per-cell layer features\n      ncomp-outputs-csv/       — node-level (cell) composition features\n      niche-outputs-csv/cells/   — cell morphology embeddings\n      imported-xenium/         — Xenium per-cell summaries\n\n    All per-cell sources above are left-joined into export-csv/, then\n    written to export-geojson/, export-omecsv/, and/or export-h5ad/. Use --include to select specific sources including simplex outputs (ecomp, tcomp, agg:<name>) depending on the\n    flags provided.\n\n    Edge-level (``ecomp-outputs-csv/``) and triad-level\n    (``tcomp-outputs-csv/``) composition outputs are standalone\n    simplicial deliverables and are NOT merged into the per-cell\n    export (they have different primary keys).  Consume them\n    directly from their respective subdirectories.\n\n    At least one of --geojson, --omecsv, or --h5ad must be supplied.\n\n    This command can be run at any time after inference — and optionally after\n    hplot / ncomp — without re-running the full inference pipeline.",
    "name": "export",
    "params": [
     {
@@ -501,7 +501,7 @@
      "flags": [
       "--include"
      ],
-     "help": "Analysis sources to include in the export (repeatable, or comma-separated). Per-cell sources (merged into export-csv/): hplot, ncomp, cme, xenium. Simplex sources (separate directories): ecomp, tcomp, agg:<name>. Special values: all (everything), all-cells (per-cell only). If omitted, all available per-cell sources are included.",
+     "help": "Analysis sources to include in the export (repeatable, or comma-separated). Per-cell sources (merged into export-csv/): hplot, ncomp, niche, xenium. Simplex sources (separate directories): ecomp, tcomp, agg:<name>. Special values: all (everything), all-cells (per-cell only). If omitted, all available per-cell sources are included.",
      "is_flag": false,
      "kind": "string",
      "multiple": true,
@@ -585,14 +585,14 @@
     {
      "choices": [
       "celltype",
-      "cme",
+      "niche",
       "aggregate"
      ],
      "default": "celltype",
      "flags": [
       "--base-by"
      ],
-     "help": "Interpret --hplot-base-types as cell types, CME (niche) ids, or aggregate names.",
+     "help": "Interpret --hplot-base-types as cell types, niche ids, or aggregate names.",
      "is_flag": false,
      "kind": "choice",
      "multiple": false,
@@ -603,14 +603,14 @@
     {
      "choices": [
       "celltype",
-      "cme",
+      "niche",
       "aggregate"
      ],
      "default": "celltype",
      "flags": [
       "--target-by"
      ],
-     "help": "Interpret --hplot-target-types as cell types, CME (niche) ids, or aggregate names. Use 'cme' for a niche's layer-wise fraction (requires `wsinsight cme`); use 'aggregate' for an aggregate's member-cell fraction (requires `wsinsight agg`).",
+     "help": "Interpret --hplot-target-types as cell types, niche ids, or aggregate names. Use 'niche' for a niche's layer-wise fraction (requires `wsinsight niche`); use 'aggregate' for an aggregate's member-cell fraction (requires `wsinsight agg`).",
      "is_flag": false,
      "kind": "choice",
      "multiple": false,
@@ -2377,39 +2377,39 @@
     {
      "default": false,
      "flags": [
-      "--cme"
+      "--niche"
      ],
-     "help": "Run cellular microenvironment (CME) analysis after inference.",
+     "help": "Run niche analysis after inference.",
      "is_flag": true,
      "kind": "bool",
      "multiple": false,
-     "name": "cme",
+     "name": "niche",
      "param_type": "option",
      "required": false
     },
     {
      "default": false,
      "flags": [
-      "--cme-hoptimus"
+      "--niche-hoptimus"
      ],
-     "help": "Enable H-Optimus tissue morphology features for CME.  Requires a GPU and the timm package.  Ignored unless --cme is set.",
+     "help": "Enable H-Optimus tissue morphology features for niche.  Requires a GPU and the timm package.  Ignored unless --niche is set.",
      "is_flag": true,
      "kind": "bool",
      "multiple": false,
-     "name": "cme_hoptimus",
+     "name": "niche_hoptimus",
      "param_type": "option",
      "required": false
     },
     {
      "default": null,
      "flags": [
-      "--cme-clusters"
+      "--niche-clusters"
      ],
-     "help": "Number of CME clusters (KMeans).  When omitted, determined automatically via Leiden community detection.  Ignored unless --cme is set.",
+     "help": "Number of niche clusters (KMeans).  When omitted, determined automatically via Leiden community detection.  Ignored unless --niche is set.",
      "is_flag": false,
      "kind": "int",
      "multiple": false,
-     "name": "cme_clusters",
+     "name": "niche_clusters",
      "param_type": "option",
      "required": false
     },
@@ -2541,7 +2541,7 @@
    ]
   },
   "import": {
-   "help": "Import spatial-transcriptomics gene expression onto WSInsight cells.\n\n\b\nFor each sample in the sptx-list manifest:\n  • map Xenium centroids (µm) onto the H&E via the ST2WSI transform,\n  • match each cell to the nearest model-output detection,\n  • write one AnnData whose obs carries the matched detection under model_* (plus model_cell_id), and any --include sources under cme_/hplot_/ncomp_.\n\n\b\nOutput written to <results-dir>/:\n  imported-xenium/<sample_id>.h5ad",
+   "help": "Import spatial-transcriptomics gene expression onto WSInsight cells.\n\n\b\nFor each sample in the sptx-list manifest:\n  • map Xenium centroids (µm) onto the H&E via the ST2WSI transform,\n  • match each cell to the nearest model-output detection,\n  • write one AnnData whose obs carries the matched detection under model_* (plus model_cell_id), and any --include sources under niche_/hplot_/ncomp_.\n\n\b\nOutput written to <results-dir>/:\n  imported-xenium/<sample_id>.h5ad",
    "name": "import",
    "params": [
     {
@@ -2637,7 +2637,7 @@
      "flags": [
       "--include"
      ],
-     "help": "Comma-separated optional per-cell sources to merge into obs, each under its own prefix: cme (cme_), hplot (hplot_), ncomp (ncomp_). The mandatory 'model' source (model_*) is always imported and need not be listed. Empty = model only. Example: --include cme,hplot",
+     "help": "Comma-separated optional per-cell sources to merge into obs, each under its own prefix: niche (niche_), hplot (hplot_), ncomp (ncomp_). The mandatory 'model' source (model_*) is always imported and need not be listed. Empty = model only. Example: --include niche,hplot",
      "is_flag": false,
      "kind": "string",
      "multiple": false,

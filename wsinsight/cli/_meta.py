@@ -5,7 +5,7 @@ file into ``results_dir`` at the end of a successful run. ``patch`` and ``infer`
 predate this module and emit a richer record that also captures the model
 object (see their local ``_get_info_for_save`` helpers); the analytics
 subcommands (``hplot``, ``hplot-finalize``, ``ncomp``, ``ecomp``, ``tcomp``,
-``cme``) have no model object and use the model-less helper here.
+``niche``) have no model object and use the model-less helper here.
 """
 
 from __future__ import annotations

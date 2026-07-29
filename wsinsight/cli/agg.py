@@ -237,7 +237,7 @@ def agg(
             "Run 'wsinsight infer' or 'wsinsight run' first."
         )
 
-    # --- name-collision guard: cell-type labels, CME ids, region_/object_ tags ---
+    # --- name-collision guard: cell-type labels, niche ids, region_/object_ tags ---
     headers = _collect_headers(model_output_dir, num_workers)
     cell_types = {
         c.lower().removeprefix("prob_")
@@ -253,7 +253,7 @@ def agg(
     colliding = [
         c
         for c in headers
-        if c.lower().startswith((f"object_{name}_", f"region_{name}_", f"cme_{name}"))
+        if c.lower().startswith((f"object_{name}_", f"region_{name}_", f"niche_{name}"))
         and c.lower() != own_col
     ]
     if colliding:

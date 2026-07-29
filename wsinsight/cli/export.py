@@ -109,7 +109,7 @@ def _to_local_path(p: URIPath | Path) -> Path:
     multiple=True,
     help=(
         "Analysis sources to include in the export (repeatable, or comma-separated). "
-        "Per-cell sources (merged into export-csv/): hplot, ncomp, cme, xenium. "
+        "Per-cell sources (merged into export-csv/): hplot, ncomp, niche, xenium. "
         "Simplex sources (separate directories): ecomp, tcomp, agg:<name>. "
         "Special values: 'all' (everything), 'all-cells' (per-cell only). "
         "If omitted, only per-cell sources are included (backward compatible). "
@@ -136,7 +136,7 @@ def export(
       model-outputs-csv/       — base inference probabilities (always included)
       hplot-outputs-csv/cells/ — H-Plot per-cell layer features
       ncomp-outputs-csv/       — node-level (cell) composition features
-      cme-outputs-csv/cells/   — cell morphology embeddings
+      niche-outputs-csv/cells/   — cell morphology embeddings
       imported-xenium/         — Xenium per-cell summaries
 
     \b
