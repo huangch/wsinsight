@@ -40,6 +40,7 @@ platformdirs
 # Graph & clustering
 igraph
 leidenalg
+pynndescent
 
 # Geospatial (GDAL installed via conda)
 geopandas

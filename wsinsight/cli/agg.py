@@ -129,7 +129,7 @@ _NAME_RE = re.compile(r"^[a-z0-9_]+$")
         "Product label for this aggregate (lower-case [a-z0-9_]+), e.g. 'tls'.  "
         "Namespaces every artifact (object_<name>_prob_<name> column, "
         "agg-<name>-outputs-csv/, agg/<name>/ in the graph cache) and is usable "
-        "as a type in `wsinsight hplot --target-by aggregate`."
+        "as a type in `wsinsight hplot --hplot-target-by aggregate`."
     ),
 )
 @click.option(

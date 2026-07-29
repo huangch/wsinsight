@@ -74,7 +74,7 @@ def _num_cpus() -> int:
     required=True,
     help=(
         "Directory containing whole slide images.  Used for slide enumeration "
-        "and um-per-pixel resolution; images are read only when --niche-hoptimus "
+        "and um-per-pixel resolution; images are read only when --hoptimus "
         "is set."
     ),
 )
@@ -90,7 +90,8 @@ def _num_cpus() -> int:
     ),
 )
 @click.option(
-    "--niche-hoptimus",
+    "--hoptimus",
+    "niche_hoptimus",
     is_flag=True,
     default=False,
     show_default=True,
@@ -100,7 +101,8 @@ def _num_cpus() -> int:
     ),
 )
 @click.option(
-    "--niche-clusters",
+    "--clusters",
+    "niche_clusters",
     default=None,
     type=click.IntRange(min=2),
     help=(
@@ -110,18 +112,20 @@ def _num_cpus() -> int:
     ),
 )
 @click.option(
-    "--niche-leiden-res",
+    "--leiden-res",
+    "niche_leiden_res",
     default=_DEFAULT_LEIDEN_RESOLUTIONS,
     show_default=True,
     type=FLOAT_LIST,
     help=(
         "Comma-separated Leiden resolutions to sweep when choosing the number "
         "of niches automatically (e.g. '0.2,0.5,1.0,2.0').  Higher resolutions "
-        "yield more, smaller clusters.  Ignored when --niche-clusters is set."
+        "yield more, smaller clusters.  Ignored when --clusters is set."
     ),
 )
 @click.option(
-    "--niche-embed-dim",
+    "--embed-dim",
+    "niche_embed_dim",
     default=32,
     show_default=True,
     type=click.IntRange(min=8, max=256),
@@ -131,30 +135,30 @@ def _num_cpus() -> int:
     ),
 )
 @click.option(
-    "--niche-epochs",
+    "--epochs",
     "epochs",
     default=300,
     show_default=True,
     type=click.IntRange(min=1),
     help=(
         "Upper bound on DGI encoder training epochs.  Early stopping is always "
-        "active, so training may finish sooner (see --niche-patience, "
-        "--niche-min-delta and --niche-min-epochs)."
+        "active, so training may finish sooner (see --patience, "
+        "--min-delta and --min-epochs)."
     ),
 )
 @click.option(
-    "--niche-patience",
+    "--patience",
     "early_stop_patience",
     default=20,
     show_default=True,
     type=click.IntRange(min=1),
     help=(
         "Early-stopping patience: stop after this many consecutive epochs "
-        "without a mean-loss improvement greater than --niche-min-delta."
+        "without a mean-loss improvement greater than --min-delta."
     ),
 )
 @click.option(
-    "--niche-min-delta",
+    "--min-delta",
     "early_stop_min_delta",
     default=1e-4,
     show_default=True,
@@ -165,7 +169,7 @@ def _num_cpus() -> int:
     ),
 )
 @click.option(
-    "--niche-min-epochs",
+    "--min-epochs",
     "early_stop_min_epochs",
     default=50,
     show_default=True,
@@ -175,7 +179,7 @@ def _num_cpus() -> int:
     ),
 )
 @click.option(
-    "--niche-amp",
+    "--amp",
     "amp",
     is_flag=True,
     default=False,
@@ -208,7 +212,7 @@ def _num_cpus() -> int:
     help="Number of workers for GeoJSON export.",
 )
 @click.option(
-    "--niche-seed",
+    "--seed",
     "seed",
     default=0,
     show_default=True,

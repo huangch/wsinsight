@@ -647,7 +647,7 @@ def train_dgi_multi(slides, hidden=64, out_dim=32, epochs=300, lr=1e-3, wd=1e-4,
     use_amp = bool(amp) and primary.type == "cuda"
     if primary.type == "cuda":
         torch.backends.cudnn.benchmark = True
-    scaler = torch.cuda.amp.GradScaler(enabled=use_amp)
+    scaler = torch.amp.GradScaler("cuda", enabled=use_amp)
 
     # Early-stopping state (patience on the mean epoch loss; --epochs is the cap).
     best_loss = float("inf")
@@ -660,7 +660,7 @@ def train_dgi_multi(slides, hidden=64, out_dim=32, epochs=300, lr=1e-3, wd=1e-4,
         for batch in loader:
             opt.zero_grad(set_to_none=True)
 
-            with torch.cuda.amp.autocast(enabled=use_amp):
+            with torch.amp.autocast("cuda", enabled=use_amp):
                 if ngpu > 1:
                     pos_z, neg_z, s = model(batch)
                     loss = model.module.loss(pos_z, neg_z, s)
@@ -679,7 +679,9 @@ def train_dgi_multi(slides, hidden=64, out_dim=32, epochs=300, lr=1e-3, wd=1e-4,
         if n_batches > 0:
             epoch_loss = epoch_loss_sum / n_batches
             # Relative improvement threshold so it adapts to the loss scale.
-            if epoch_loss < best_loss - early_stop_min_delta * max(abs(best_loss), 1.0):
+            # First finite epoch always seeds best_loss (comparing against inf
+            # yields NaN, so guard it explicitly).
+            if not math.isfinite(best_loss) or epoch_loss < best_loss - early_stop_min_delta * max(abs(best_loss), 1.0):
                 best_loss = epoch_loss
                 epochs_no_improve = 0
             else:

@@ -70,6 +70,7 @@ dependencies = [
   # Graph & clustering
   "igraph",
   "leidenalg",
+  "pynndescent",  # approximate kNN for the niche Leiden/kNN connectivity graph
 
   # Geospatial Python layer (users install GDAL themselves first)
   "geopandas",

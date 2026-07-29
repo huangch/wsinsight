@@ -128,7 +128,7 @@ RUN pip install --retries 10 -c constraints.txt "numpy<2" \
     click \
     scikit-learn shapely geopandas pyproj rasterio pyogrio \
     openslide-python wsidicom paquo "wsinfer-zoo>=0.6.2" \
-    igraph leidenalg s3fs gcsfs boto3 platformdirs timm \
+    igraph leidenalg pynndescent s3fs gcsfs boto3 platformdirs timm \
     tiffslide imagecodecs opencv-python-headless orjson \
     h5py anndata lz4 \
     "huggingface_hub[hf_transfer]"

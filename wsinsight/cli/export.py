@@ -87,7 +87,8 @@ def _to_local_path(p: URIPath | Path) -> Path:
     help="QuPath object-type label embedded in each exported GeoJSON / OME-CSV feature.",
 )
 @click.option(
-    "--export-workers",
+    "--workers",
+    "export_workers",
     default=4,
     show_default=True,
     type=click.IntRange(min=1),

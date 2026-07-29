@@ -495,10 +495,21 @@ def merge_same_label_by_shared_edges_iterative(
 
     # Step 2: initial merge via Delaunay neighbor pairs
     adj_edges: List[Tuple[int, int]] = []
-    for _, row in edges_df.iterrows():
-        i = int(row["source"]); j = int(row["target"])
-        if i not in capped or j not in capped: continue
-        if int(labels[i]) != int(labels[j]): continue
+    # Vectorised pre-filter: only edges whose endpoints are both capped and
+    # share the same label can possibly merge, so restrict the expensive
+    # shapely _shared_boundary_len() calls to those.  (Same result as the old
+    # per-row iterrows scan, but avoids building a Series per edge and skips
+    # the geometry test for cross-label / dropped-node edges.)
+    _src = edges_df["source"].to_numpy(dtype=np.int64, copy=False)
+    _tgt = edges_df["target"].to_numpy(dtype=np.int64, copy=False)
+    _capped_mask = np.zeros(N, dtype=bool)
+    _capped_mask[np.fromiter(capped.keys(), dtype=np.int64, count=len(capped))] = True
+    _sel = (
+        (_src >= 0) & (_src < N) & (_tgt >= 0) & (_tgt < N)
+        & _capped_mask[_src] & _capped_mask[_tgt]
+        & (labels[_src] == labels[_tgt])
+    )
+    for i, j in zip(_src[_sel].tolist(), _tgt[_sel].tolist()):
         shared = _shared_boundary_len(capped[i], capped[j], tol_len_px, boundary_buffer_px)
         if shared > tol_len_px:
             adj_edges.append((i, j))
