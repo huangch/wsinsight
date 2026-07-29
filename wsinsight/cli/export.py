@@ -146,6 +146,12 @@ def export(
       tcomp-outputs-csv/       — triad-level composition (per Delaunay triangle)
       agg-<name>-outputs-csv/  — aggregate-level features (e.g., TLS)
 
+    \b
+    When 'niche' is included and --geojson is set, the merged per-niche contour
+    polygons in niche-outputs-csv/niches/ are also written to
+    export-niche-regions-geojson/ (annotation polygons), mirroring
+    'wsinsight niche --export-geojson'.
+
     At least one of --geojson, --omecsv, or --h5ad must be supplied.
 
     This command can be run at any time after inference — and optionally after
@@ -240,6 +246,35 @@ def export(
             object_type=object_type,
             overwrite=overwrite,
         )
+
+    # --- Niche region contours (annotation-level polygons) --------------------
+    # The per-cell merge above carries the niche_* one-hot columns on each cell,
+    # but the niche command also writes merged per-niche contour polygons under
+    # niche-outputs-csv/niches/.  Mirror `wsinsight niche --export-geojson` so
+    # `export --include niche --geojson` emits those region contours too.
+    niche_included = (not cell_sources) or ("niche" in cell_sources)
+    if geojson and niche_included:
+        niche_regions_dir = results_dir / "niche-outputs-csv" / "niches"
+        if niche_regions_dir.exists():
+            region_csvs = [
+                _to_local_path(p)
+                for p in niche_regions_dir.iterdir(files_only=True)
+                if p.suffix == ".csv"
+            ]
+            if region_csvs:
+                click.echo("\nWriting niche region contours to GeoJSON files...\n")
+                write_geojsons(
+                    csvs=region_csvs,
+                    overlap=0,
+                    results_dir=results_dir,
+                    output_dir="export-niche-regions-geojson",
+                    prefix="niche",
+                    num_workers=export_workers,
+                    object_type="annotation",
+                    set_classification=True,
+                    annotation_shape="polygon",
+                    overwrite=overwrite,
+                )
 
     # --- Simplex exports (ecomp, tcomp, agg) ----------------------------------
     for source in simplex_sources:
