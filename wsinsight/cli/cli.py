@@ -33,8 +33,20 @@ _logging_levels = ["debug", "info", "warning", "error", "critical"]
 
 # Subcommands hidden unless the user opts into experimental features by
 # setting the WSINSIGHT_EXPERIMENTAL environment variable. Keep this list in
-# sync with qupath-extension-wsinsight/commands/WSInsightCommands.EXPERIMENTAL.
-_EXPERIMENTAL_COMMANDS = ("hplot", "hplot-finalize", "niche", "tcomp", "ecomp", "agg", "import")
+# sync with wsinsight.mcp.schema.EXPERIMENTAL_COMMANDS and with
+# qupath-extension-wsinsight WSInsightExtension.EXPERIMENTAL_COMMANDS.
+# `niche-profile` is gated alongside `niche`: it consumes `niche`'s per-cell
+# labels, so it is useless without the experimental niche stage.
+_EXPERIMENTAL_COMMANDS = (
+    "hplot",
+    "hplot-finalize",
+    "niche",
+    "niche-profile",
+    "tcomp",
+    "ecomp",
+    "agg",
+    "import",
+)
 
 
 def _experimental_enabled() -> bool:

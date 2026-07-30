@@ -259,7 +259,7 @@ The editable install enables rapid iteration on CLI commands, model definitions,
 ## CLI Overview
 
 Stable commands are available by default.  Experimental commands (`hplot`,
-`hplot-finalize`, `niche`, `ecomp`, `tcomp`, `agg`, `import`) are hidden unless the
+`hplot-finalize`, `niche`, `niche-profile`, `ecomp`, `tcomp`, `agg`, `import`) are hidden unless the
 environment variable `WSINSIGHT_EXPERIMENTAL=1` is set; see
 [Experimental Features](#experimental-features) below.
 
@@ -272,6 +272,7 @@ environment variable `WSINSIGHT_EXPERIMENTAL=1` is set; see
  `wsinsight ncomp`  | Neighborhood composition analysis on existing cell-detection outputs. For each target cell, builds a Delaunay graph, collects k-hop neighbors, and records the cell-type composition of the local neighborhood. Outputs per-cell CSVs under `ncomp-outputs-csv/`.
  `wsinsight niche-profile` | Summarise each discovered niche by its dominant cell types, writing `niche-profile-composition.csv` under the results directory. Reads the per-cell labels produced by `niche`. Whole-slide H&E cohorts have no transcriptome, so no marker-gene table is produced. Experimental (`WSINSIGHT_EXPERIMENTAL=1`).
  `wsinsight export` | Merge all available per-cell analytics (inference, ncomp, and — when enabled — H-plot / niche) into `export-csv/` and write GeoJSON and/or OME-CSV files. Can be run any time after inference without repeating the full pipeline.
+ `wsinsight tosbu`  | Convert patch-prediction CSVs into the `.txt` / `.json` formats used by the Stony Brook Biomedical Informatics viewers. Takes `RESULTS_DIR` and `OUTPUT` as positional arguments plus `--wsi-dir`, `--execution-id` and `--study-id`; `--make-color-text` additionally emits per-patch colour files (slow — tune with `--num-processes`).
  `wsinsight import` | **Experimental** (`WSINSIGHT_EXPERIMENTAL=1`). Import spatial-transcriptomics (Xenium) gene expression onto WSInsight cells: map each transcriptomics cell onto the registered H&E via the ST2WSI (SIFT affine + bUnwarpJ B-spline) transform, match it to the nearest `model-outputs-csv` detection, and write one AnnData `.h5ad` per slide under `imported-xenium/` (never modifies `model-outputs-csv/`). Each matched detection's `model-outputs-csv` columns are carried onto the cell under a `model_` prefix (plus `model_cell_id`); optional per-cell sidecars added with `--include niche,hplot,ncomp` are merged under their own `niche_`/`hplot_`/`ncomp_` prefixes (`model` is always imported). Reads a `sptx-list://` manifest via `-s`/`--sptx-dir`; supports `--transform affine\|affine+bspline`, `--genes`, `--include`, `--match-max-dist`, and `--dry-run` (report the cell↔detection hit-rate only, writing nothing).
 
 Pick `run` when you want a one-liner for single slides or small batches; switch
@@ -381,7 +382,7 @@ Cached patch coordinates (and optionally images) produced by `patch` or `run`. O
  `/coords` → `patch_level` (attr)           | int32              | WSI magnification level (always 0)
  `/coords` → `patch_spacing_um_px` (attr)   | float64            | Microns-per-pixel used for coordinate calculation
  `/coords` → `tile_dim` (attr, optional)    | int32[2]           | Tiling dimensions `[width, height]` for end-to-end models
- `/images` (optional)                       | (N, H, W, 3) uint8 | RGB patch images (when `--save-images` is used)
+ `/images` (optional)                       | (N, H, W, 3) uint8 | RGB patch images (when `--cache-image-patches` is used)
  `/polygons/coords` (optional)              | (K, 2) float32     | Tissue polygon vertices (ragged array)
  `/polygons/offsets` (optional)             | (M+1,) int64       | Ragged array offsets: polygon *i* = `coords[offsets[i]:offsets[i+1]]`
  `/slide` → `slide_path` (attr, optional)   | utf-8 string       | Original WSI file path
@@ -815,7 +816,7 @@ WSInsight reads the following environment variables at startup. Set them in your
  Variable                     | Purpose                                                                                                                                                                             | Example
 ------------------------------|-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|---------------------------------------------------------------------------------------------
  `WSINSIGHT_ZOO_REGISTRY_PATH` | Path to a local `wsinsight-zoo-registry.json` file. **Required in air-gapped / restricted-SSL environments.** When set (and the file exists), no network call to HuggingFace is made. The legacy name `WSINFER_ZOO_REGISTRY_PATH` is still honored for one release (emits a `DeprecationWarning`). | `export WSINSIGHT_ZOO_REGISTRY_PATH=/workspace/wsinsight/devel/zoo/wsinsight-zoo-registry.json`
- `WSINSIGHT_EXPERIMENTAL`     | Set to `1` (or `true`/`yes`/`on`) to unhide experimental subcommands (`hplot`, `hplot-finalize`, `niche`, `ecomp`, `tcomp`, `agg`, `import`) and the `--hplot` / `--niche` flags on `wsinsight run`. Without it, experimental commands are hidden from `--help` and refuse to run.  See [Experimental Features](#experimental-features). | `export WSINSIGHT_EXPERIMENTAL=1`
+ `WSINSIGHT_EXPERIMENTAL`     | Set to `1` (or `true`/`yes`/`on`) to unhide experimental subcommands (`hplot`, `hplot-finalize`, `niche`, `niche-profile`, `ecomp`, `tcomp`, `agg`, `import`) and the `--hplot` / `--niche` flags on `wsinsight run`. Without it, experimental commands are hidden from `--help` and refuse to run.  See [Experimental Features](#experimental-features). | `export WSINSIGHT_EXPERIMENTAL=1`
  `S3_STORAGE_OPTIONS`         | JSON object passed verbatim to `s3fs` / `fsspec` (e.g. AWS profile, endpoint URL). Required to read/write S3 URIs.                                                                  | `export S3_STORAGE_OPTIONS='{"profile":"saml"}'`
  `GS_STORAGE_OPTIONS`         | JSON object passed verbatim to `gcsfs` / `fsspec` for Google Cloud Storage (`gs://`) URIs. Optional: auth defaults to Application Default Credentials (`GOOGLE_APPLICATION_CREDENTIALS`); set this only to override (e.g. a service-account key).                         | `export GS_STORAGE_OPTIONS='{"token":"/path/to/service-account.json"}'`
  `WSINSIGHT_REMOTE_CACHE_DIR` | Local directory where remote assets (S3 tiles, GDC downloads) are materialised. Defaults to `~/.cache/wsinsight`. Point it at a fast SSD for large cohorts.                         | `export WSINSIGHT_REMOTE_CACHE_DIR=/scratch/wsinsight-cache`

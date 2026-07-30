@@ -175,7 +175,7 @@ air-gapped networks the first variable is mandatory.
 | `WSINSIGHT_REMOTE_CACHE_DIR`   | No       | Local cache dir for remote assets. Default: `~/.cache/wsinsight`.                        |
 | `KERAS_HOME`                   | No       | Override Keras config/weights directory.                                                  |
 | `CUDA_VISIBLE_DEVICES`         | No       | Pin to specific GPU(s) (e.g. `0` or `0,1`).                                             |
-| `WSINSIGHT_EXPERIMENTAL`       | No       | Set to `1` to unlock experimental subcommands (`hplot`, `hplot-finalize`, `ecomp`, `tcomp`, `niche`, `agg`, `import`). Not needed for normal use. |
+| `WSINSIGHT_EXPERIMENTAL`       | No       | Set to `1` to unlock experimental subcommands (`hplot`, `hplot-finalize`, `ecomp`, `tcomp`, `niche`, `niche-profile`, `agg`, `import`). Not needed for normal use. |
 
 \* Required when HuggingFace Hub is unreachable (air-gapped or SSL-restricted
 networks); optional otherwise.
@@ -194,11 +194,12 @@ wsinsight
 ├── reg               Post-hoc region registration
 ├── ncomp             Node-level (cell) composition + Delaunay graph cache
 ├── export            Merge analytics → GeoJSON / OME-CSV
+├── tosbu             Convert patch predictions → Stony Brook viewer .txt/.json
 └── describe          Emit a machine-readable JSON schema of every subcommand
 ```
 
 > Additional subcommands — `hplot`, `hplot-finalize`, `ecomp`, `tcomp`, `niche`,
-> `agg`, `import` — are gated as **experimental**. They are hidden from `--help`
+> `niche-profile`, `agg`, `import` — are gated as **experimental**. They are hidden from `--help`
 > and cannot be
 > executed unless `WSINSIGHT_EXPERIMENTAL=1` is exported. Their CLI flags,
 > output schemas, and metric definitions may change without notice. This
@@ -1135,7 +1136,7 @@ Has the user provided WSIs?
    Liu et al. 2018 for curated survival endpoints, and cBioPortal for
    molecular subtypes. Join on the first 12 characters of the slide filename.
 8. **Do not recommend the experimental subcommands** (`hplot`,
-   `hplot-finalize`, `ecomp`, `tcomp`, `niche`, `agg`, `import`) unless the user
+   `hplot-finalize`, `ecomp`, `tcomp`, `niche`, `niche-profile`, `agg`, `import`) unless the user
    has explicitly
    opted in via `WSINSIGHT_EXPERIMENTAL=1`. Their CLI surfaces and output
    schemas are unstable.

@@ -6,13 +6,13 @@ Command reference
 .. note::
 
    **Experimental commands.** ``hplot``, ``hplot-finalize``, ``niche``,
-   ``ecomp``, ``tcomp``, ``agg``, and ``import`` (together with their
+   ``niche-profile``, ``ecomp``, ``tcomp``, ``agg``, and ``import`` (together with their
    ``hplot-outputs.csv`` / ``ecomp-outputs-csv/`` / ``tcomp-outputs-csv/``
    outputs) are research features under active development.  Their CLI flags,
    output directory layouts, and column schemas may change without notice in
    future releases.  They are hidden from ``wsinsight --help`` and refuse to
    run unless the environment variable ``WSINSIGHT_EXPERIMENTAL=1`` is set.
-   ``ncomp`` and ``niche-profile`` are **not** gated.
+   ``ncomp`` is **not** gated.
    ``wsinsight describe`` always emits the full schema so downstream tools
    (the QuPath extension) can discover every command; only invocation is
    gated.
@@ -162,7 +162,7 @@ One HDF5 file per slide.
    * - ``/coords`` → ``tile_dim`` (attr, optional, int32[2])
      - Tiling dimensions ``[width, height]`` for end-to-end models
    * - ``/images`` (optional, N×H×W×3 uint8)
-     - RGB patch images (when ``--save-images`` is used)
+     - RGB patch images (when ``--cache-image-patches`` is used)
    * - ``/polygons/coords`` (optional, K×2 float32)
      - Tissue polygon vertices (ragged array)
    * - ``/polygons/offsets`` (optional, M+1 int64)

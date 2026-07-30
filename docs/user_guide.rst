@@ -48,14 +48,14 @@ WSInsight provides a CLI. Use :code:`--help` to explore available options:
    wsinsight --help
    wsinsight run --help
 
-The CLI exposes seven stable subcommands by default and seven additional
+The CLI exposes seven stable subcommands by default and eight additional
 experimental subcommands that are gated by ``WSINSIGHT_EXPERIMENTAL=1`` (see
 :ref:`Command reference <cli>` for the full schema).
 
 .. note::
 
    **Experimental commands.** ``hplot``, ``hplot-finalize``, ``ecomp``,
-   ``tcomp``, ``niche``, ``agg``, and ``import`` (together with their
+   ``tcomp``, ``niche``, ``niche-profile``, ``agg``, and ``import`` (together with their
    ``hplot-outputs.csv`` /
    ``ecomp-outputs-csv/`` / ``tcomp-outputs-csv/`` /
    ``niche-outputs-*/`` / ``agg-<name>-outputs-csv/`` outputs) are research
