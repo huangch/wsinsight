@@ -340,6 +340,7 @@ _NICHE_PARAM_NAMES: tuple[str, ...] = (
     "wsi_dir",
     "results_dir",
     "niche_hoptimus",
+    "niche_hoptimus_pca_dim",
     "niche_clusters",
     "niche_leiden_res",
     "niche_embed_dim",
@@ -814,6 +815,18 @@ def _select_kwargs(values: dict[str, Any], keys: tuple[str, ...]) -> dict[str, A
     ),
 )
 @click.option(
+    "--niche-hoptimus-pca-dim",
+    "niche_hoptimus_pca_dim",
+    default=32,
+    show_default=True,
+    type=click.IntRange(min=8),
+    help=(
+        "PCA components used to reduce H-Optimus embeddings (1536-d) before "
+        "concatenation with k-hop features.  Ignored unless --niche-hoptimus "
+        "and --niche are both set."
+    ),
+)
+@click.option(
     "--niche-clusters",
     default=None,
     type=click.IntRange(min=2),
@@ -1132,6 +1145,7 @@ def run(
     tcomp_no_neighborhood: bool = False,
     niche: bool = False,
     niche_hoptimus: bool = False,
+    niche_hoptimus_pca_dim: int = 32,
     niche_clusters: int | None = None,
     niche_leiden_res: List | None = None,
     niche_embed_dim: int = 32,

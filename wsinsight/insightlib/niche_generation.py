@@ -774,7 +774,7 @@ def prepare_slide_graph(
     patch_dataset: Optional[Dataset] = None,  # your dataset: __getitem__(cell_id)-> PIL.Image / Tensor
     sample_frac: Optional[float] = 0.2,
     sample_count: Optional[int] = None,
-    pca_dim: Optional[int] = 128,
+    pca_dim: Optional[int] = 32,
     knn_k: int = 3,
     knn_sigma_um: float = 60.0,
     device: Optional[str] = None,
@@ -1205,7 +1205,7 @@ def niche_generation(
     patch_datasets: Optional[List[Dataset]] = None,  # list aligned with slides_inputs; if None, Dummy is used
     sample_frac: Optional[float] = 0.2,
     sample_count: Optional[int] = None,
-    pca_dim: Optional[int] = 128,
+    pca_dim: Optional[int] = 32,
     knn_k: int = 3,
     knn_sigma_um: float = 60.0,
     # encoder
