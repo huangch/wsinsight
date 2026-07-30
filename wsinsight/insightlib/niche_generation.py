@@ -14,7 +14,6 @@ import torch
 import torch.nn as nn
 from torch.utils.data import Dataset, DataLoader, Subset
 from sklearn.cluster import KMeans
-from sklearn.preprocessing import StandardScaler
 from torch_geometric.data import Data # , DataLoader as GeoDataLoader
 from torch_geometric.loader import DataLoader as GeoDataLoader, DataListLoader
 from torch_geometric.nn import GCNConv, DataParallel as GeoDataParallel
@@ -566,6 +565,11 @@ def train_dgi_multi(slides, hidden=64, out_dim=32, epochs=300, lr=1e-3, wd=1e-4,
                     early_stop_patience=20, early_stop_min_delta=1e-4,
                     early_stop_min_epochs=50):
     """Train a shared DGI encoder across slide graphs and return embeddings.
+
+    The encoder consumes the raw k-hop composition ``s["X"]`` directly: the
+    features are already proportions on a common [0, 1] scale, and keeping them
+    untransformed means a given neighbourhood maps to the same input regardless
+    of which slides shared the run.
 
     ``amp`` enables CUDA automatic mixed precision (no-op on CPU/MPS).  Early
     stopping is always active: ``epochs`` is the upper bound, and training stops
@@ -1139,18 +1143,15 @@ def _niche_cellular_worker(args):
     is written to a temp file and atomically renamed to protect against partial
     writes on interruption (the parent handles cancellation between futures).
     """
-    (wsi_path, model_output_csv, kept_idx, X_norm, X_raw, classes,
+    (wsi_path, model_output_csv, kept_idx, X_raw, classes,
      labels, k_hops, niche_clustering_k, cell_csv, overwrite) = args
     cell_csv = Path(cell_csv)
     if not overwrite and cell_csv.exists():
         return str(cell_csv), "skip"
 
     niche_detection_df = pd.read_csv(model_output_csv)
-    feature_normalized_cols = [f"feature_normalized_k{k}_{c.replace('prob_', '')}"
-                               for k in range(k_hops + 1) for c in classes]
     feature_cols = [f"feature_raw_k{k}_{c.replace('prob_', '')}"
                     for k in range(k_hops + 1) for c in classes]
-    niche_detection_df.loc[kept_idx, feature_normalized_cols] = X_norm
     niche_detection_df.loc[kept_idx, feature_cols] = X_raw
     niche_cols = [f"niche_{l}" for l in range(niche_clustering_k)]
     label_one_hot = np.eye(niche_clustering_k, dtype=np.float32)[labels]
@@ -1229,7 +1230,8 @@ def niche_generation(
     amp: bool = False,
 ) -> Dict[str, List[np.ndarray]]:
     """
-    Prepare graphs for multiple slides, global-standardize features, train one DGI, and cluster per slide.
+    Prepare graphs for multiple slides, train one DGI on the raw k-hop
+    composition features, and cluster per slide.
     """
     
     if os.getenv("WSINFER_FORCE_CPU", "0").lower() not in {"0", "f", "false"}:
@@ -1383,33 +1385,7 @@ def niche_generation(
                 slides[idx] = s
                 if classes is None:
                     classes = s["classes"]
-
         
-        
-        
-        
-        
-        
-        
-        
-        
-        
-        
-        
-        
-        
-        
-        
-        
-        
-        
-        
-        # 2) Global z-score over concatenated features (keeps scale consistent across slides)
-        X_all = np.vstack([s["X"] for s in slides]).astype(np.float32)
-        scaler = StandardScaler(with_mean=True, with_std=True).fit(X_all)
-        for s in slides:
-            s["X_normalized"] = scaler.transform(s["X"]).astype(np.float32)
-            
         # with gzip.open(niche_slide_graph_file, "wb") as f:
         #     pickle.dump(slides, f, protocol=pickle.HIGHEST_PROTOCOL)
 
@@ -1510,7 +1486,7 @@ def niche_generation(
             niche_csv_name = Path(wsi_path).with_suffix(".csv").name
             cell_csv = niche_cells_output_dir / niche_csv_name
             _p4_tasks.append((wsi_path, model_output_paths[i], slides[i]["kept_idx"],
-                              slides[i]["X_normalized"], slides[i]["X"], slides[i]["classes"],
+                              slides[i]["X"], slides[i]["classes"],
                               labels_list[i], k_hops, niche_clustering_k, cell_csv, overwrite))
         _p4_workers = pick_workers_safe(max_workers=os.cpu_count() - 2, min_workers=2)
         _p4_ctx = mp.get_context("spawn")
