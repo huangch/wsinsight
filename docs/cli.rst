@@ -6,12 +6,13 @@ Command reference
 .. note::
 
    **Experimental commands.** ``hplot``, ``hplot-finalize``, ``niche``,
-   ``niche-profile``, ``ecomp``, ``tcomp``, and ``import`` (together with their
+   ``ecomp``, ``tcomp``, ``agg``, and ``import`` (together with their
    ``hplot-outputs.csv`` / ``ecomp-outputs-csv/`` / ``tcomp-outputs-csv/``
    outputs) are research features under active development.  Their CLI flags,
    output directory layouts, and column schemas may change without notice in
    future releases.  They are hidden from ``wsinsight --help`` and refuse to
    run unless the environment variable ``WSINSIGHT_EXPERIMENTAL=1`` is set.
+   ``ncomp`` and ``niche-profile`` are **not** gated.
    ``wsinsight describe`` always emits the full schema so downstream tools
    (the QuPath extension) can discover every command; only invocation is
    gated.
@@ -82,11 +83,11 @@ Set ``WSINSIGHT_EXPERIMENTAL=1`` to unhide and enable these research commands.
 Command                       Purpose
 ============================  ================================================================
 ``wsinsight hplot``           Standalone H-plot analysis on existing object-based inference
-                              outputs.  Requires both ``--hplot-base-types`` and
-                              ``--hplot-target-types``.  Computes layer-wise cell-type
+                              outputs.  Requires both ``--base-types`` and
+                              ``--target-types``.  Computes layer-wise cell-type
                               proportions from tumour boundary outward.  Can also run inline
-                              via ``wsinsight run --hplot``.  Use ``--hplot-base-by`` /
-                              ``--hplot-target-by`` (``celltype`` | ``niche``) to plot the
+                              via ``wsinsight run --hplot``.  Use ``--base-by`` /
+                              ``--target-by`` (``celltype`` | ``niche``) to plot the
                               fraction of cells in a discovered niche across layers
                               instead of a cell type; niche ids may be given as ``7`` or
                               ``niche_7``.
@@ -391,31 +392,31 @@ H-plot (``--hplot-*`` in ``run`` and ``wsinsight hplot``)
    * - Option
      - Default
      - Description
-   * - ``--hplot-base-types``
+   * - ``--base-types``
      - required
      - Comma-separated base cell types defining the tumour cluster (e.g. ``tumor``)
-   * - ``--hplot-target-types``
+   * - ``--target-types``
      - required
      - Comma-separated target cell types to track across layers (e.g. ``lymphocyte``)
-   * - ``--hplot-max-neighbor-distance``
+   * - ``--max-neighbor-distance``
      - ``25.0``
      - Maximum Delaunay edge length in µm
-   * - ``--hplot-k``
+   * - ``--k``
      - ``2``
      - k-hop neighborhood radius for base-region detection
-   * - ``--hplot-n``
+   * - ``--n``
      - ``8``
      - Minimum neighborhood size for base-region membership
-   * - ``--hplot-r``
+   * - ``--r``
      - ``0.5``
      - Minimum base-type fraction for base-region membership
-   * - ``--hplot-range-min``
+   * - ``--range-min``
      - ``None``
      - Innermost layer index (≤ 0) included in metrics
-   * - ``--hplot-range-max``
+   * - ``--range-max``
      - ``None``
      - Outermost layer index (≥ 1) included in metrics
-   * - ``--hplot-samples-with-valid-range-only``
+   * - ``--samples-with-valid-range-only``
      - off
      - Exclude slides that do not cover the full ``[range-min, range-max]`` window
    * - ``--overwrite``
@@ -432,10 +433,10 @@ Neighborhood composition (``--ncomp-*`` in ``run`` and ``wsinsight ncomp``)
    * - Option
      - Default
      - Description
-   * - ``--ncomp-max-neighbor-distance``
+   * - ``--max-neighbor-distance``
      - ``25.0``
      - Maximum Delaunay edge length in µm
-   * - ``--ncomp-k``
+   * - ``--k``
      - ``2``
      - k-hop neighborhood radius
    * - ``--overwrite``
@@ -494,10 +495,10 @@ Edge composition (``--ecomp-*`` in ``run`` and ``wsinsight ecomp``)
    * - Option
      - Default
      - Description
-   * - ``--ecomp-max-edge``
+   * - ``--max-edge``
      - ``25.0``
      - Maximum Delaunay edge length in µm
-   * - ``--ecomp-k``
+   * - ``--k``
      - ``2``
      - k-hop neighborhood radius on the line graph
    * - ``--overwrite``
@@ -514,10 +515,10 @@ Triad composition (``--tcomp-*`` in ``run`` and ``wsinsight tcomp``)
    * - Option
      - Default
      - Description
-   * - ``--tcomp-max-edge``
+   * - ``--max-edge``
      - ``25.0``
      - Longest-edge threshold (µm); triads with any edge above this are pruned
-   * - ``--tcomp-k``
+   * - ``--k``
      - ``2``
      - k-hop neighborhood radius on the dual graph
    * - ``--overwrite``
@@ -612,10 +613,10 @@ Run H-plot on existing inference outputs::
     wsinsight hplot \
       --wsi-dir slides/ \
       --results-dir results/ \
-      --hplot-base-types tumor \
-      --hplot-target-types lymphocyte \
-      --hplot-range-min -5 \
-      --hplot-range-max 5
+      --base-types tumor \
+      --target-types lymphocyte \
+      --range-min -5 \
+      --range-max 5
 
 Aggregate H-plot results after parallel per-slide runs::
 
@@ -626,7 +627,7 @@ Run neighborhood composition on existing inference outputs::
     wsinsight ncomp \
       --wsi-dir slides/ \
       --results-dir results/ \
-      --ncomp-k 2
+      --k 2
 
 Enrich object CSVs with region probabilities post-hoc::
 

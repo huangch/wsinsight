@@ -433,7 +433,8 @@ def _optional_uri_paths(ctx: click.Context, param: click.Option, value):
     " this argument are microns squared.",
 )
 @click.option(
-    "--patch-overlap-ratio",
+    "--overlap-ratio",
+    "patch_overlap_ratio",
     default=0.0,
     type=click.FloatRange(min=None, max=1, max_open=True),
     help="The ratio of overlap among patches. The default value of 0 produces"
@@ -443,14 +444,16 @@ def _optional_uri_paths(ctx: click.Context, param: click.Option, value):
     " Values must be in (-inf, 1).",
 )
 @click.option(
-    "--patch-size-um",
+    "--size-um",
+    "patch_size_um",
     default=0.0,
     type=click.FloatRange(min=0.0),
     help="The size of patch in um. The default value of 0 produces"
     " full patch size of the chosen model.",
 )
 @click.option(
-    "--patch-size-px",
+    "--size-px",
+    "patch_size_px",
     default=0,
     type=click.FloatRange(min=0),
     help="The size of patch in pixel. The default value of 0 produces"
@@ -785,7 +788,7 @@ def patch(
     ])
     
     if nonzero_count > 1 and qupath_measurement_detection_dir is None and qupath_geojson_detection_dir is None:
-        raise click.ClickException("Only one of --patch-overlap-ratio, --patch-size-um, --patch-size-px is allowed")
+        raise click.ClickException("Only one of --overlap-ratio, --size-um, --size-px is allowed")
     elif nonzero_count == 1 and object_based and qupath_measurement_detection_dir is None and qupath_geojson_detection_dir is None:
         raise click.ClickException("--object-based doesn't work with variational patch size")
     
@@ -794,13 +797,13 @@ def patch(
 
     elif patch_size_um != 0.0:
         if patch_size_um > (model_obj.config.patch_size_pixels*model_obj.config.spacing_um_px):
-            raise click.ClickException("--patch-size-um has to be smaller than patch size")
+            raise click.ClickException("--size-um has to be smaller than patch size")
          
         overlap = 1.0-patch_size_um/(model_obj.config.patch_size_pixels*model_obj.config.spacing_um_px)
         
     elif patch_size_px != 0:
         if patch_size_px > model_obj.config.patch_size_pixels:
-            raise click.ClickException("--patch-size-px must not be larger than patch size")
+            raise click.ClickException("--size-px must not be larger than patch size")
         
         overlap = 1.0-float(patch_size_px)/float(model_obj.config.patch_size_pixels)
         

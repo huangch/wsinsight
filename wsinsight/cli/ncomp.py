@@ -89,14 +89,16 @@ def _csv_to_list(
     ),
 )
 @click.option(
-    "--ncomp-max-neighbor-distance",
+    "--max-neighbor-distance",
+    "ncomp_max_neighbor_distance",
     default=25.0,
     type=click.FloatRange(min=0),
     show_default=True,
     help="Maximum distance (µm) between neighboring cells in the Delaunay graph.",
 )
 @click.option(
-    "--ncomp-k",
+    "--k",
+    "ncomp_k",
     default=2,
     type=click.IntRange(min=1),
     show_default=True,

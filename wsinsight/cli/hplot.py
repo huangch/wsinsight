@@ -120,73 +120,82 @@ def _validate_types(
     help="Directory to store results. If directory exists, will skip whole slides for which outputs exist.",
 )
 @click.option(
-    "--hplot-max-neighbor-distance",
+    "--max-neighbor-distance",
+    "hplot_max_neighbor_distance",
     default=25.0,
     type=click.FloatRange(min=0),
     help="A parameter of float value determining maximal distance (um) to a neighboring cell.",
 )
 @click.option(
-    "--hplot-base-types",
+    "--base-types",
+    "hplot_base_types",
     callback=_csv_to_list,
     default=None,
     help="Base cell type or cell type list that form(s) the cell cluster(s), e.g., tumor cells.",
 )
 @click.option(
-    "--hplot-target-types",
+    "--target-types",
+    "hplot_target_types",
     callback=_csv_to_list,
     default=None,
     help="Target cell type or cell type list whose layer-wise proportion is computed, e.g., lymphocytes.",
 )
 @click.option(
-    "--hplot-base-by",
+    "--base-by",
     "base_by",
     default="celltype",
     show_default=True,
     type=click.Choice(["celltype", "niche", "aggregate"]),
-    help="Interpret --hplot-base-types as cell types, niche ids, or aggregate names.",
+    help="Interpret --base-types as cell types, niche ids, or aggregate names.",
 )
 @click.option(
-    "--hplot-target-by",
+    "--target-by",
     "target_by",
     default="celltype",
     show_default=True,
     type=click.Choice(["celltype", "niche", "aggregate"]),
-    help="Interpret --hplot-target-types as cell types, niche ids, or aggregate names. "
+    help="Interpret --target-types as cell types, niche ids, or aggregate names. "
     "Use 'niche' for a niche's layer-wise fraction (requires `wsinsight niche`); "
     "use 'aggregate' for an aggregate's member-cell fraction (requires `wsinsight agg`).",
 )
 @click.option(
-    "--hplot-k",
+    "--k",
+    "hplot_k",
     default=2,
     type=click.IntRange(min=0),
     help="The maximal edge distance for defining the neighborhood of a cell.",
 )
 @click.option(
-    "--hplot-n",
+    "--n",
+    "hplot_n",
     default=8,
     type=click.IntRange(min=0),
     help="The minimal neighborhood size for a cell to be computed for determining tumor regions.",
 )
 @click.option(
-    "--hplot-r",
+    "--r",
+    "hplot_r",
     default=0.5,
     type=click.FloatRange(min=0, max=1),
     help="The minimal ratio of tumor cells in the neighborhood of a cell, determining is this cell included in a tumor region.",
 )
 @click.option(
-    "--hplot-range-max",
+    "--range-max",
+    "hplot_range_max",
     default=None,
     type=click.IntRange(min=1),
     help="The maximal layer index toward OUTSIDE of tumors for the range window of H-Plot.",
 )
 @click.option(
-    "--hplot-range-min",
+    "--range-min",
+    "hplot_range_min",
     default=None,
     type=click.IntRange(max=0),
     help="The minimal layer index toward INSIDE of tumors for the range window of H-Plot.",
 )
 @click.option(
-    "--hplot-samples-with-valid-range-only",
+    "--samples-with-valid-range-only",
+    "hplot_samples_with_valid_range_only",
     is_flag=True,
     default=False,
     show_default=True,
@@ -252,12 +261,12 @@ def hplot(
 
     if not hplot_base_types or not hplot_target_types:
         raise click.ClickException(
-            "H-Plot requires both --hplot-base-types and --hplot-target-types."
+            "H-Plot requires both --base-types and --target-types."
         )
 
     # Cell-type names are normalised against prob_ columns; niche ids ("7" or
     # "niche_7") are passed through verbatim and resolved later.  Aggregate names
-    # are normalised to lower-case snake (matching `wsinsight agg --agg-name`).
+    # are normalised to lower-case snake (matching `wsinsight agg --name`).
     base_type_list = (
         _normalize_types(hplot_base_types)
         if base_by in ("celltype", "aggregate")
@@ -277,9 +286,9 @@ def hplot(
                 f"No 'prob_*' columns found in any CSV under {model_output_dir}."
             )
         if base_by == "celltype":
-            _validate_types(base_type_list, available_types, "--hplot-base-types")
+            _validate_types(base_type_list, available_types, "--base-types")
         if target_by == "celltype":
-            _validate_types(target_type_list, available_types, "--hplot-target-types")
+            _validate_types(target_type_list, available_types, "--target-types")
 
     click.secho("\nRunning H-Plot generation.\n", fg="green")
     failed_hplot_generation = hplot_generation(

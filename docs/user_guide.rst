@@ -48,21 +48,22 @@ WSInsight provides a CLI. Use :code:`--help` to explore available options:
    wsinsight --help
    wsinsight run --help
 
-The CLI exposes six stable subcommands by default and five additional
+The CLI exposes seven stable subcommands by default and seven additional
 experimental subcommands that are gated by ``WSINSIGHT_EXPERIMENTAL=1`` (see
 :ref:`Command reference <cli>` for the full schema).
 
 .. note::
 
-   **Experimental commands.** ``hplot``, ``hplot-finalize``, ``ncomp``,
-   ``ecomp``, ``tcomp``, ``niche``, and ``agg`` (together with their
+   **Experimental commands.** ``hplot``, ``hplot-finalize``, ``ecomp``,
+   ``tcomp``, ``niche``, ``agg``, and ``import`` (together with their
    ``hplot-outputs.csv`` /
-   ``ncomp-outputs-csv/`` / ``ecomp-outputs-csv/`` / ``tcomp-outputs-csv/`` /
+   ``ecomp-outputs-csv/`` / ``tcomp-outputs-csv/`` /
    ``niche-outputs-*/`` / ``agg-<name>-outputs-csv/`` outputs) are research
    features under active
    development.  CLI flags, output layouts, and column schemas may change
-   without notice.  All but ``ncomp`` are hidden from ``wsinsight --help``
+   without notice.  They are hidden from ``wsinsight --help``
    and refuse to run unless ``WSINSIGHT_EXPERIMENTAL=1`` is set.
+   ``ncomp`` and ``niche-profile`` are **not** gated.
 
 Stable commands
 ~~~~~~~~~~~~~~~
@@ -117,13 +118,13 @@ Command                       Purpose
                               Cross-slide — cannot be parallelised across GPU shards.
 ``wsinsight agg``             Cell-type aggregate analysis on existing inference outputs.
                               Detects connected, density-gated aggregates of a chosen
-                              cell-type set (``--agg-types``, e.g. T+B cells → TLS) over
+                              cell-type set (``--types``, e.g. T+B cells → TLS) over
                               the cached Delaunay graph, contracts them into a quotient
                               graph, and writes namespaced outputs under the product label
-                              ``--agg-name``: an ``object_<name>_prob_<name>`` membership
+                              ``--name``: an ``object_<name>_prob_<name>`` membership
                               column, an ``agg-<name>-outputs-csv/`` sidecar, and an
                               ``agg/<name>/`` graph-cache subgroup.  The name is selectable
-                              in ``hplot`` via ``--hplot-base-by aggregate`` / ``--hplot-target-by
+                              in ``hplot`` via ``--base-by aggregate`` / ``--target-by
                               aggregate``.
 ``wsinsight import``          Import spatial-transcriptomics (Xenium) gene expression onto
                               WSInsight cells.  Maps each transcriptomics cell onto the
@@ -288,8 +289,10 @@ Tissue detection can be tailored per cohort:
 * ``--seg-thumbsize``, ``--seg-median-filter-size``, ``--seg-binary-threshold``,
    ``--seg-closing-kernel-size``, ``--seg-min-object-size-um2``, and
    ``--seg-min-hole-size-um2`` tune the morphological pipeline.
-* ``--patch-overlap-ratio`` plus ``--patch-size-um`` / ``--patch-size-px`` define how the
-   patch grid is created relative to the model defaults.
+* ``--overlap-ratio`` plus ``--size-um`` / ``--size-px`` define how the
+   patch grid is created relative to the model defaults.  (On ``wsinsight run``
+   the same three options are spelled ``--patch-overlap-ratio``,
+   ``--patch-size-um`` and ``--patch-size-px``.)
 * ``--cache-image-patches`` extracts HDF5 patch files during the ``patch`` stage so future
    ``infer`` runs can re-use them without touching the WSIs again.
 
@@ -504,25 +507,25 @@ Required options:
   opened).
 * ``-o / --results-dir`` — directory containing a ``model-outputs-csv/`` subfolder from
   a prior object-based inference run.
-* ``--hplot-base-types`` — comma-separated base cell type(s) that define tumour clusters
+* ``--base-types`` — comma-separated base cell type(s) that define tumour clusters
   (e.g. ``tumor``).
-* ``--hplot-target-types`` — comma-separated target cell type(s) for the layer-wise
+* ``--target-types`` — comma-separated target cell type(s) for the layer-wise
   proportion computation (e.g. ``lymphocyte``).
 
 Tuning options:
 
-* ``--hplot-max-neighbor-distance`` (default 25.0 µm) — maximum distance to a
+* ``--max-neighbor-distance`` (default 25.0 µm) — maximum distance to a
   neighbouring cell when constructing the proximity graph.
-* ``--hplot-k`` (default 2) — maximum edge distance (graph hops) defining a cell's
+* ``--k`` (default 2) — maximum edge distance (graph hops) defining a cell's
   neighbourhood.
-* ``--hplot-n`` (default 8) — minimum neighbourhood size required for a cell to be
+* ``--n`` (default 8) — minimum neighbourhood size required for a cell to be
   included in tumour-region determination.
-* ``--hplot-r`` (default 0.5) — minimum fraction of base-type cells in a cell's
+* ``--r`` (default 0.5) — minimum fraction of base-type cells in a cell's
   neighbourhood for that cell to be counted as part of a tumour region.
-* ``--hplot-range-max`` — maximum layer index outward from the tumour boundary to
+* ``--range-max`` — maximum layer index outward from the tumour boundary to
   include in the range window.
-* ``--hplot-range-min`` — minimum layer index inward into the tumour to include.
-* ``--hplot-samples-with-valid-range-only`` — restrict H-plot computation to slides
+* ``--range-min`` — minimum layer index inward into the tumour to include.
+* ``--samples-with-valid-range-only`` — restrict H-plot computation to slides
   that have cells at every layer within the range window.
 * ``--overwrite`` — overwrite existing per-slide H-plot outputs instead of
   skipping slides that already have results.
@@ -533,11 +536,11 @@ Example::
     wsinsight hplot \
         --wsi-dir slides/ \
         --results-dir results/ \
-        --hplot-base-types tumor \
-        --hplot-target-types lymphocyte \
-        --hplot-k 2 \
-        --hplot-n 8 \
-        --hplot-r 0.5 \
+        --base-types tumor \
+        --target-types lymphocyte \
+        --k 2 \
+        --n 8 \
+        --r 0.5 \
         --num-workers 16
 
 
@@ -597,8 +600,8 @@ Required options:
 
 Tuning options:
 
-* ``--ncomp-max-neighbor-distance`` (default 25.0 µm) — maximum Delaunay edge length.
-* ``--ncomp-k`` (default 2) — k-hop neighborhood radius.
+* ``--max-neighbor-distance`` (default 25.0 µm) — maximum Delaunay edge length.
+* ``--k`` (default 2) — k-hop neighborhood radius.
 * ``--overwrite`` — overwrite existing per-slide ncomp outputs.
 * ``--num-workers`` (default 8) — number of slides to process concurrently.
 
@@ -607,7 +610,7 @@ Example::
     wsinsight ncomp \
         --wsi-dir slides/ \
         --results-dir results/ \
-        --ncomp-k 2 \
+        --k 2 \
         --num-workers 16
 
 
@@ -628,27 +631,50 @@ The same analysis can be run inline via ``wsinsight run --niche``.
 Required options:
 
 * ``-i / --wsi-dir`` — slide directory (used for slide enumeration and µm-per-pixel
-  spacing; images are read only when ``--niche-hoptimus`` is set).
+  spacing; images are read only when ``--hoptimus`` is set).
 * ``-o / --results-dir`` — directory containing a ``model-outputs-csv/`` subfolder from
   a prior inference run.
 
+.. note::
+
+   Standalone subcommands take unprefixed options (``--clusters``).  The same knobs
+   are exposed on ``wsinsight run`` under a ``--niche-`` prefix (``--niche-clusters``),
+   because ``run`` has to namespace the options of every stage it orchestrates.
+
 Tuning options:
 
-* ``--niche-hoptimus`` — enable H-Optimus tissue morphology features in addition to
+* ``--hoptimus`` — enable H-Optimus tissue morphology features in addition to
   k-hop cell-type composition.  Requires a GPU and the ``timm`` package.
-* ``--niche-clusters`` — number of KMeans clusters.  When omitted, the optimal number
+* ``--clusters`` — number of KMeans clusters.  When omitted, the optimal number
   is determined automatically via a Leiden community-detection sweep.
-* ``--niche-epochs`` (default 300) — upper bound on DGI encoder training epochs.  Early
+* ``--k-hops`` (default 2) — number of neighborhood hops for the composition
+  features.  Each hop adds one ring of the Delaunay graph, so the spatial extent a
+  niche summarises grows roughly as ``k-hops`` × the typical cell spacing.  Raising
+  it also grows the feature dimension linearly and the graph traversal cost
+  superlinearly.
+* ``--max-edge-len-um`` (default 25.0) — maximal Delaunay edge length in µm.  Longer
+  edges are pruned, so this caps how far a single hop can reach and stops sparse
+  tissue from being wired into spurious neighbourhoods.
+* ``--max-cell-radius-um`` (default 15.0) — maximal cell radius in µm used when
+  merging annotation-level regions.
+* ``--soft`` — use soft (probability) composition features instead of hard argmax
+  labels.  Soft mode keeps the classifier's uncertainty, which helps when many cells
+  have ambiguous class calls.
+* ``--alpha`` (default 1.0) — Dirichlet/Laplace smoothing strength for the k-hop
+  composition features: ``out = (p + alpha / n_classes) / (1 + alpha)``.  Larger
+  values pull sparse neighbourhoods toward a uniform composition; ``0`` disables
+  smoothing and allows exact zeros.
+* ``--epochs`` (default 300) — upper bound on DGI encoder training epochs.  Early
   stopping is always active, so training may finish sooner.
-* ``--niche-patience`` (default 20) — stop after this many consecutive epochs without a
-  mean-loss improvement greater than ``--niche-min-delta``.
-* ``--niche-min-delta`` (default 1e-4) — minimum relative mean-loss improvement required
+* ``--patience`` (default 20) — stop after this many consecutive epochs without a
+  mean-loss improvement greater than ``--min-delta``.
+* ``--min-delta`` (default 1e-4) — minimum relative mean-loss improvement required
   to reset the early-stopping patience counter.
-* ``--niche-min-epochs`` (default 50) — never trigger early stopping before this many
+* ``--min-epochs`` (default 50) — never trigger early stopping before this many
   epochs have elapsed.
-* ``--niche-amp`` — enable CUDA automatic mixed precision for DGI training (faster, lower GPU
+* ``--amp`` — enable CUDA automatic mixed precision for DGI training (faster, lower GPU
   memory; no effect on CPU/MPS).  Off by default.
-* ``--niche-seed`` (default 0) — random seed for the niche pipeline (DGI training, Leiden
+* ``--seed`` (default 0) — random seed for the niche pipeline (DGI training, Leiden
   sweep, KMeans), for reproducible niche ids.
 * ``--overwrite`` — delete cached checkpoints and recompute all niche outputs.
 * ``--num-workers`` (default 8) — number of workers for GeoJSON export.
@@ -658,8 +684,16 @@ Example::
     wsinsight niche \
         --wsi-dir slides/ \
         --results-dir results/ \
-        --niche-hoptimus \
-        --niche-clusters 10
+        --hoptimus \
+        --clusters 10
+
+The equivalent inline invocation, where every niche knob carries the stage prefix::
+
+    wsinsight run \
+        --wsi-dir slides/ \
+        --results-dir results/ \
+        --model breast-tumor-resnet34.tcga-brca \
+        --niche --niche-hoptimus --niche-clusters 10
 
 
 Export outputs
@@ -832,7 +866,7 @@ Optional options:
 * ``--geojson`` — export per-cell data to GeoJSON files (``export-geojson/``).
 * ``--omecsv`` — export per-cell data to compressed OME-CSV files (``export-omecsv/``).
   Compatible with QuPath and OMERO+.
-* ``--patch-overlap-ratio`` (default 0.0) — overlap ratio used during inference (must
+* ``--overlap-ratio`` (default 0.0) — overlap ratio used during inference (must
   match the original run).  Controls tile-box shrinkage in exported features.
 * ``--object-type`` (default ``detection``) — QuPath object-type label embedded in each
   exported feature.  Choices: ``tile``, ``detection``, ``annotation``.

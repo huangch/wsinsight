@@ -47,14 +47,16 @@ _STORAGE_KWARGS = default_storage_kwargs()
     ),
 )
 @click.option(
-    "--tcomp-max-edge",
+    "--max-edge",
+    "tcomp_max_edge",
     default=25.0,
     type=click.FloatRange(min=0),
     show_default=True,
     help="Maximum triad edge length (µm); triads whose longest edge exceeds this are dropped.",
 )
 @click.option(
-    "--tcomp-k",
+    "--k",
+    "tcomp_k",
     default=2,
     type=click.IntRange(min=1),
     show_default=True,
@@ -75,7 +77,7 @@ _STORAGE_KWARGS = default_storage_kwargs()
     help="Number of slides to process concurrently.",
 )
 @click.option(
-    "--tcomp-no-neighborhood",
+    "--no-neighborhood",
     "no_neighborhood",
     is_flag=True,
     default=False,

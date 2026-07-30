@@ -46,14 +46,16 @@ _STORAGE_KWARGS = default_storage_kwargs()
     ),
 )
 @click.option(
-    "--ecomp-max-edge",
+    "--max-edge",
+    "ecomp_max_edge",
     default=25.0,
     type=click.FloatRange(min=0),
     show_default=True,
     help="Maximum Delaunay edge length (µm); longer edges are pruned before building the line graph.",
 )
 @click.option(
-    "--ecomp-k",
+    "--k",
+    "ecomp_k",
     default=2,
     type=click.IntRange(min=1),
     show_default=True,
@@ -74,7 +76,7 @@ _STORAGE_KWARGS = default_storage_kwargs()
     help="Number of slides to process concurrently.",
 )
 @click.option(
-    "--ecomp-no-neighborhood",
+    "--no-neighborhood",
     "no_neighborhood",
     is_flag=True,
     default=False,

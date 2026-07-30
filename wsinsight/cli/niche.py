@@ -191,6 +191,67 @@ def _num_cpus() -> int:
     ),
 )
 @click.option(
+    "--k-hops",
+    "niche_k_hops",
+    default=2,
+    show_default=True,
+    type=click.IntRange(min=0),
+    help=(
+        "Number of neighborhood hops for the composition features.  Each hop "
+        "adds one ring of the Delaunay graph, so the spatial extent a niche "
+        "summarises grows roughly as k-hops x the typical cell spacing.  "
+        "Raising this also grows the feature dimension linearly and the "
+        "breadth-first traversal cost superlinearly."
+    ),
+)
+@click.option(
+    "--max-edge-len-um",
+    "niche_max_edge_len_um",
+    default=25.0,
+    show_default=True,
+    type=click.FloatRange(min=0),
+    help=(
+        "Maximal Delaunay edge length (um) when building the cell graph.  "
+        "Longer edges are pruned, so this caps how far a single hop can reach "
+        "and stops sparse tissue from being wired into spurious neighbourhoods."
+    ),
+)
+@click.option(
+    "--max-cell-radius-um",
+    "niche_max_cell_radius_um",
+    default=15.0,
+    show_default=True,
+    type=click.FloatRange(min=0),
+    help=(
+        "Maximal cell radius (um) used when merging annotation-level regions."
+    ),
+)
+@click.option(
+    "--soft",
+    "niche_soft",
+    is_flag=True,
+    default=False,
+    show_default=True,
+    help=(
+        "Use soft (probability) composition features instead of hard argmax "
+        "labels.  Soft mode keeps the classifier's uncertainty, which helps "
+        "when many cells have ambiguous class calls."
+    ),
+)
+@click.option(
+    "--alpha",
+    "niche_alpha",
+    default=1.0,
+    show_default=True,
+    type=click.FloatRange(min=0),
+    help=(
+        "Dirichlet/Laplace smoothing strength for the k-hop composition "
+        "features: out = (p + alpha / n_classes) / (1 + alpha).  Larger values "
+        "pull sparse neighbourhoods toward a uniform composition; 0 disables "
+        "smoothing and allows exact zeros."
+    ),
+)
+@click.option(
     "--overwrite",
     is_flag=True,
     default=False,
@@ -231,6 +292,11 @@ def niche(
     niche_clusters: int | None = None,
     niche_leiden_res: list[float] | None = None,
     niche_embed_dim: int = 32,
+    niche_k_hops: int = 2,
+    niche_max_edge_len_um: float = 25.0,
+    niche_max_cell_radius_um: float = 15.0,
+    niche_soft: bool = False,
+    niche_alpha: float = 1.0,
     epochs: int = 300,
     early_stop_patience: int = 20,
     early_stop_min_delta: float = 1e-4,
@@ -283,10 +349,10 @@ def niche(
         wsi_dir=wsi_dir,
         wsi_paths=slide_paths,
         results_dir=results_dir,
-        max_edge_len_um=25.0,
-        max_cell_radius_um=15.0,
-        k_hops=2,
-        alpha=1.0,
+        max_edge_len_um=niche_max_edge_len_um,
+        max_cell_radius_um=niche_max_cell_radius_um,
+        k_hops=niche_k_hops,
+        alpha=niche_alpha,
         use_hoptimus=niche_hoptimus,
         hidden=64,
         out_dim=niche_embed_dim,
@@ -298,6 +364,7 @@ def niche(
         niche_annotation=True,
         niche_clustering_k=niche_clusters,
         niche_clustering_resolutions=niche_leiden_res,
+        niche_soft_mode=niche_soft,
         overwrite=overwrite,
         amp=amp,
         seed=seed,

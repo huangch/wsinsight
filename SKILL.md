@@ -169,15 +169,16 @@ air-gapped networks the first variable is mandatory.
 
 | Variable                       | Required | Purpose                                                                                  |
 | ------------------------------ | -------- | ---------------------------------------------------------------------------------------- |
-| `WSINSIGHT_ZOO_REGISTRY_PATH` | Yes*     | Path to a local `wsinsight-zoo-registry.json`. Prevents network calls to HuggingFace. Legacy `WSINFER_ZOO_REGISTRY_PATH` still honored (emits `DeprecationWarning`). |
+| `WSINSIGHT_ZOO_REGISTRY_PATH` | Conditional | Path to a local `wsinsight-zoo-registry.json`. Prevents network calls to HuggingFace. Legacy `WSINFER_ZOO_REGISTRY_PATH` still honored (emits `DeprecationWarning`). |
 | `S3_STORAGE_OPTIONS`           | If S3    | JSON passed to `s3fs` / `fsspec` for AWS credentials (e.g. `'{"profile":"saml"}'`).      |
 | `GS_STORAGE_OPTIONS`           | If GCS   | JSON passed to `gcsfs` / `fsspec` for Google Cloud Storage (`gs://`). Optional: defaults to Application Default Credentials; override e.g. `'{"token":"/path/sa.json"}'`. |
 | `WSINSIGHT_REMOTE_CACHE_DIR`   | No       | Local cache dir for remote assets. Default: `~/.cache/wsinsight`.                        |
 | `KERAS_HOME`                   | No       | Override Keras config/weights directory.                                                  |
 | `CUDA_VISIBLE_DEVICES`         | No       | Pin to specific GPU(s) (e.g. `0` or `0,1`).                                             |
-| `WSINSIGHT_EXPERIMENTAL`       | No       | Set to `1` to unlock experimental subcommands (`hplot`, `hplot-finalize`, `ecomp`, `tcomp`, `niche`, `niche-profile`). Not needed for normal use. |
+| `WSINSIGHT_EXPERIMENTAL`       | No       | Set to `1` to unlock experimental subcommands (`hplot`, `hplot-finalize`, `ecomp`, `tcomp`, `niche`, `agg`, `import`). Not needed for normal use. |
 
-\* Required when HuggingFace Hub is unreachable (SSL errors, air-gapped).
+\* Required when HuggingFace Hub is unreachable (air-gapped or SSL-restricted
+networks); optional otherwise.
 
 ---
 
@@ -197,7 +198,7 @@ wsinsight
 ```
 
 > Additional subcommands — `hplot`, `hplot-finalize`, `ecomp`, `tcomp`, `niche`,
-> `niche-profile`, `import` — are gated as **experimental**. They are hidden from `--help`
+> `agg`, `import` — are gated as **experimental**. They are hidden from `--help`
 > and cannot be
 > executed unless `WSINSIGHT_EXPERIMENTAL=1` is exported. Their CLI flags,
 > output schemas, and metric definitions may change without notice. This
@@ -272,35 +273,49 @@ wsinsight run \
 | `--seg-closing-kernel-size`     | int       | Binary-closing kernel (default 6).                                                           |
 | `--seg-min-object-size-um2`     | float     | Min retained tissue object area in µm² (default 40000).                                      |
 | `--seg-min-hole-size-um2`       | float     | Min retained hole area in µm² (default 36100).                                               |
-| `--patch-overlap-ratio`         | float     | Patch overlap ratio (default 0.0 = non-overlapping).                                         |
-| `--patch-size-um`               | float     | Patch side length in µm (default 0 → use model default).                                     |
-| `--patch-size-px`               | float     | Patch side length in px (default 0 → use model default).                                     |
+| `--overlap-ratio`         | float     | Patch overlap ratio (default 0.0 = non-overlapping).                                         |
+| `--size-um`               | float     | Patch side length in µm (default 0 → use model default).                                     |
+| `--size-px`               | float     | Patch side length in px (default 0 → use model default).                                     |
 | `--ncomp`                       | flag      | Run node-level cell composition after inference.                                             |
-| `--ncomp-max-neighbor-distance` | float     | Max Delaunay edge length (µm) for ncomp (default 25.0).                                      |
-| `--ncomp-k`                     | int       | k-hop radius for ncomp (default 2).                                                          |
+| `--max-neighbor-distance` | float     | Max Delaunay edge length (µm) for ncomp (default 25.0).                                      |
+| `--k`                     | int       | k-hop radius for ncomp (default 2).                                                          |
 | `--export-geojson`              | flag      | After analytics merge per-cell tables → `export-geojson/`.                                   |
 | `--export-omecsv`               | flag      | Same, → `export-omecsv/`.                                                                    |
 | `--export-workers`              | int       | Worker processes for GeoJSON/OME-CSV export (default: auto).                                 |
 | `--export-object-type`          | choice    | Object type written to GeoJSON/OME-CSV: `detection` (default) or `annotation`.               |
 | `--stitch-workers`              | int       | Thread pool size for TileFuse object-based detection stitching (default: `min(8, CPU // 2)`).|
-| `--agg`                         | flag      | Run density-gated aggregate detection after inference (requires `--agg-name` + `--agg-types`).|
-| `--agg-name`                    | string    | Product label for the aggregate run (e.g. `tls`); namespaces every artifact.                 |
-| `--agg-types`                   | string    | Comma-separated ingredient cell types (e.g. `t_cell,b_cell`).                                |
-| `--agg-max-neighbor-distance`   | float     | Max Delaunay edge length (µm) for the aggregate gate (default 25.0).                          |
-| `--agg-k`                       | int       | k-hop radius for the density gate (default 2).                                               |
-| `--agg-n`                       | int       | Minimum neighborhood size for membership (default 8).                                        |
-| `--agg-r`                       | float     | Minimum ingredient-type fraction for membership (default 0.5).                               |
-| `--agg-min-size`                | int       | Drop aggregates with fewer than this many cells (default 10).                                |
+| `--agg`                         | flag      | Run density-gated aggregate detection after inference (requires `--name` + `--types`).|
+| `--name`                    | string    | Product label for the aggregate run (e.g. `tls`); namespaces every artifact.                 |
+| `--types`                   | string    | Comma-separated ingredient cell types (e.g. `t_cell,b_cell`).                                |
+| `--max-neighbor-distance`   | float     | Max Delaunay edge length (µm) for the aggregate gate (default 25.0).                          |
+| `--k`                       | int       | k-hop radius for the density gate (default 2).                                               |
+| `--n`                       | int       | Minimum neighborhood size for membership (default 8).                                        |
+| `--r`                       | float     | Minimum ingredient-type fraction for membership (default 0.5).                               |
+| `--min-size`                | int       | Drop aggregates with fewer than this many cells (default 10).                                |
 | `--overwrite`                   | flag      | Recompute existing outputs across every stage.                                               |
-`--hplot` (+ `--hplot-max-neighbor-distance`, `--hplot-base-types`,
-`--hplot-target-types`, `--hplot-k`, `--hplot-n`, `--hplot-r`,
-`--hplot-range-min`, `--hplot-range-max`, `--hplot-samples-with-valid-range-only`),
-`--ecomp` (+ `--ecomp-max-edge`, `--ecomp-k`),
-`--tcomp` (+ `--tcomp-max-edge`, `--tcomp-k`),
-`--niche`   (+ `--niche-hoptimus`, `--niche-clusters`, `--niche-epochs`, `--niche-patience`, `--niche-min-delta`, `--niche-min-epochs`, `--niche-amp`, `--niche-seed`, `--export-geojson`).
 
-These flags are accepted by `run` only when the corresponding subcommand is
-enabled; they remain undocumented and unstable.
+Every option in the table above is stable and safe to emit.
+
+#### 4.3.1 Experimental pass-through flags (require `WSINSIGHT_EXPERIMENTAL=1`)
+
+The flag groups below are **not** part of the stable surface. They are accepted
+by `run` only when `WSINSIGHT_EXPERIMENTAL=1` is exported and the corresponding
+experimental subcommand is enabled; their names, defaults, and semantics remain
+undocumented and unstable. Do not emit them unless the user explicitly asks for
+an experimental stage.
+
+`--hplot` (+ `--max-neighbor-distance`, `--base-types`,
+`--target-types`, `--k`, `--n`, `--r`,
+`--range-min`, `--range-max`, `--samples-with-valid-range-only`),
+`--ecomp` (+ `--max-edge`, `--k`),
+`--tcomp` (+ `--max-edge`, `--k`),
+`--niche`   (+ `--hoptimus`, `--clusters`, `--leiden-res`, `--embed-dim`, `--k-hops`, `--max-edge-len-um`, `--max-cell-radius-um`, `--soft`, `--alpha`, `--epochs`, `--patience`, `--min-delta`, `--min-epochs`, `--amp`, `--seed`, `--export-geojson`).
+
+> **Option naming convention.** A standalone subcommand never repeats its own
+> name in its options — it is `wsinsight niche --clusters --k-hops --alpha`.
+> Only `wsinsight run` prefixes them (`--niche-clusters`, `--niche-k-hops`,
+> `--niche-alpha`), because `run` orchestrates many stages and has to keep their
+> option namespaces apart.
 
 ### 4.4 `wsinsight patch` — Tissue Segmentation & Patch Extraction
 
@@ -343,7 +358,7 @@ Builds (or reuses) a Delaunay cell graph per slide under
 wsinsight ncomp \
   --wsi-dir <WSI_DIR> \
   --results-dir <RESULTS_DIR> \
-  [--ncomp-k 2] [--ncomp-max-neighbor-distance 25.0] \
+  [--k 2] [--max-neighbor-distance 25.0] \
   [--num-workers 8] [--overwrite]
 ```
 
@@ -358,7 +373,7 @@ are idempotent and safe to resume.
 wsinsight export \
   --results-dir <RESULTS_DIR> \
   --geojson --omecsv \
-  [--object-type detection] [--patch-overlap-ratio 0.0] \
+  [--object-type detection] [--overlap-ratio 0.0] \
   [--export-workers 4] [--overwrite]
 ```
 
@@ -368,7 +383,7 @@ serialises to `export-geojson/` and/or `export-omecsv/`. Edge-level
 (`ecomp-outputs-csv/`) and triad-level (`tcomp-outputs-csv/`) products use
 different primary keys and are **not** merged — consume them directly.
 `--object-type` is one of `tile`, `detection` (default), or `annotation` and
-is embedded into each exported feature for QuPath. `--patch-overlap-ratio`
+is embedded into each exported feature for QuPath. `--overlap-ratio`
 must match the value used at inference time to recover the correct
 shrunk-tile geometry.
 
@@ -1084,6 +1099,8 @@ Has the user provided WSIs?
 │        └─ No  → wsinsight patch → wsinsight infer → [ncomp] → wsinsight export
 ├─ No, but results-dir exists with model-outputs-csv/ → Skip patch+infer
 │        ├─ Need per-cell neighborhood composition? → wsinsight ncomp
+│        │    (ncomp requires model-outputs-csv/ to exist. If it is absent,
+│        │     run wsinsight infer first.)
 │        └─ Need GeoJSON / OME-CSV?                 → wsinsight export --geojson --omecsv
 ├─ No slides, but user mentions TCGA / GDC / cancer cohort
 │        → Query GDC API for manifest (Section 8) → save .tsv
@@ -1118,7 +1135,8 @@ Has the user provided WSIs?
    Liu et al. 2018 for curated survival endpoints, and cBioPortal for
    molecular subtypes. Join on the first 12 characters of the slide filename.
 8. **Do not recommend the experimental subcommands** (`hplot`,
-   `hplot-finalize`, `ecomp`, `tcomp`, `niche`) unless the user has explicitly
+   `hplot-finalize`, `ecomp`, `tcomp`, `niche`, `agg`, `import`) unless the user
+   has explicitly
    opted in via `WSINSIGHT_EXPERIMENTAL=1`. Their CLI surfaces and output
    schemas are unstable.
 
@@ -1176,8 +1194,9 @@ Auto-registered tools (stable surface):
 - **Prompt**: `reproduce_tcga_crc`.
 
 With `wsinsight-mcp --experimental` the server additionally exposes
-`hplot`, `ecomp`, `tcomp`, `niche` (long-running) and `hplot-finalize`
-(short-running). Child processes inherit `WSINSIGHT_EXPERIMENTAL=1`
+`hplot`, `ecomp`, `tcomp`, `niche`, `agg` (long-running) and `hplot-finalize`,
+`niche-profile`, `import` (short-running). Child processes inherit
+`WSINSIGHT_EXPERIMENTAL=1`
 automatically. The set of long-running commands lives in
 `wsinsight/mcp/schema.py::LONG_RUNNING_COMMANDS`.
 

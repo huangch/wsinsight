@@ -259,7 +259,7 @@ The editable install enables rapid iteration on CLI commands, model definitions,
 ## CLI Overview
 
 Stable commands are available by default.  Experimental commands (`hplot`,
-`hplot-finalize`, `niche`, `niche-profile`, `ecomp`, `tcomp`, `agg`) are hidden unless the
+`hplot-finalize`, `niche`, `ecomp`, `tcomp`, `agg`, `import`) are hidden unless the
 environment variable `WSINSIGHT_EXPERIMENTAL=1` is set; see
 [Experimental Features](#experimental-features) below.
 
@@ -502,8 +502,8 @@ Merged per-cell CSV produced by `build_export_csvs()` (called programmatically v
 
  Option                          | Default | Description
 ---------------------------------|---------|--------------------------------------
- `--ncomp-max-neighbor-distance` | `25.0`  | Maximum Delaunay edge length in µm
- `--ncomp-k`                     | `2`     | k-hop neighborhood radius
+ `--max-neighbor-distance` | `25.0`  | Maximum Delaunay edge length in µm
+ `--k`                     | `2`     | k-hop neighborhood radius
  `--overwrite`                   | off     | Recompute existing per-slide outputs
 
 ### Model Selection
@@ -602,7 +602,7 @@ See `tmux-multi-gpu.sh` in the repository root for a ready-to-use script.
 wsinsight ncomp \
   --wsi-dir slides/ \
   --results-dir results/ \
-  --ncomp-k 2
+  --k 2
 ```
 
 ### Export merged analytics to GeoJSON / OME-CSV
@@ -642,12 +642,12 @@ QuPath extension, etc.) can discover every command; only invocation is gated.
 
  Command                    | Purpose
 ----------------------------|------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
- `wsinsight hplot`          | Standalone H-plot analysis on existing inference outputs. Requires cell-type-aware model outputs and both `--hplot-base-types` and `--hplot-target-types`. Computes layer-wise cell-type proportions from tumour boundary outward. Outputs under `hplot-outputs-csv/`.
+ `wsinsight hplot`          | Standalone H-plot analysis on existing inference outputs. Requires cell-type-aware model outputs and both `--base-types` and `--target-types`. Computes layer-wise cell-type proportions from tumour boundary outward. Outputs under `hplot-outputs-csv/`.
  `wsinsight hplot-finalize` | Aggregate per-slide H-plot intermediates into a single `hplot-outputs.csv`. Use after running parallel `hplot` jobs that share the same `--results-dir`.
  `wsinsight ecomp`          | Edge-level composition analysis. For each Delaunay edge, builds the line graph, collects k-hop edge neighbors, and records the composition of edge types in the local neighborhood. Outputs per-edge CSVs under `ecomp-outputs-csv/`.
  `wsinsight tcomp`          | Triad-level composition analysis. For each Delaunay triangle, builds the dual graph (triads sharing ≥1 vertex), collects k-hop triad neighbors, and records the composition of triad types plus per-triad geometry (area, perimeter, regularity). Outputs per-triad CSVs under `tcomp-outputs-csv/`.
  `wsinsight niche`            | Niche analysis across a cohort of slides. Builds per-slide Delaunay cell graphs, trains a global Deep Graph Infomax (DGI) encoder, clusters the resulting embeddings, and writes per-cell niche labels plus annotation-level region merges under `niche-outputs-csv/`. Pass `--export-geojson` to also write GeoJSON files under `niche-outputs-geojson/`. Cross-slide analysis — cannot be parallelized across GPU shards.
- `wsinsight agg`            | Cell-type aggregate analysis on existing inference outputs. Detects connected, density-gated aggregates of a chosen cell-type set (`--agg-types`, e.g. `t_cell,b_cell` → TLS) over the cached Delaunay graph, contracts them into a quotient graph, and writes namespaced outputs under the product label `--agg-name`: an `object_<name>_prob_<name>` per-cell membership column (upserted into `model-outputs-csv/`), a per-aggregate sidecar under `agg-<name>-outputs-csv/`, and an `agg/<name>/` subgroup in `graphs/<slide>.h5`. The name is selectable in `hplot` via `--hplot-base-by aggregate` / `--hplot-target-by aggregate`.
+ `wsinsight agg`            | Cell-type aggregate analysis on existing inference outputs. Detects connected, density-gated aggregates of a chosen cell-type set (`--types`, e.g. `t_cell,b_cell` → TLS) over the cached Delaunay graph, contracts them into a quotient graph, and writes namespaced outputs under the product label `--name`: an `object_<name>_prob_<name>` per-cell membership column (upserted into `model-outputs-csv/`), a per-aggregate sidecar under `agg-<name>-outputs-csv/`, and an `agg/<name>/` subgroup in `graphs/<slide>.h5`. The name is selectable in `hplot` via `--base-by aggregate` / `--target-by aggregate`.
 
 Experimental stages can also be invoked inline from `wsinsight run` via
 `--hplot` / `--niche` (when `WSINSIGHT_EXPERIMENTAL=1`).  `ecomp` / `tcomp` / `agg` are
@@ -675,51 +675,51 @@ where 1.0 is equilateral).  Edges and triads are **not** merged into
 
  Option                                  | Default  | Description
 -----------------------------------------|----------|-------------------------------------------------------------------------------
- `--hplot-base-types`                    | required | Comma-separated base cell types that define the tumour cluster (e.g. `tumor`)
- `--hplot-target-types`                  | required | Comma-separated target cell types to track across layers (e.g. `lymphocyte`)
- `--hplot-base-by`   | `celltype` | Interpret `--hplot-base-types` as `celltype`, `niche`, or `aggregate` names
- `--hplot-target-by` | `celltype` | Interpret `--hplot-target-types` as `celltype`, `niche`, or `aggregate` names
- `--hplot-max-neighbor-distance`         | `25.0`   | Maximum Delaunay edge length in µm
- `--hplot-k`                             | `2`      | k-hop neighborhood radius for region detection
- `--hplot-n`                             | `8`      | Minimum neighborhood size for base-region membership
- `--hplot-r`                             | `0.5`    | Minimum base-type fraction for base-region membership
- `--hplot-range-min`                     | `None`   | Innermost layer index (≤ 0) to include in metrics
- `--hplot-range-max`                     | `None`   | Outermost layer index (≥ 1) to include in metrics
- `--hplot-samples-with-valid-range-only` | off      | Exclude slides that do not fully cover `[range-min, range-max]`
+ `--base-types`                    | required | Comma-separated base cell types that define the tumour cluster (e.g. `tumor`)
+ `--target-types`                  | required | Comma-separated target cell types to track across layers (e.g. `lymphocyte`)
+ `--base-by`   | `celltype` | Interpret `--base-types` as `celltype`, `niche`, or `aggregate` names
+ `--target-by` | `celltype` | Interpret `--target-types` as `celltype`, `niche`, or `aggregate` names
+ `--max-neighbor-distance`         | `25.0`   | Maximum Delaunay edge length in µm
+ `--k`                             | `2`      | k-hop neighborhood radius for region detection
+ `--n`                             | `8`      | Minimum neighborhood size for base-region membership
+ `--r`                             | `0.5`    | Minimum base-type fraction for base-region membership
+ `--range-min`                     | `None`   | Innermost layer index (≤ 0) to include in metrics
+ `--range-max`                     | `None`   | Outermost layer index (≥ 1) to include in metrics
+ `--samples-with-valid-range-only` | off      | Exclude slides that do not fully cover `[range-min, range-max]`
  `--overwrite`                           | off      | Recompute existing per-slide outputs
 
 ### Edge Composition parameters (`--ecomp-*` options)
 
  Option             | Default | Description
 --------------------|---------|--------------------------------------
- `--ecomp-max-edge` | `25.0`  | Maximum Delaunay edge length in µm
- `--ecomp-k`        | `2`     | k-hop neighborhood radius (line graph)
- `--ecomp-no-neighborhood` | off | Skip k-hop aggregation; one row per edge, no `neighborhood_*` columns (much faster)
+ `--max-edge` | `25.0`  | Maximum Delaunay edge length in µm
+ `--k`        | `2`     | k-hop neighborhood radius (line graph)
+ `--no-neighborhood` | off | Skip k-hop aggregation; one row per edge, no `neighborhood_*` columns (much faster)
  `--overwrite`      | off     | Recompute existing per-slide outputs
 
 ### Triad Composition parameters (`--tcomp-*` options)
 
  Option             | Default | Description
 --------------------|---------|-------------------------------------------------------------------------
- `--tcomp-max-edge` | `25.0`  | Longest-edge threshold (µm); triads with any edge above this are pruned
- `--tcomp-k`        | `2`     | k-hop neighborhood radius (dual graph)
- `--tcomp-no-neighborhood` | off | Skip k-hop aggregation; one row per triad, no `neighborhood_*` columns (much faster)
+ `--max-edge` | `25.0`  | Longest-edge threshold (µm); triads with any edge above this are pruned
+ `--k`        | `2`     | k-hop neighborhood radius (dual graph)
+ `--no-neighborhood` | off | Skip k-hop aggregation; one row per triad, no `neighborhood_*` columns (much faster)
  `--overwrite`      | off     | Recompute existing per-slide outputs
 
 ### niche parameters (`--niche-*` options in `run` and `wsinsight niche`)
 
  Option             | Default | Description
 --------------------|---------|------------------------------------------------------------------------------------
- `--niche-hoptimus`   | off     | Enable H-Optimus tissue morphology features (requires GPU + timm)
- `--niche-clusters`   | auto    | Number of KMeans clusters; when omitted, determined via Leiden community detection
- `--niche-leiden-res` | `0.5,1.0,2.0` | Comma-separated Leiden resolutions to sweep when `--niche-clusters` is omitted
- `--niche-embed-dim`  | `32`    | Dimensionality of the DGI cell embedding (8–256)
- `--niche-epochs`     | `300`   | Upper bound on DGI encoder training epochs. Early stopping is always active, so training may finish sooner
- `--niche-patience`   | `20`    | Early-stopping patience: stop after this many consecutive epochs without a mean-loss improvement > `--niche-min-delta`
- `--niche-min-delta`  | `1e-4`  | Minimum relative mean-loss improvement required to reset the early-stopping patience counter
- `--niche-min-epochs` | `50`    | Never trigger early stopping before this many epochs have elapsed
- `--niche-amp`        | off     | Enable CUDA automatic mixed precision for DGI training (faster, lower GPU memory; no effect on CPU/MPS)
- `--niche-seed`       | `0`     | Random seed for the niche pipeline (DGI training, Leiden sweep, KMeans), for reproducible niche ids
+ `--hoptimus`   | off     | Enable H-Optimus tissue morphology features (requires GPU + timm)
+ `--clusters`   | auto    | Number of KMeans clusters; when omitted, determined via Leiden community detection
+ `--leiden-res` | `0.5,1.0,2.0` | Comma-separated Leiden resolutions to sweep when `--clusters` is omitted
+ `--embed-dim`  | `32`    | Dimensionality of the DGI cell embedding (8–256)
+ `--epochs`     | `300`   | Upper bound on DGI encoder training epochs. Early stopping is always active, so training may finish sooner
+ `--patience`   | `20`    | Early-stopping patience: stop after this many consecutive epochs without a mean-loss improvement > `--min-delta`
+ `--min-delta`  | `1e-4`  | Minimum relative mean-loss improvement required to reset the early-stopping patience counter
+ `--min-epochs` | `50`    | Never trigger early stopping before this many epochs have elapsed
+ `--amp`        | off     | Enable CUDA automatic mixed precision for DGI training (faster, lower GPU memory; no effect on CPU/MPS)
+ `--seed`       | `0`     | Random seed for the niche pipeline (DGI training, Leiden sweep, KMeans), for reproducible niche ids
  `--export-geojson` | off     | Export niche results to GeoJSON files under `niche-outputs-geojson/`
  `--overwrite`      | off     | Delete cached checkpoints and recompute from scratch
 
@@ -727,18 +727,18 @@ where 1.0 is equilateral).  Edges and triads are **not** merged into
 
  Option                          | Default  | Description
 ---------------------------------|----------|---------------------------------------------------------------------------------
- `--agg-name`                    | required | Product label (lower-case `[a-z0-9_]+`, e.g. `tls`); namespaces every artifact and is selectable in `hplot` via `--hplot-base-by aggregate` / `--hplot-target-by aggregate`
- `--agg-types`                   | required | Comma-separated ingredient cell types that may join the aggregate (e.g. `t_cell,b_cell`)
- `--agg-max-neighbor-distance`   | `25.0`   | Maximum Delaunay edge length in µm
- `--agg-k`                       | `2`      | k-hop neighborhood radius for the density gate
- `--agg-n`                       | `8`      | Minimum neighborhood size for region membership
- `--agg-r`                       | `0.5`    | Minimum ingredient-type fraction for region membership
- `--agg-min-size`                | `10`     | Drop aggregates with fewer than this many cells
+ `--name`                    | required | Product label (lower-case `[a-z0-9_]+`, e.g. `tls`); namespaces every artifact and is selectable in `hplot` via `--base-by aggregate` / `--target-by aggregate`
+ `--types`                   | required | Comma-separated ingredient cell types that may join the aggregate (e.g. `t_cell,b_cell`)
+ `--max-neighbor-distance`   | `25.0`   | Maximum Delaunay edge length in µm
+ `--k`                       | `2`      | k-hop neighborhood radius for the density gate
+ `--n`                       | `8`      | Minimum neighborhood size for region membership
+ `--r`                       | `0.5`    | Minimum ingredient-type fraction for region membership
+ `--min-size`                | `10`     | Drop aggregates with fewer than this many cells
  `--overwrite`                   | off      | Recompute existing per-slide outputs for this name
 
 `agg` writes three namespaced artifacts: an `object_<name>_prob_<name>`
 membership column upserted into `model-outputs-csv/<slide>.csv` (siblings
-preserved, so multiple `--agg-name` runs coexist), a per-aggregate sidecar
+preserved, so multiple `--name` runs coexist), a per-aggregate sidecar
 under `agg-<name>-outputs-csv/<slide>.csv`, and an `agg/<name>/` quotient-graph
 subgroup inside `graphs/<slide>.h5`.
 
@@ -776,8 +776,8 @@ Run H-plot on existing inference outputs:
 ```bash
 wsinsight hplot \
   --wsi-dir slides/ --results-dir results/ \
-  --hplot-base-types tumor --hplot-target-types lymphocyte \
-  --hplot-range-min -5 --hplot-range-max 5
+  --base-types tumor --target-types lymphocyte \
+  --range-min -5 --range-max 5
 ```
 
 Detect T+B-cell aggregates (e.g. TLS) on existing inference outputs, then plot
@@ -786,13 +786,13 @@ their member-cell fraction across tumour layers:
 ```bash
 wsinsight agg \
   --wsi-dir slides/ --results-dir results/ \
-  --agg-name tls --agg-types t_cell,b_cell
+  --name tls --types t_cell,b_cell
 
 wsinsight hplot \
   --wsi-dir slides/ --results-dir results/ \
-  --hplot-base-types tumor --hplot-target-types tls \
-  --hplot-target-by aggregate \
-  --hplot-range-min -5 --hplot-range-max 5
+  --base-types tumor --target-types tls \
+  --target-by aggregate \
+  --range-min -5 --range-max 5
 ```
 
 After parallel `hplot` jobs, aggregate to cohort level:
@@ -815,7 +815,7 @@ WSInsight reads the following environment variables at startup. Set them in your
  Variable                     | Purpose                                                                                                                                                                             | Example
 ------------------------------|-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|---------------------------------------------------------------------------------------------
  `WSINSIGHT_ZOO_REGISTRY_PATH` | Path to a local `wsinsight-zoo-registry.json` file. **Required in air-gapped / restricted-SSL environments.** When set (and the file exists), no network call to HuggingFace is made. The legacy name `WSINFER_ZOO_REGISTRY_PATH` is still honored for one release (emits a `DeprecationWarning`). | `export WSINSIGHT_ZOO_REGISTRY_PATH=/workspace/wsinsight/devel/zoo/wsinsight-zoo-registry.json`
- `WSINSIGHT_EXPERIMENTAL`     | Set to `1` (or `true`/`yes`/`on`) to unhide experimental subcommands (`hplot`, `hplot-finalize`, `niche`, `ecomp`, `tcomp`, `agg`) and the `--hplot` / `--niche` flags on `wsinsight run`. Without it, experimental commands are hidden from `--help` and refuse to run.  See [Experimental Features](#experimental-features). | `export WSINSIGHT_EXPERIMENTAL=1`
+ `WSINSIGHT_EXPERIMENTAL`     | Set to `1` (or `true`/`yes`/`on`) to unhide experimental subcommands (`hplot`, `hplot-finalize`, `niche`, `ecomp`, `tcomp`, `agg`, `import`) and the `--hplot` / `--niche` flags on `wsinsight run`. Without it, experimental commands are hidden from `--help` and refuse to run.  See [Experimental Features](#experimental-features). | `export WSINSIGHT_EXPERIMENTAL=1`
  `S3_STORAGE_OPTIONS`         | JSON object passed verbatim to `s3fs` / `fsspec` (e.g. AWS profile, endpoint URL). Required to read/write S3 URIs.                                                                  | `export S3_STORAGE_OPTIONS='{"profile":"saml"}'`
  `GS_STORAGE_OPTIONS`         | JSON object passed verbatim to `gcsfs` / `fsspec` for Google Cloud Storage (`gs://`) URIs. Optional: auth defaults to Application Default Credentials (`GOOGLE_APPLICATION_CREDENTIALS`); set this only to override (e.g. a service-account key).                         | `export GS_STORAGE_OPTIONS='{"token":"/path/to/service-account.json"}'`
  `WSINSIGHT_REMOTE_CACHE_DIR` | Local directory where remote assets (S3 tiles, GDC downloads) are materialised. Defaults to `~/.cache/wsinsight`. Point it at a fast SSD for large cohorts.                         | `export WSINSIGHT_REMOTE_CACHE_DIR=/scratch/wsinsight-cache`

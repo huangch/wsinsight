@@ -343,6 +343,11 @@ _NICHE_PARAM_NAMES: tuple[str, ...] = (
     "niche_clusters",
     "niche_leiden_res",
     "niche_embed_dim",
+    "niche_k_hops",
+    "niche_max_edge_len_um",
+    "niche_max_cell_radius_um",
+    "niche_soft",
+    "niche_alpha",
     "overwrite",
     "export_geojson",
     "num_workers",
@@ -892,6 +897,60 @@ def _select_kwargs(values: dict[str, Any], keys: tuple[str, ...]) -> dict[str, A
     ),
 )
 @click.option(
+    "--niche-k-hops",
+    default=2,
+    show_default=True,
+    type=click.IntRange(min=0),
+    help=(
+        "Number of neighborhood hops for the niche composition features.  Each "
+        "hop adds one ring of the Delaunay graph, so the spatial extent a niche "
+        "summarises grows roughly as k-hops x the typical cell spacing.  "
+        "Ignored unless --niche is set."
+    ),
+)
+@click.option(
+    "--niche-max-edge-len-um",
+    default=25.0,
+    show_default=True,
+    type=click.FloatRange(min=0),
+    help=(
+        "Maximal Delaunay edge length (um) when building the niche cell graph.  "
+        "Longer edges are pruned, capping how far a single hop can reach.  "
+        "Ignored unless --niche is set."
+    ),
+)
+@click.option(
+    "--niche-max-cell-radius-um",
+    default=15.0,
+    show_default=True,
+    type=click.FloatRange(min=0),
+    help=(
+        "Maximal cell radius (um) used when merging annotation-level niche "
+        "regions.  Ignored unless --niche is set."
+    ),
+)
+@click.option(
+    "--niche-soft",
+    is_flag=True,
+    default=False,
+    show_default=True,
+    help=(
+        "Use soft (probability) composition features for niche instead of hard "
+        "argmax labels.  Ignored unless --niche is set."
+    ),
+)
+@click.option(
+    "--niche-alpha",
+    default=1.0,
+    show_default=True,
+    type=click.FloatRange(min=0),
+    help=(
+        "Dirichlet/Laplace smoothing strength for the niche k-hop composition "
+        "features: out = (p + alpha / n_classes) / (1 + alpha).  0 disables "
+        "smoothing.  Ignored unless --niche is set."
+    ),
+)
+@click.option(
     "--niche-seed",
     default=0,
     show_default=True,
@@ -1076,6 +1135,11 @@ def run(
     niche_clusters: int | None = None,
     niche_leiden_res: List | None = None,
     niche_embed_dim: int = 32,
+    niche_k_hops: int = 2,
+    niche_max_edge_len_um: float = 25.0,
+    niche_max_cell_radius_um: float = 15.0,
+    niche_soft: bool = False,
+    niche_alpha: float = 1.0,
     niche_epochs: int = 300,
     niche_patience: int = 20,
     niche_min_delta: float = 1e-4,

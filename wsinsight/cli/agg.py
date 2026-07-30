@@ -1,8 +1,8 @@
 """Standalone CLI for cell-type aggregate (``agg``) analysis over WSInsight outputs.
 
 ``wsinsight agg`` detects connected, density-gated aggregates of a chosen set of
-cell types (``--agg-types``) over the cached Delaunay graph, contracts them into
-a quotient graph, and names the product via ``--agg-name`` (e.g. ``tls`` for a
+cell types (``--types``) over the cached Delaunay graph, contracts them into
+a quotient graph, and names the product via ``--name`` (e.g. ``tls`` for a
 T+B aggregate).  The name namespaces every artifact, so multiple ``agg`` runs on
 the same slide are additive rather than colliding.
 """
@@ -123,51 +123,58 @@ _NAME_RE = re.compile(r"^[a-z0-9_]+$")
     ),
 )
 @click.option(
-    "--agg-name",
+    "--name",
+    "agg_name",
     required=True,
     help=(
         "Product label for this aggregate (lower-case [a-z0-9_]+), e.g. 'tls'.  "
         "Namespaces every artifact (object_<name>_prob_<name> column, "
         "agg-<name>-outputs-csv/, agg/<name>/ in the graph cache) and is usable "
-        "as a type in `wsinsight hplot --hplot-target-by aggregate`."
+        "as a type in `wsinsight hplot --target-by aggregate`."
     ),
 )
 @click.option(
-    "--agg-types",
+    "--types",
+    "agg_types",
     callback=_csv_to_list,
     required=True,
     help="Comma-separated ingredient cell types that may join the aggregate, e.g. 't_cell,b_cell'.",
 )
 @click.option(
-    "--agg-max-neighbor-distance",
+    "--max-neighbor-distance",
+    "agg_max_neighbor_distance",
     default=25.0,
     type=click.FloatRange(min=0),
     show_default=True,
     help="Maximum distance (µm) between neighboring cells in the Delaunay graph.",
 )
 @click.option(
-    "--agg-k",
+    "--k",
+    "agg_k",
     default=2,
     type=click.IntRange(min=1),
     show_default=True,
     help="k-hop neighborhood radius for the density gate.",
 )
 @click.option(
-    "--agg-n",
+    "--n",
+    "agg_n",
     default=8,
     type=click.IntRange(min=0),
     show_default=True,
     help="Minimum neighborhood size for a cell to be inside an aggregate region.",
 )
 @click.option(
-    "--agg-r",
+    "--r",
+    "agg_r",
     default=0.5,
     type=click.FloatRange(min=0, max=1),
     show_default=True,
     help="Minimum fraction of ingredient cells in the neighborhood (density gate).",
 )
 @click.option(
-    "--agg-min-size",
+    "--min-size",
+    "agg_min_size",
     default=10,
     type=click.IntRange(min=1),
     show_default=True,
@@ -212,13 +219,13 @@ def agg(
     name = str(agg_name).strip().lower()
     if not _NAME_RE.match(name):
         raise click.ClickException(
-            f"--agg-name must match [a-z0-9_]+ (got {agg_name!r}); "
+            f"--name must match [a-z0-9_]+ (got {agg_name!r}); "
             "lower-case letters, digits and underscores only."
         )
 
     agg_type_list = [str(t).strip().lower() for t in agg_types if str(t).strip()]
     if not agg_type_list:
-        raise click.ClickException("--agg-types must list at least one cell type.")
+        raise click.ClickException("--types must list at least one cell type.")
 
     wsi_dir = wsi_dir.coerce_image_list()
     ensure_input_directory(wsi_dir, "--wsi-dir")
@@ -246,7 +253,7 @@ def agg(
     }
     if name in cell_types:
         raise click.ClickException(
-            f"--agg-name '{name}' collides with an existing cell-type label. "
+            f"--name '{name}' collides with an existing cell-type label. "
             "Choose a name distinct from the model's cell types."
         )
     own_col = membership_column(name).lower()
@@ -258,7 +265,7 @@ def agg(
     ]
     if colliding:
         raise click.ClickException(
-            f"--agg-name '{name}' collides with existing columns {sorted(colliding)}. "
+            f"--name '{name}' collides with existing columns {sorted(colliding)}. "
             "Choose a different name (or pass --overwrite to recompute this aggregate)."
         )
 
