@@ -11,14 +11,20 @@ Inputs
 * ``--wsi-dir``   H&E slides (used for exact target dimensions and matched to a
   sample by stem == manifest ``sample_id``).
 * ``--sptx-dir``  a ``sptx-list://`` manifest (``path``<TAB>``sample_id``) whose
-  first column points at each Xenium sample directory (``cells.parquet`` +
-  ``cell_feature_matrix.h5`` + ``registration_params.json`` +
-  ``direct_transf.txt``) and whose second column is the stable ``sample_id``
-  (must equal the H&E / model-output stem).
+  first column points at either:
+    - (platform=xenium)     each Xenium sample directory (``cells.parquet`` +
+                            ``cell_feature_matrix.h5`` + ``registration_params.json``
+                            + ``direct_transf.txt``), or
+    - (platform=xenium-h5ad) each pre-annotated ``.h5ad`` produced by sptxinsight
+                            (reads ``obsm["spatial"]`` for µm coordinates and ``X``
+                            for expression; still uses the Xenium registration
+                            transforms located at ``--xenium-reg-dir``).
+  The second column is the stable ``sample_id`` (must equal the H&E /
+  model-output stem).
 * ``--results-dir``  holds ``model-outputs-csv/`` and receives ``imported-xenium/``.
-
-Platform is ``xenium`` by default (the only value today); it is exposed as an
-option so additional platforms can be added without a breaking change.
+* ``--xenium-reg-dir``  (platform=xenium-h5ad only) directory that holds one
+  sub-directory per sample_id containing the ST2WSI registration files
+  (``registration_params.json`` + optional ``direct_transf.txt``).
 """
 
 from __future__ import annotations
@@ -264,6 +270,178 @@ def _process_sample(sample_id: str, xdir: Path, wsi_path: Optional[URIPath],
             "median_dist_px": round(float(np.nanmedian(dist)), 2) if len(dist) else None}
 
 
+# ---------------------------------------------------------------------------
+# Per-sample processing — xenium-h5ad platform
+# ---------------------------------------------------------------------------
+
+def _process_sample_h5ad(sample_id: str, h5ad_path: Path, reg_dir: Optional[Path],
+                          wsi_path: Optional[URIPath], model_csv: URIPath,
+                          out_path: URIPath, transform: str,
+                          want_genes: Optional[set[str]], match_max_dist: float,
+                          dry_run: bool = False, *,
+                          spatial_key: str = "spatial",
+                          include: tuple[str, ...] = (),
+                          results_dir: Optional[URIPath] = None) -> dict:
+    """Process one pre-annotated ``.h5ad`` (sptxinsight output) for wsinsight import.
+
+    Reads ``obsm[spatial_key]`` (µm) for cell coordinates and ``X`` for expression.
+    The ST2WSI registration transform is sourced from ``reg_dir/<sample_id>/``
+    (``registration_params.json`` + optional ``direct_transf.txt``).
+    All downstream logic (spatial join, AnnData construction) is identical to the
+    raw Xenium path.
+    """
+    import numpy as np
+    import pandas as pd
+    import anndata
+    from anndata import AnnData
+    from scipy.spatial import cKDTree
+
+    # ---- Read pre-annotated AnnData ----
+    adata_src = anndata.read_h5ad(os.fspath(h5ad_path))
+
+    if spatial_key not in adata_src.obsm:
+        raise click.ClickException(
+            f"[{sample_id}] obsm[{spatial_key!r}] not found in {h5ad_path}. "
+            "sptxinsight annotated.h5ad must store cell centroids (µm) under this key."
+        )
+
+    xy_um = np.asarray(adata_src.obsm[spatial_key], dtype=float)[:, :2]
+    cid = np.asarray(adata_src.obs_names, dtype=str)
+
+    # ---- expression ----
+    from scipy import sparse
+    X_src = adata_src.X
+    if want_genes is not None:
+        gene_names = list(adata_src.var_names)
+        keep = np.array([g in want_genes for g in gene_names], dtype=bool)
+        X_src = X_src[:, keep]
+        var = pd.DataFrame(index=pd.Index(np.array(gene_names, dtype=object)[keep], name="gene"))
+    else:
+        var = pd.DataFrame(index=pd.Index(np.asarray(list(adata_src.var_names), dtype=object), name="gene"))
+    if not sparse.issparse(X_src):
+        from scipy.sparse import csr_matrix
+        X_src = csr_matrix(X_src)
+    X = X_src.tocsr()
+
+    # ---- transform µm -> full-res H&E px ----
+    if reg_dir is None:
+        raise click.ClickException(
+            f"[{sample_id}] --xenium-reg-dir is required for platform=xenium-h5ad."
+        )
+    sample_reg_dir = reg_dir / sample_id
+    if not sample_reg_dir.is_dir():
+        raise click.ClickException(
+            f"[{sample_id}] registration directory not found: {sample_reg_dir}. "
+            "Expected --xenium-reg-dir/<sample_id>/ with registration_params.json."
+        )
+    params_file = sample_reg_dir / "registration_params.json"
+    elastic_file = sample_reg_dir / "direct_transf.txt"
+
+    target_wh = None
+    mpp_he = None
+    if wsi_path is not None:
+        mpp_he = get_avg_mpp(wsi_path)
+    if transform == "affine+bspline":
+        if wsi_path is None:
+            raise click.ClickException(
+                f"[{sample_id}] affine+bspline needs the H&E image (target dims); "
+                "no matching --wsi-dir slide for this sample_id."
+            )
+        target_wh = _wsi_dims(wsi_path)
+
+    xy_px = map_cells(
+        xy_um, params_file, elastic_file if elastic_file.exists() else None, transform,
+        target_wh=target_wh,
+    )
+
+    # ---- spatial join to model-output detections (nearest box centre) ----
+    md = pd.read_csv(os.fspath(model_csv))
+    cx = md["minx"].to_numpy(float) + md["width"].to_numpy(float) / 2.0
+    cy = md["miny"].to_numpy(float) + md["height"].to_numpy(float) / 2.0
+    tree = cKDTree(np.c_[cx, cy])
+    dist, idx = tree.query(np.c_[xy_px[:, 0], xy_px[:, 1]], k=1)
+    matched = idx.astype(int)
+    if match_max_dist and match_max_dist > 0:
+        over = dist > match_max_dist
+        matched[over] = -1
+        dist = dist.astype(float)
+        dist[over] = np.nan
+    hit_rate = float(np.mean(matched >= 0) * 100.0)
+
+    if dry_run:
+        return {"sample_id": sample_id, "n_cells": int(len(cid)),
+                "n_genes": int(X.shape[1]), "hit_rate_pct": round(hit_rate, 2),
+                "median_dist_px": round(float(np.nanmedian(dist)), 2) if len(dist) else None}
+
+    # ---- AnnData: obs=geometry/link, X=sparse expression, var=genes ----
+    if mpp_he is not None:
+        x_um_he = xy_px[:, 0] * mpp_he
+        y_um_he = xy_px[:, 1] * mpp_he
+    else:
+        x_um_he = xy_um[:, 0]
+        y_um_he = xy_um[:, 1]
+    obs = pd.DataFrame({
+        "cell_id": cid.astype(str),
+        "x_px": xy_px[:, 0], "y_px": xy_px[:, 1],
+        "x_um": x_um_he, "y_um": y_um_he,
+        "xenium_x_um": xy_um[:, 0], "xenium_y_um": xy_um[:, 1],
+        "matched_box": matched,
+        "match_dist_px": dist,
+    })
+    model_rows = md.reindex(matched)
+    model_rows.columns = [f"model_{c}" for c in model_rows.columns]
+    model_rows.index = obs.index
+    obs = pd.concat([obs, model_rows], axis=1)
+    claimed: set[str] = set(md.columns)
+    obs["model_cell_id"] = [f"{sample_id}-{int(b)}" if b >= 0 else None for b in matched]
+
+    # Carry over sptxinsight obs columns (e.g. cell_type, leiden, etc.) under
+    # the ``sptx_`` prefix so they are available in the resulting h5ad without
+    # colliding with model_ / niche_ / hplot_ namespaces.
+    sptx_obs_cols = [c for c in adata_src.obs.columns if c not in obs.columns]
+    if sptx_obs_cols:
+        sptx_extra = adata_src.obs[sptx_obs_cols].copy()
+        sptx_extra.columns = [f"sptx_{c}" for c in sptx_obs_cols]
+        sptx_extra.index = obs.index
+        obs = pd.concat([obs, sptx_extra], axis=1)
+
+    # ---- optional per-cell add-on sources (--include) ----
+    sources = ["model"]
+    if include and results_dir is not None:
+        for key in include:
+            prefix, rel = _ADDON_SOURCES[key]
+            src_csv = results_dir
+            for part in rel:
+                src_csv = src_csv / part
+            src_csv = src_csv / f"{sample_id}.csv"
+            if not src_csv.exists():
+                continue
+            src_df = pd.read_csv(os.fspath(src_csv))
+            obs = _merge_source(obs, src_df, matched, prefix, claimed)
+            sources.append(key)
+
+    obs.index = obs["cell_id"].astype(str)
+
+    adata_out = AnnData(X=X, obs=obs, var=var)
+    adata_out.obsm["spatial"] = xy_px
+    adata_out.uns["wsinsight_import"] = {
+        "sample_id": sample_id,
+        "platform": "xenium-h5ad",
+        "transform": transform,
+        "sources": sources,
+        "source_h5ad": os.fspath(h5ad_path),
+        "target_wh": list(target_wh) if target_wh else None,
+        "n_cells": int(len(obs)),
+        "n_genes": int(adata_out.n_vars),
+        "match_hit_rate_pct": round(hit_rate, 2),
+        "median_match_dist_px": (float(np.nanmedian(dist)) if len(dist) else None),
+    }
+    _write_h5ad(adata_out, out_path)
+    return {"sample_id": sample_id, "n_cells": int(len(obs)),
+            "n_genes": int(adata_out.n_vars), "hit_rate_pct": round(hit_rate, 2),
+            "median_dist_px": round(float(np.nanmedian(dist)), 2) if len(dist) else None}
+
+
 def _merge_source(obs, src_df, matched, prefix: str, claimed: set[str]):
     """Merge one row-aligned per-cell sidecar onto ``obs`` under ``prefix``.
 
@@ -316,9 +494,9 @@ def _write_h5ad(adata, out_path: URIPath) -> None:
     "-s", "--sptx-dir",
     type=URIPathType(exists=True, **_STORAGE_KWARGS),
     required=True,
-    help="A sptx-list:// manifest (path<TAB>sample_id per line). The path points "
-         "at each Xenium sample directory; sample_id is the stable id used to "
-         "match the H&E / model-output (Xenium filenames collide across runs).",
+    help="A sptx-list:// manifest (path<TAB>sample_id per line). "
+         "For platform=xenium: path points at each raw Xenium sample directory. "
+         "For platform=xenium-h5ad: path points at each sptxinsight annotated.h5ad file.",
 )
 @click.option(
     "-o", "--results-dir",
@@ -329,10 +507,28 @@ def _write_h5ad(adata, out_path: URIPath) -> None:
 )
 @click.option(
     "--platform",
-    type=click.Choice(["xenium"]),
+    type=click.Choice(["xenium", "xenium-h5ad"]),
     default="xenium",
     show_default=True,
-    help="Spatial-transcriptomics platform to import (xenium by default).",
+    help="Spatial-transcriptomics platform to import. "
+         "'xenium': read from raw Xenium output directories (cells.parquet + cell_feature_matrix.h5). "
+         "'xenium-h5ad': read from sptxinsight annotated.h5ad files (obsm['spatial'] + X); "
+         "requires --xenium-reg-dir for the ST2WSI registration transforms.",
+)
+@click.option(
+    "--xenium-reg-dir",
+    type=URIPathType(exists=True, **_STORAGE_KWARGS),
+    default=None,
+    help="(platform=xenium-h5ad only) Directory holding one sub-directory per "
+         "sample_id, each containing the ST2WSI registration files "
+         "(registration_params.json and optional direct_transf.txt). "
+         "Typically the parent of the original Xenium output directories.",
+)
+@click.option(
+    "--spatial-key",
+    default="spatial",
+    show_default=True,
+    help="(platform=xenium-h5ad only) Key in adata.obsm holding cell centroids in microns.",
 )
 @click.option(
     "--transform",
@@ -388,6 +584,8 @@ def sptx_import(
     sptx_dir: URIPath,
     results_dir: URIPath,
     platform: str = "xenium",
+    xenium_reg_dir: Optional[URIPath] = None,
+    spatial_key: str = "spatial",
     transform: str = "affine+bspline",
     genes: str = "all",
     include: str = "",
@@ -399,7 +597,7 @@ def sptx_import(
 
     \b
     For each sample in the sptx-list manifest:
-      • map Xenium centroids (µm) onto the H&E via the ST2WSI transform,
+      • map cell centroids (µm) onto the H&E via the ST2WSI transform,
       • match each cell to the nearest model-output detection,
       • write one AnnData whose obs carries EVERY model-output-csv column of the
         matched detection (prefixed ``model_``, NaN when a cell has no match) plus
@@ -409,6 +607,17 @@ def sptx_import(
         own prefixes (``niche_`` / ``hplot_`` / ``ncomp_``).
 
     \b
+    platform=xenium (default):
+      sptx-list paths point to raw Xenium output directories.
+
+    \b
+    platform=xenium-h5ad:
+      sptx-list paths point to sptxinsight annotated.h5ad files.
+      Requires --xenium-reg-dir pointing to a directory with one sub-folder
+      per sample_id holding the ST2WSI registration files.
+      sptxinsight obs columns are carried over under the ``sptx_`` prefix.
+
+    \b
     Output written to <results-dir>/:
       imported-xenium/<sample_id>.h5ad
     """
@@ -416,6 +625,11 @@ def sptx_import(
 
     ensure_input_directory(wsi_dir, "--wsi-dir")
     ensure_input_directory(results_dir, "--results-dir")
+
+    if platform == "xenium-h5ad" and xenium_reg_dir is None:
+        raise click.UsageError(
+            "--xenium-reg-dir is required when --platform=xenium-h5ad."
+        )
 
     include_sources = tuple(
         s for s in (t.strip() for t in include.replace(",", " ").split()) if s
@@ -469,17 +683,13 @@ def sptx_import(
     done, skipped, failed = [], [], []
     for child in samples:
         sid = child.sample_id
-        xdir = Path(os.fspath(child))
         out_path = out_dir / f"{sid}.h5ad"
 
         if not dry_run and out_path.exists() and not overwrite:
             click.secho(f"  [skip] {sid}: exists (use --overwrite)", fg="yellow")
             skipped.append(sid)
             continue
-        if not xdir.is_dir():
-            click.secho(f"  [skip] {sid}: Xenium path is not a directory: {xdir}", fg="yellow")
-            skipped.append(sid)
-            continue
+
         model_csv = model_output_dir / f"{sid}.csv"
         if not model_csv.exists():
             click.secho(f"  [skip] {sid}: no model-outputs-csv/{sid}.csv", fg="yellow")
@@ -487,10 +697,30 @@ def sptx_import(
             continue
 
         wsi_path = wsi_by_id.get(sid)
+
         try:
-            info = _process_sample(sid, xdir, wsi_path, model_csv, out_path,
-                                   transform, want_genes, match_max_dist, dry_run,
-                                   include=include_sources, results_dir=results_dir)
+            if platform == "xenium-h5ad":
+                h5ad_path = Path(os.fspath(child))
+                if not h5ad_path.is_file():
+                    click.secho(f"  [skip] {sid}: h5ad path is not a file: {h5ad_path}", fg="yellow")
+                    skipped.append(sid)
+                    continue
+                reg_dir = Path(os.fspath(xenium_reg_dir)) if xenium_reg_dir is not None else None
+                info = _process_sample_h5ad(
+                    sid, h5ad_path, reg_dir, wsi_path, model_csv, out_path,
+                    transform, want_genes, match_max_dist, dry_run,
+                    spatial_key=spatial_key,
+                    include=include_sources, results_dir=results_dir,
+                )
+            else:
+                xdir = Path(os.fspath(child))
+                if not xdir.is_dir():
+                    click.secho(f"  [skip] {sid}: Xenium path is not a directory: {xdir}", fg="yellow")
+                    skipped.append(sid)
+                    continue
+                info = _process_sample(sid, xdir, wsi_path, model_csv, out_path,
+                                       transform, want_genes, match_max_dist, dry_run,
+                                       include=include_sources, results_dir=results_dir)
             _tag = "dry" if dry_run else "ok"
             _genes = "" if info["n_genes"] is None else f"× {info['n_genes']} genes "
             click.secho(

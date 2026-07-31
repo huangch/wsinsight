@@ -34,6 +34,7 @@ from .ncomp import ncomp as ncomp_command
 from .patch import patch as patch_command
 from .tcomp import tcomp as tcomp_command
 from .agg import agg as agg_command
+from .sptx_import import sptx_import as import_command
 from ..export_helpers import build_export_csvs
 from ..qupath import make_qupath_project
 from ..cancel import raise_if_cancelled
@@ -975,6 +976,67 @@ def _select_kwargs(values: dict[str, Any], keys: tuple[str, ...]) -> dict[str, A
     ),
 )
 @click.option(
+    "--import",
+    "run_import",
+    is_flag=True,
+    default=False,
+    show_default=True,
+    help=(
+        "Run 'wsinsight import' after inference to map spatial-transcriptomics "
+        "expression onto the H&E cells. Requires --import-sptx-dir. "
+        "Use --import-platform to select the input format."
+    ),
+)
+@click.option(
+    "--import-sptx-dir",
+    type=URIPathType(exists=True, **_STORAGE_KWARGS),
+    default=None,
+    help=(
+        "sptx-list:// manifest for 'wsinsight import'. "
+        "For --import-platform=xenium: paths to Xenium output directories. "
+        "For --import-platform=xenium-h5ad: paths to sptxinsight annotated.h5ad files. "
+        "Required when --import is set."
+    ),
+)
+@click.option(
+    "--import-platform",
+    type=click.Choice(["xenium", "xenium-h5ad"]),
+    default="xenium",
+    show_default=True,
+    help=(
+        "Input platform for 'wsinsight import'. "
+        "'xenium': raw Xenium output directories (cells.parquet + cell_feature_matrix.h5). "
+        "'xenium-h5ad': sptxinsight annotated.h5ad (obsm['spatial'] + X); "
+        "requires --import-xenium-reg-dir."
+    ),
+)
+@click.option(
+    "--import-xenium-reg-dir",
+    type=URIPathType(exists=True, **_STORAGE_KWARGS),
+    default=None,
+    help=(
+        "(--import-platform=xenium-h5ad only) Directory holding one sub-directory "
+        "per sample_id with the ST2WSI registration files "
+        "(registration_params.json + optional direct_transf.txt)."
+    ),
+)
+@click.option(
+    "--import-spatial-key",
+    default="spatial",
+    show_default=True,
+    help="(--import-platform=xenium-h5ad only) obsm key for cell centroids in microns.",
+)
+@click.option(
+    "--import-include",
+    default="niche",
+    show_default=True,
+    help=(
+        "Comma-separated per-cell sources to merge into the imported h5ad "
+        "(niche, hplot, ncomp). Passed as --include to 'wsinsight import'. "
+        "Ignored unless --import is set."
+    ),
+)
+@click.option(
     "--export-geojson",
     is_flag=True,
     default=False,
@@ -1169,6 +1231,12 @@ def run(
     agg_n: int = 8,
     agg_r: float = 0.5,
     agg_min_size: int = 10,
+    run_import: bool = False,
+    import_sptx_dir: URIPath | None = None,
+    import_platform: str = "xenium",
+    import_xenium_reg_dir: URIPath | None = None,
+    import_spatial_key: str = "spatial",
+    import_include: str = "niche",
     export_geojson: bool = False,
     export_omecsv: bool = False,
     export_h5ad: bool = False,
@@ -1305,7 +1373,29 @@ def run(
         ctx.invoke(agg_command, **_select_kwargs(params, _AGG_PARAM_NAMES))
         raise_if_cancelled()
 
-    # --- Stage 6 (optional): merged export to GeoJSON / OME-CSV / h5ad -------
+    # --- Stage 6 (optional): wsinsight import (ST expression → H&E cells) ----
+    if run_import:
+        if import_sptx_dir is None:
+            raise click.UsageError("--import requires --import-sptx-dir.")
+        if import_platform == "xenium-h5ad" and import_xenium_reg_dir is None:
+            raise click.UsageError(
+                "--import-platform=xenium-h5ad requires --import-xenium-reg-dir."
+            )
+        click.echo("\nRunning wsinsight import...\n")
+        ctx.invoke(
+            import_command,
+            wsi_dir=wsi_dir,
+            sptx_dir=import_sptx_dir,
+            results_dir=results_dir,
+            platform=import_platform,
+            xenium_reg_dir=import_xenium_reg_dir,
+            spatial_key=import_spatial_key,
+            include=import_include,
+            overwrite=overwrite,
+        )
+        raise_if_cancelled()
+
+    # --- Stage 7 (optional): merged export to GeoJSON / OME-CSV / h5ad -------
     if export_geojson or export_omecsv or export_h5ad:
         click.echo("\nMerging per-cell analytics into export CSVs...\n")
         build_export_csvs(results_dir, overwrite=True)
