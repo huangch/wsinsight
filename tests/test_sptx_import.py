@@ -187,7 +187,7 @@ def test_import_include_niche_prefixes_and_dedup(tmp_path):
         "minx": [9.0, 19.0, 29.0, 39.0],          # echoes model geometry -> deduped
         "niche_0": [0.1, 0.2, 0.3, 0.4],
         "niche_1": [0.9, 0.8, 0.7, 0.6],            # already niche_-prefixed -> kept verbatim
-        "feature_raw_k0_x": [1.0, 2.0, 3.0, 4.0],  # -> niche_feature_raw_k0_x
+        "feature_k0_x": [1.0, 2.0, 3.0, 4.0],  # -> niche_feature_k0_x
     }).to_csv(niche_cells / "S1.csv", index=False)
 
     _process_sample("S1", xdir, None, model_csv, out_path,
@@ -197,12 +197,12 @@ def test_import_include_niche_prefixes_and_dedup(tmp_path):
     a = anndata.read_h5ad(str(out_path.materialize()))
     assert list(a.uns["wsinsight_import"]["sources"]) == ["model", "niche"]
     # new niche columns present under niche_ prefix (no double-prefix on niche_1)
-    for c in ["niche_0", "niche_1", "niche_feature_raw_k0_x"]:
+    for c in ["niche_0", "niche_1", "niche_feature_k0_x"]:
         assert c in a.obs.columns
     # geometry echoed by niche is NOT duplicated: model owns minx, niche_minx absent
     assert "niche_minx" not in a.obs.columns
     assert "model_minx" in a.obs.columns
     # values aligned by matched row index (c0 -> row 0)
     assert float(a.obs.loc["c0", "niche_0"]) == 0.1
-    assert float(a.obs.loc["c3", "niche_feature_raw_k0_x"]) == 4.0
+    assert float(a.obs.loc["c3", "niche_feature_k0_x"]) == 4.0
 

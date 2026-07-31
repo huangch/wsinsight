@@ -296,19 +296,17 @@ Per-cell niche labels and features produced by ``niche`` or ``run --niche``.
      - Description
    * - All columns from ``model-outputs-csv``
      - Inherited inference + region columns
-   * - ``niche_cluster``
-     - Integer cluster label assigned by KMeans (or Leiden-derived k)
-   * - ``feature_normalized_*``
-     - Normalized DGI embedding features (one column per dimension)
-   * - ``feature_raw_*``
-     - Raw DGI embedding features (one column per dimension)
+   * - ``niche_0`` ... ``niche_{K-1}``
+     - One-hot niche membership columns (K discovered clusters)
+   * - ``feature_k<hop>_<class>``
+     - Hop-wise niche features derived from class probabilities
 
 
 ``niche-outputs-csv/niches/<slide>.csv``
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 Annotation-level merged niche regions produced by ``niche`` or ``run --niche``.
-Adjacent cells sharing the same ``niche_cluster`` are dissolved into contiguous
+Adjacent cells sharing the same dominant niche label are dissolved into contiguous
 polygonal regions.
 
 
@@ -375,7 +373,7 @@ labels/features on shared geometry keys.
      - From ncomp output (when available)
    * - ``niche_*``
      - From niche cell output (when available)
-   * - ``feature_normalized_*``, ``feature_raw_*``
+   * - ``feature_k<hop>_<class>``
      - From niche cell output (when available)
 
 

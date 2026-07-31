@@ -1150,7 +1150,7 @@ def _niche_cellular_worker(args):
         return str(cell_csv), "skip"
 
     niche_detection_df = pd.read_csv(model_output_csv)
-    feature_cols = [f"feature_raw_k{k}_{c.replace('prob_', '')}"
+    feature_cols = [f"feature_k{k}_{c.replace('prob_', '')}"
                     for k in range(k_hops + 1) for c in classes]
     niche_detection_df.loc[kept_idx, feature_cols] = X_raw
     niche_cols = [f"niche_{l}" for l in range(niche_clustering_k)]
