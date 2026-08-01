@@ -651,6 +651,9 @@ Tuning options:
 
 * ``--hoptimus`` — enable H-Optimus tissue morphology features in addition to
   k-hop cell-type composition.  Requires a GPU and the ``timm`` package.
+* ``--hoptimus-pca-dim`` — optional PCA dimensionality for H-Optimus embeddings.
+  If omitted, raw H-Optimus features are used (no PCA). Set this to reduce
+  feature dimensionality before concatenation with k-hop features.
 * ``--clusters`` — number of KMeans clusters.  When omitted, the optimal number
   is determined automatically via a Leiden community-detection sweep.
 * ``--k-hops`` (default 2) — number of neighborhood hops for the composition

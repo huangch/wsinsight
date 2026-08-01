@@ -1263,11 +1263,11 @@
           "required": false
         },
         {
-          "default": 32,
+          "default": null,
           "flags": [
             "--hoptimus-pca-dim"
           ],
-          "help": "Number of PCA components used to reduce H-Optimus embeddings (1536-d) before they are concatenated with k-hop composition features.  Smaller values speed up DGI training; larger values retain more morphological detail.  Ignored unless --hoptimus is set.",
+          "help": "Optional PCA components used to reduce H-Optimus embeddings (1536-d) before concatenation with k-hop composition features. If omitted, raw H-Optimus features are used (no PCA). Ignored unless --hoptimus is set.",
           "is_flag": false,
           "kind": "int",
           "multiple": false,
@@ -2893,11 +2893,11 @@
           "required": false
         },
         {
-          "default": 32,
+          "default": null,
           "flags": [
             "--niche-hoptimus-pca-dim"
           ],
-          "help": "PCA components used to reduce H-Optimus embeddings (1536-d) before concatenation with k-hop features.  Ignored unless --niche-hoptimus and --niche are both set.",
+          "help": "Optional PCA components used to reduce H-Optimus embeddings (1536-d) before concatenation with k-hop features. If omitted, raw H-Optimus features are used (no PCA). Ignored unless --niche-hoptimus and --niche are both set.",
           "is_flag": false,
           "kind": "int",
           "multiple": false,

@@ -101,14 +101,14 @@ def _num_cpus() -> int:
 @click.option(
     "--hoptimus-pca-dim",
     "niche_hoptimus_pca_dim",
-    default=32,
-    show_default=True,
+    default=None,
+    show_default=False,
     type=click.IntRange(min=8),
     help=(
-        "Number of PCA components used to reduce H-Optimus embeddings (1536-d) "
-        "before they are concatenated with k-hop composition features.  "
-        "Smaller values speed up DGI training; larger values retain more "
-        "morphological detail.  Ignored unless --hoptimus is set."
+        "Optional PCA components used to reduce H-Optimus embeddings (1536-d) "
+        "before concatenation with k-hop composition features. If omitted, "
+        "raw H-Optimus features are used (no PCA). Ignored unless --hoptimus "
+        "is set."
     ),
 )
 @click.option(
@@ -300,7 +300,7 @@ def niche(
     wsi_dir: URIPath,
     results_dir: URIPath,
     niche_hoptimus: bool = False,
-    niche_hoptimus_pca_dim: int = 32,
+    niche_hoptimus_pca_dim: int | None = None,
     niche_clusters: int | None = None,
     niche_leiden_res: list[float] | None = None,
     niche_embed_dim: int = 32,
