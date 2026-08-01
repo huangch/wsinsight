@@ -447,6 +447,7 @@ def _embed_hoptimus_subset_dataset(
     dataset: Dataset, sampled_ids: List[int],
     batch_size: int = 128, device: Optional[str] = None,
     hoptimus_model_dir: Optional[Path] = None,
+    slide_id: Optional[str] = None,
 ) -> np.ndarray:
     """
     Embed only a subset of cells using H-Optimus-0.
@@ -501,11 +502,14 @@ def _embed_hoptimus_subset_dataset(
 
     # Build a Subset where sample index equals the cell_id we want
     subset = Subset(dataset, sampled_ids)
-    loader = DataLoader(subset, batch_size=batch_size, shuffle=False, num_workers=0)
+    loader = DataLoader(subset, batch_size=batch_size, shuffle=False, num_workers=0,
+                        collate_fn=list)  # PIL.Image is not tensor-stackable by default_collate
 
+    n_batches = math.ceil(len(sampled_ids) / batch_size)
+    desc = f"  H-optimus [{slide_id}]" if slide_id else "  H-optimus"
     feats = []
     with torch.no_grad():
-        for batch in loader:
+        for batch in tqdm(loader, total=n_batches, desc=desc, leave=False, position=1):
             # batch may be PIL Images (list) or already tensors
             if isinstance(batch, list):
                 x = torch.stack([pre(im) for im in batch]).to(dev)      # [B,3,224,224]
@@ -892,7 +896,7 @@ def prepare_slide_graph(
         sampled_global_ids = kept_idx[sampled_local_idx].tolist()                      # map to original IDs for dataset
 
         # embed sampled
-        Hs = _embed_hoptimus_subset_dataset(patch_dataset, sampled_global_ids, batch_size=128, device=device, hoptimus_model_dir=hoptimus_model_dir)  # [m,1536]
+        Hs = _embed_hoptimus_subset_dataset(patch_dataset, sampled_global_ids, batch_size=128, device=device, hoptimus_model_dir=hoptimus_model_dir, slide_id=slide_id)  # [m,1536]
         # optional PCA
         if pca_dim is not None and Hs.shape[1] > pca_dim:
             from sklearn.decomposition import PCA

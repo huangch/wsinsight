@@ -25,7 +25,7 @@ from torch.utils.data import Dataset
 # ---------------------------------------------------------------------------
 
 class _DummyDataset(Dataset):
-    """Returns tiny random float tensors [3, H, W] — collatable by default_collate."""
+    """Returns tiny random RGB PIL images — the same interface as production patch datasets."""
     def __init__(self, n: int = 4, size: int = 224):
         self.n = n
         self.size = size
@@ -33,8 +33,9 @@ class _DummyDataset(Dataset):
     def __len__(self) -> int:
         return self.n
 
-    def __getitem__(self, idx: int) -> torch.Tensor:
-        return torch.rand(3, self.size, self.size)
+    def __getitem__(self, idx: int) -> Image.Image:
+        arr = np.random.randint(0, 255, (self.size, self.size, 3), dtype=np.uint8)
+        return Image.fromarray(arr)
 
 
 def _make_tiny_vit_model():

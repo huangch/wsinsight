@@ -13,27 +13,48 @@ docker pull ${IMAGE_ID}
 # WSInsight zoo registry; subsequent runs reuse the cached weights.
 HF_CACHE_VOLUME=wsinsight-hf-cache
 
-DATA_DIR="${1}"
-GPU_ID="${2}"
+# Parse arguments: --gpu <id> is optional and may appear anywhere before the command.
+DATA_DIR=""
+GPU_FLAG="all"
+
+while [ $# -gt 0 ]; do
+    case "$1" in
+        --gpu)
+            GPU_FLAG="device=$2"
+            shift 2
+            ;;
+        --gpu=*)
+            GPU_FLAG="device=${1#--gpu=}"
+            shift
+            ;;
+        -*)
+            echo "Unknown option: $1" >&2
+            exit 1
+            ;;
+        *)
+            # First non-option arg is the data dir; remaining are the command.
+            if [ -z "${DATA_DIR}" ]; then
+                DATA_DIR="$1"
+                shift
+            else
+                break
+            fi
+            ;;
+    esac
+done
 
 if [ -z "${DATA_DIR}" ]; then
-    echo "Usage: docker-run.sh /path/to/data [GPU_ID] [COMMAND ...]"
+    echo "Usage: wsinsight-docker-run.sh [--gpu <ID>] /path/to/data [COMMAND ...]"
+    echo ""
+    echo "Options:"
+    echo "  --gpu <ID>   Use a specific GPU (default: all GPUs)"
     echo ""
     echo "Examples:"
-    echo "  docker-run.sh /data                          # interactive shell, all GPUs"
-    echo "  docker-run.sh /data 2                        # interactive shell, GPU 2"
-    echo "  docker-run.sh /data \"\" wsinsight run ...     # run command directly, all GPUs"
-    echo "  docker-run.sh /data 2  wsinsight run ...     # run command directly, GPU 2"
+    echo "  wsinsight-docker-run.sh /data                         # interactive shell, all GPUs"
+    echo "  wsinsight-docker-run.sh --gpu 2 /data                 # interactive shell, GPU 2"
+    echo "  wsinsight-docker-run.sh /data wsinsight run ...       # run command, all GPUs"
+    echo "  wsinsight-docker-run.sh --gpu 2 /data wsinsight run . # run command, GPU 2"
     exit 1
-fi
-
-# Shift past DATA_DIR and GPU_ID to collect the remaining args as the command
-shift
-if [ ! -z "${GPU_ID}" ]; then
-    shift
-    GPU_FLAG="device=${GPU_ID}"
-else
-    GPU_FLAG="all"
 fi
 
 if [ $# -gt 0 ]; then
