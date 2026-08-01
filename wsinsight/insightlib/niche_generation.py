@@ -4,7 +4,7 @@
 # pip install torch torch_geometric scikit-learn numpy scipy pandas timm pillow
 
 from __future__ import annotations
-import math, os, time
+import math, os, time, shutil, tempfile, atexit
 import multiprocessing as mp
 from typing import Any, List, Dict, Iterable, Optional, Sequence, Tuple # , Callable
 import numpy as np
@@ -108,6 +108,23 @@ def drop_isolated(edge_index: np.ndarray, N: int) -> Tuple[np.ndarray, np.ndarra
     mask = (ei_m >= 0) & (ej_m >= 0)
     edge_index_new = np.vstack([ei_m[mask], ej_m[mask]]).astype(np.int64)
     return edge_index_new, kept
+
+
+def _cleanup_tmpdir() -> None:
+    """Clean up temporary directories to prevent /tmp from filling up during long-running jobs.
+    Especially important when PyTorch/timm models create temporary files during import."""
+    tmpdir = tempfile.gettempdir()
+    try:
+        for item in os.listdir(tmpdir):
+            item_path = os.path.join(tmpdir, item)
+            # Only remove directories starting with 'tmp' (standard tempfile pattern)
+            if os.path.isdir(item_path) and item.startswith("tmp"):
+                try:
+                    shutil.rmtree(item_path, ignore_errors=True)
+                except Exception:
+                    pass  # silently ignore failures for in-use directories
+    except Exception:
+        pass  # silently ignore if tmpdir listing fails
 
 
 # =============================================================================
@@ -1459,7 +1476,6 @@ def niche_generation(
         for i, (wsi_path, csv_path) in enumerate(zip(slide_paths, model_output_paths)):
             slide_id = Path(str(wsi_path)).stem
             display_id = short_ids.get(slide_id, slide_id)
-            slide_bar.set_postfix_str(display_id)
             ds = None
             if use_hoptimus and patch_datasets is not None and i < len(patch_datasets):
                 ds = patch_datasets[i]
@@ -1485,6 +1501,9 @@ def niche_generation(
             slides[i] = s
             if classes is None:
                 classes = s["classes"]
+            # Clean up temporary files after each slide to prevent /tmp from filling up
+            # (especially important when using H-optimus, which may create many temp files)
+            _cleanup_tmpdir()
             slide_bar.update(1)
         slide_bar.close()
         
