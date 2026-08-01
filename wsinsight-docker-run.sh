@@ -9,18 +9,20 @@ docker pull ${IMAGE_ID}
 # data). Export HOST_UID / HOST_GID before running to force a specific id; the
 # ``-e HOST_UID -e HOST_GID`` on the docker run lines forward them only when set.
 #
-# TMPDIR is redirected to /workspace/.tmp to avoid filling up the container's /tmp
-# (which is a limited tmpfs). PyTorch's distributed module tries to create temp dirs
-# at import time, and multiprocessing workers can exhaust /tmp space quickly.
+# TMPDIR defaults to /tmp (standard Linux default). If the container's /tmp has limited
+# space, use --tmpdir /workspace/.tmp to redirect to the mounted /workspace filesystem.
+# PyTorch's distributed module tries to create temp dirs at import time, and multiprocessing
+# workers can exhaust /tmp space quickly in resource-constrained environments.
 
 # Named volume that persists the Hugging Face model cache between runs.
 # First invocation triggers an auto-download of any model referenced from the
 # WSInsight zoo registry; subsequent runs reuse the cached weights.
 HF_CACHE_VOLUME=wsinsight-hf-cache
 
-# Parse arguments: --gpu <id> is optional and may appear anywhere before the command.
+# Parse arguments: --gpu <id> and --tmpdir <dir> are optional and may appear anywhere before the command.
 DATA_DIR=""
 GPU_FLAG="all"
+TMPDIR_FLAG="/tmp"
 
 while [ $# -gt 0 ]; do
     case "$1" in
@@ -30,6 +32,14 @@ while [ $# -gt 0 ]; do
             ;;
         --gpu=*)
             GPU_FLAG="device=${1#--gpu=}"
+            shift
+            ;;
+        --tmpdir)
+            TMPDIR_FLAG="$2"
+            shift 2
+            ;;
+        --tmpdir=*)
+            TMPDIR_FLAG="${1#--tmpdir=}"
             shift
             ;;
         -*)
@@ -49,25 +59,26 @@ while [ $# -gt 0 ]; do
 done
 
 if [ -z "${DATA_DIR}" ]; then
-    echo "Usage: wsinsight-docker-run.sh [--gpu <ID>] /path/to/data [COMMAND ...]"
+    echo "Usage: wsinsight-docker-run.sh [--gpu <ID>] [--tmpdir <DIR>] /path/to/data [COMMAND ...]"
     echo ""
     echo "Options:"
-    echo "  --gpu <ID>   Use a specific GPU (default: all GPUs)"
+    echo "  --gpu <ID>      Use a specific GPU (default: all GPUs)"
+    echo "  --tmpdir <DIR>  Override temp directory (default: /tmp)"
     echo ""
     echo "Examples:"
-    echo "  wsinsight-docker-run.sh /data                         # interactive shell, all GPUs"
-    echo "  wsinsight-docker-run.sh --gpu 2 /data                 # interactive shell, GPU 2"
-    echo "  wsinsight-docker-run.sh /data wsinsight run ...       # run command, all GPUs"
-    echo "  wsinsight-docker-run.sh --gpu 2 /data wsinsight run . # run command, GPU 2"
+    echo "  wsinsight-docker-run.sh /data                              # interactive shell, all GPUs"
+    echo "  wsinsight-docker-run.sh --gpu 2 /data                      # interactive shell, GPU 2"
+    echo "  wsinsight-docker-run.sh --tmpdir /workspace/.tmp /data     # use /workspace for temp files"
+    echo "  wsinsight-docker-run.sh /data wsinsight run ...            # run command, all GPUs"
     exit 1
 fi
 
 if [ $# -gt 0 ]; then
     # Direct command mode: run the provided command and exit
-    echo docker run --rm -it --gpus "${GPU_FLAG}" --shm-size=32g --init -e HOST_UID -e HOST_GID -e TMPDIR=/workspace/.tmp -v "${DATA_DIR}":/workspace -v "${HF_CACHE_VOLUME}":/app/hf-cache ${IMAGE_ID} bash -lc "$*"
-    docker run --rm -it --gpus "${GPU_FLAG}" --shm-size=32g --init -e HOST_UID -e HOST_GID -e TMPDIR=/workspace/.tmp -v "${DATA_DIR}":/workspace -v "${HF_CACHE_VOLUME}":/app/hf-cache ${IMAGE_ID} bash -lc "$*"
+    echo docker run --rm -it --gpus "${GPU_FLAG}" --shm-size=32g --init -e HOST_UID -e HOST_GID -e TMPDIR="${TMPDIR_FLAG}" -v "${DATA_DIR}":/workspace -v "${HF_CACHE_VOLUME}":/app/hf-cache ${IMAGE_ID} bash -lc "$*"
+    docker run --rm -it --gpus "${GPU_FLAG}" --shm-size=32g --init -e HOST_UID -e HOST_GID -e TMPDIR="${TMPDIR_FLAG}" -v "${DATA_DIR}":/workspace -v "${HF_CACHE_VOLUME}":/app/hf-cache ${IMAGE_ID} bash -lc "$*"
 else
     # Interactive mode: drop into a shell
-    echo docker run --rm -it --gpus "${GPU_FLAG}" --shm-size=32g --init -e HOST_UID -e HOST_GID -e TMPDIR=/workspace/.tmp -v "${DATA_DIR}":/workspace -v "${HF_CACHE_VOLUME}":/app/hf-cache ${IMAGE_ID}
-    docker run --rm -it --gpus "${GPU_FLAG}" --shm-size=32g --init -e HOST_UID -e HOST_GID -e TMPDIR=/workspace/.tmp -v "${DATA_DIR}":/workspace -v "${HF_CACHE_VOLUME}":/app/hf-cache ${IMAGE_ID}
+    echo docker run --rm -it --gpus "${GPU_FLAG}" --shm-size=32g --init -e HOST_UID -e HOST_GID -e TMPDIR="${TMPDIR_FLAG}" -v "${DATA_DIR}":/workspace -v "${HF_CACHE_VOLUME}":/app/hf-cache ${IMAGE_ID}
+    docker run --rm -it --gpus "${GPU_FLAG}" --shm-size=32g --init -e HOST_UID -e HOST_GID -e TMPDIR="${TMPDIR_FLAG}" -v "${DATA_DIR}":/workspace -v "${HF_CACHE_VOLUME}":/app/hf-cache ${IMAGE_ID}
 fi
