@@ -3,11 +3,39 @@
 from __future__ import annotations
 
 from collections import deque
+import os.path as _osp
 import numpy as np
 import pandas as pd
 from typing import Dict, Any, Iterable, List, Tuple
 from scipy.spatial import Delaunay
 from concurrent.futures import ThreadPoolExecutor
+
+
+def make_short_ids(stems: List[str]) -> dict:
+    """
+    Strip the longest common prefix and suffix (snapped to '_' word-boundaries)
+    so only the differentiating tokens remain for display.
+
+    Example::
+
+        make_short_ids([
+            'Human_Breast_Biomarkers_S1_Bot_he_image.ome',
+            'Human_Breast_Biomarkers_S2_Mid_he_image.ome',
+        ])
+        # -> {'Human_Breast_Biomarkers_S1_Bot_he_image.ome': 'S1_Bot',
+        #     'Human_Breast_Biomarkers_S2_Mid_he_image.ome': 'S2_Mid'}
+    """
+    if len(stems) <= 1:
+        return {s: s for s in stems}
+    raw_pre = _osp.commonprefix(stems)
+    cut_start = raw_pre.rfind('_') + 1
+    raw_suf = _osp.commonprefix([s[::-1] for s in stems])
+    cut_end = raw_suf.rfind('_') + 1
+    result = {}
+    for s in stems:
+        short = s[cut_start: len(s) - cut_end if cut_end else len(s)]
+        result[s] = short or s
+    return result
 
 
 def compute_cell_center_points(model_output_df):

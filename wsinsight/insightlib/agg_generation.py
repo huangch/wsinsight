@@ -45,6 +45,7 @@ from .graph_cache import get_or_build_delaunay
 from .graph_cache import make_aggregate_params_key
 from .graph_cache import write_aggregate_cache
 from .insight_helpers import compute_cell_center_points
+from .insight_helpers import make_short_ids
 
 _logger = logging.getLogger(__name__)
 
@@ -280,6 +281,8 @@ def agg_generation(
     if not jobs:
         return failed_generation
 
+    short_ids = make_short_ids([wsi_path.stem for wsi_path, _ in jobs])
+
     with ThreadPoolExecutor(max_workers=num_workers) as ex:
         futures = {
             ex.submit(
@@ -312,6 +315,7 @@ def agg_generation(
             slide_id, ok = f.result()
             if not ok:
                 failed_generation.append(slide_id)
+            outer.set_postfix_str(short_ids.get(slide_id, slide_id))
             outer.update(1)
         outer.close()
 

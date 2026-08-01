@@ -63,6 +63,7 @@ def _worker(
     overwrite: bool = False,
     graph_cache_dir: Path | URIPath | None = None,
     pbar_position: int = 1,
+    display_id: str | None = None,
 ) -> tuple[str, dict | None]:
     """Process a single slide to compute per-cell neighborhood composition."""
 
@@ -72,7 +73,7 @@ def _worker(
     if not overwrite and ncomp_csv.exists():
         return slide_id, True
 
-    desc = slide_id if len(slide_id) <= 32 else slide_id[:29] + "..."
+    desc = display_id or slide_id
     inner = tqdm(
         total=len(_WORKER_STEPS),
         desc=desc,
@@ -291,6 +292,8 @@ def ncomp_generation(
     if not jobs:
         return failed_generation
 
+    short_ids = make_short_ids([wsi_path.stem for wsi_path, _ in jobs])
+
     with ThreadPoolExecutor(max_workers=num_workers) as ex:
         futures = {
             ex.submit(
@@ -304,6 +307,7 @@ def ncomp_generation(
                 overwrite,
                 graph_cache_dir,
                 (i % num_workers) + 1,
+                display_id=short_ids.get(wsi_path.stem, wsi_path.stem),
             ): wsi_path.stem
             for i, (wsi_path, model_output_csv) in enumerate(jobs)
         }

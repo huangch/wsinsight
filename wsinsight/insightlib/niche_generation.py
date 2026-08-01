@@ -4,7 +4,7 @@
 # pip install torch torch_geometric scikit-learn numpy scipy pandas timm pillow
 
 from __future__ import annotations
-import math, os
+import math, os, time
 import multiprocessing as mp
 from typing import Any, List, Dict, Iterable, Optional, Sequence, Tuple # , Callable
 import numpy as np
@@ -43,6 +43,7 @@ from .. import errors
 from .insight_helpers import compute_cell_center_points
 from .insight_helpers import delaunay_triangulation
 from .insight_helpers import create_adjacency_list_fast  # adjacency builder
+from .insight_helpers import make_short_ids
 from .graph_cache import get_or_build_delaunay
 from ..uri_path import URIPath
 from ..wsi import _validate_wsi_directory, get_avg_mpp
@@ -443,11 +444,17 @@ class DummyPatchDataset(Dataset):
         from PIL import Image
         return Image.new("RGB", (self.size, self.size), color=(0, 0, 0))
 
+def _make_short_ids(stems: List[str]) -> dict:
+    """Alias kept for backward compatibility; see insight_helpers.make_short_ids."""
+    return make_short_ids(stems)
+
+
 def _embed_hoptimus_subset_dataset(
     dataset: Dataset, sampled_ids: List[int],
     batch_size: int = 128, device: Optional[str] = None,
     hoptimus_model_dir: Optional[Path] = None,
     slide_id: Optional[str] = None,
+    display_id: Optional[str] = None,
 ) -> np.ndarray:
     """
     Embed only a subset of cells using H-Optimus-0.
@@ -500,16 +507,24 @@ def _embed_hoptimus_subset_dataset(
         model = timm.create_model("hf-hub:bioptimus/H-optimus-0", pretrained=True, num_classes=0).to(dev).eval()
     pre = create_transform(**resolve_data_config(model=model), is_training=False)
 
+    # Spread batches across all available GPUs via DataParallel.
+    # Only applies when the model is on a CUDA device.
+    ngpu = torch.cuda.device_count() if torch.cuda.is_available() else 0
+    if ngpu > 1 and model.parameters().__next__().is_cuda:
+        model = nn.DataParallel(model)  # splits each batch across all GPUs automatically
+
     # Build a Subset where sample index equals the cell_id we want
     subset = Subset(dataset, sampled_ids)
     loader = DataLoader(subset, batch_size=batch_size, shuffle=False, num_workers=0,
                         collate_fn=list)  # PIL.Image is not tensor-stackable by default_collate
 
     n_batches = math.ceil(len(sampled_ids) / batch_size)
-    desc = f"  H-optimus [{slide_id}]" if slide_id else "  H-optimus"
+    # Use display_id (short label) for the progress bar if provided
+    _label = display_id or slide_id or "H-optimus"
+    desc = f"  [{_label}]"
     feats = []
     with torch.no_grad():
-        for batch in tqdm(loader, total=n_batches, desc=desc, leave=False, position=1):
+        for batch in tqdm(loader, total=n_batches, desc=desc, leave=False, position=1, unit="batch"):
             # batch may be PIL Images (list) or already tensors
             if isinstance(batch, list):
                 x = torch.stack([pre(im) for im in batch]).to(dev)      # [B,3,224,224]
@@ -828,6 +843,7 @@ def prepare_slide_graph(
     device: Optional[str] = None,
     graph_cache_dir: Optional[Path] = None,
     slide_id: Optional[str] = None,
+    display_id: Optional[str] = None,
     mode: str = "hard",
     # seed: int = 0
 ) -> Dict[str, np.ndarray]:
@@ -896,7 +912,7 @@ def prepare_slide_graph(
         sampled_global_ids = kept_idx[sampled_local_idx].tolist()                      # map to original IDs for dataset
 
         # embed sampled
-        Hs = _embed_hoptimus_subset_dataset(patch_dataset, sampled_global_ids, batch_size=128, device=device, hoptimus_model_dir=hoptimus_model_dir, slide_id=slide_id)  # [m,1536]
+        Hs = _embed_hoptimus_subset_dataset(patch_dataset, sampled_global_ids, batch_size=128, device=device, hoptimus_model_dir=hoptimus_model_dir, slide_id=slide_id, display_id=display_id)  # [m,1536]
         # optional PCA
         if pca_dim is not None and Hs.shape[1] > pca_dim:
             from sklearn.decomposition import PCA
@@ -1306,7 +1322,7 @@ def niche_generation(
     if os.getenv("WSINFER_FORCE_CPU", "0").lower() not in {"0", "f", "false"}:
         device = torch.device("cpu")
     elif torch.cuda.is_available():
-        device = torch.device("cuda")
+        device = torch.device("cuda")  # DataParallel uses all GPUs from cuda:0
     elif torch.backends.mps.is_available() and torch.backends.mps.is_built():
         device = torch.device("mps")
     else:
@@ -1430,30 +1446,47 @@ def niche_generation(
         
         slides = [None] * len(slide_paths)
         classes = None
-        
+
         graph_cache_dir = Path(str(results_dir)) / "graphs"
         graph_cache_dir.mkdir(parents=True, exist_ok=True)
-        
-        ctx = mp.get_context("spawn")  # safer with NumPy/pandas
-        tasks = []
+
+        # Process slides sequentially so DataParallel can use all GPUs for each
+        # slide's H-optimus embedding, with a clean nested progress display.
+        slide_stems = [Path(str(p)).stem for p in slide_paths]
+        short_ids = _make_short_ids(slide_stems)
+
+        slide_bar = tqdm(total=len(slide_paths), desc="  slides", unit="slide", position=0)
         for i, (wsi_path, csv_path) in enumerate(zip(slide_paths, model_output_paths)):
+            slide_id = Path(str(wsi_path)).stem
+            display_id = short_ids.get(slide_id, slide_id)
+            slide_bar.set_postfix_str(display_id)
             ds = None
             if use_hoptimus and patch_datasets is not None and i < len(patch_datasets):
                 ds = patch_datasets[i]
-            tasks.append((i, wsi_path, csv_path, ds,
-                          max_edge_len_um, class_order, k_hops, alpha,
-                          sample_frac, sample_count, pca_dim, knn_k, knn_sigma_um,
-                          device, niche_soft_mode, use_hoptimus, hoptimus_only, hoptimus_model_dir, graph_cache_dir))
-            
-        num_workers = pick_workers_safe(max_workers=os.cpu_count()-8, min_workers=8)
-        
-        with ProcessPoolExecutor(max_workers=num_workers, mp_context=ctx) as ex:
-            futs = [ex.submit(_prepare_slide_graph_worker, *t) for t in tasks]
-            for f in tqdm(as_completed(futs), total=len(futs)):
-                idx, s = f.result()         # surfaces exceptions
-                slides[idx] = s
-                if classes is None:
-                    classes = s["classes"]
+            df = pd.read_csv(csv_path)
+            mpp = get_avg_mpp(wsi_path)
+            s = prepare_slide_graph(
+                df,
+                mpp_um_per_px=mpp,
+                max_edge_len_um=max_edge_len_um,
+                class_order=class_order,
+                k_hops=k_hops, alpha=alpha,
+                hoptimus_only=hoptimus_only,
+                hoptimus_model_dir=hoptimus_model_dir,
+                use_hoptimus=use_hoptimus, patch_dataset=ds,
+                sample_frac=sample_frac, sample_count=sample_count,
+                pca_dim=pca_dim, knn_k=knn_k, knn_sigma_um=knn_sigma_um,
+                device=device,
+                graph_cache_dir=graph_cache_dir,
+                slide_id=slide_id,
+                display_id=display_id,
+                mode="soft" if niche_soft_mode else "hard",
+            )
+            slides[i] = s
+            if classes is None:
+                classes = s["classes"]
+            slide_bar.update(1)
+        slide_bar.close()
         
         # with gzip.open(niche_slide_graph_file, "wb") as f:
         #     pickle.dump(slides, f, protocol=pickle.HIGHEST_PROTOCOL)

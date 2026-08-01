@@ -27,6 +27,7 @@ from .insight_helpers import delaunay_triangulation
 from .insight_helpers import identify_border_cells
 from .insight_helpers import identify_region_by_cell_function_enrichment
 from .insight_helpers import k_hop_neighbors
+from .insight_helpers import make_short_ids
 
 _logger = logging.getLogger(__name__)
 
@@ -63,6 +64,7 @@ def _worker(
     base_by: str = "celltype",
     target_by: str = "celltype",
     pbar_position: int = 1,
+    display_id: str | None = None,
 ):
     """Process a single slide to build cell layers, save intermediates, and compute metrics."""
 
@@ -76,7 +78,7 @@ def _worker(
             hplot_df = pd.read_csv(fp)
         return slide_id, hplot_df
 
-    desc = slide_id if len(slide_id) <= 32 else slide_id[:29] + "..."
+    desc = display_id or slide_id
     inner = tqdm(
         total=len(_WORKER_STEPS),
         desc=desc,
@@ -594,11 +596,14 @@ def hplot_generation(
     if not jobs:
         return failed_generation
 
+    short_ids = make_short_ids([args[0].stem for args in jobs])
+
     with ThreadPoolExecutor(max_workers=num_workers) as ex:
         future_to_id: dict = {}
         futures = []
         for i, args in enumerate(jobs):
-            fut = ex.submit(_worker, *args, (i % num_workers) + 1)
+            fut = ex.submit(_worker, *args, (i % num_workers) + 1,
+                            display_id=short_ids.get(args[0].stem, args[0].stem))
             future_to_id[fut] = args[0].stem
             futures.append(fut)
         outer = tqdm(

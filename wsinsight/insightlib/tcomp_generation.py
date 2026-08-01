@@ -39,6 +39,7 @@ from ..wsi import _validate_wsi_directory, get_avg_mpp
 from ..uri_path import URIPath
 
 from .insight_helpers import compute_cell_center_points
+from .insight_helpers import make_short_ids
 from .graph_cache import get_or_build_delaunay, read_graph_cache, _cache_path
 from .simplex_helpers import build_dual_graph, k_hop_adjacency_matrix, triad_geometry
 
@@ -73,6 +74,7 @@ def _worker(
     overwrite: bool = False,
     graph_cache_dir: Path | URIPath | None = None,
     pbar_position: int = 1,
+    display_id: str | None = None,
     no_neighborhood: bool = False,
 ) -> tuple[str, dict | None]:
     """Process a single slide to compute per-triad neighborhood composition."""
@@ -83,7 +85,7 @@ def _worker(
     if not overwrite and tcomp_csv.exists():
         return slide_id, True
 
-    desc = slide_id if len(slide_id) <= 32 else slide_id[:29] + "..."
+    desc = display_id or slide_id
     inner = tqdm(
         total=len(_WORKER_STEPS),
         desc=desc,
@@ -402,6 +404,8 @@ def tcomp_generation(
     if not jobs:
         return failed_generation
 
+    short_ids = make_short_ids([wsi_path.stem for wsi_path, _ in jobs])
+
     with ThreadPoolExecutor(max_workers=num_workers) as ex:
         futures = {
             ex.submit(
@@ -416,6 +420,7 @@ def tcomp_generation(
                 graph_cache_dir,
                 (i % num_workers) + 1,
                 no_neighborhood,
+                display_id=short_ids.get(wsi_path.stem, wsi_path.stem),
             ): wsi_path.stem
             for i, (wsi_path, model_output_csv) in enumerate(jobs)
         }
