@@ -6,7 +6,6 @@ import multiprocessing as mp
 import os
 
 import click
-import torch
 
 from .cancel import install_sigint_handler
 from .cli.cli import cli
@@ -19,7 +18,14 @@ def main() -> None:
     os.environ.setdefault("MKL_NUM_THREADS", "1")
     os.environ.setdefault("NUMEXPR_NUM_THREADS", "1")
     mp.set_start_method("spawn", force=True)
-    torch.multiprocessing.set_sharing_strategy("file_system")
+    # Keep lightweight commands (for example `--help` / `describe`) usable in
+    # environments where heavy ML deps are not installed yet.
+    try:
+        import torch
+    except Exception:  # noqa: BLE001
+        torch = None
+    if torch is not None:
+        torch.multiprocessing.set_sharing_strategy("file_system")
     install_sigint_handler()
 
     try:

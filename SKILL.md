@@ -205,20 +205,23 @@ wsinsight
 > output schemas, and metric definitions may change without notice. This
 > skill file documents only the stable surface.
 >
-> `import` (experimental) maps spatial-transcriptomics (Xenium) gene expression
-> onto WSInsight cells. It reads a two-column `sptx-list://` manifest
-> (`path`<TAB>`sample_id`, via `-s`/`--sptx-dir`), transforms each transcriptomics
+> `import` (experimental) maps spatial-transcriptomics expression onto WSInsight
+> cells. It reads an `sptx-list://` manifest (`path`<TAB>`sample_id`<TAB>`transform_dir`,
+> columns 2 and 3 optional) via `-s`/`--sptx-dir`, transforms each transcriptomics
 > cell onto the registered H&E through the ST2WSI SIFT-affine + bUnwarpJ
 > B-spline transform, matches it to the nearest `model-outputs-csv` detection,
 > and writes one AnnData `.h5ad` per slide under `imported-xenium/`
-> (`model-outputs-csv/` is never modified). Every matched `model-outputs-csv`
-> column is carried onto the cell under a `model_` prefix (plus `model_cell_id`);
-> optional per-cell sidecars requested with `--include niche,hplot,ncomp` are
-> merged the same way under their own `niche_` / `hplot_` / `ncomp_` prefixes
-> (`model` is always imported and need not be listed). Supports
-> `--transform affine|affine+bspline` (default), `--genes`, `--include`,
-> `--match-max-dist`, and `--dry-run` (report the cell↔detection hit-rate only,
-> writing nothing).
+> (`model-outputs-csv/` is never modified). Supports `--platform xenium`
+> (raw Xenium directories) and `--platform xenium-h5ad` (annotated `.h5ad`
+> inputs). For `xenium-h5ad`, column 3 should point to each sample transform
+> folder containing `registration_params.json`. Every matched
+> `model-outputs-csv` column is carried onto the cell under a `model_` prefix
+> (plus `model_cell_id`); optional per-cell sidecars requested with
+> `--include niche,hplot,ncomp` are merged the same way under their own
+> `niche_` / `hplot_` / `ncomp_` prefixes (`model` is always imported and need
+> not be listed). Supports `--transform affine|affine+bspline|none` (default
+> affine+bspline), `--genes`, `--include`, `--match-max-dist`, and `--dry-run`
+> (report the cell↔detection hit-rate only, writing nothing).
 
 ### 4.2 Global Options (All Commands)
 

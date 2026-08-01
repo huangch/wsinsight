@@ -131,7 +131,7 @@ Command                       Purpose
                               registered H&E via the ST2WSI (SIFT affine + bUnwarpJ
                               B-spline) transform, matches it to the nearest
                               ``model-outputs-csv`` detection, and writes one AnnData
-                              ``.h5ad`` per slide under ``xenium-import/``.  ``--dry-run``
+                              ``.h5ad`` per slide under ``imported-xenium/``.  ``--dry-run``
                               reports the cell↔detection hit-rate only.
 ============================  ================================================================
 
@@ -145,24 +145,29 @@ across a cohort (note: niche is cross-slide and cannot be parallelized across GP
 Use ``reg`` to enrich an earlier run with region-level
 probabilities without re-running inference. All commands share the same URI-aware options
 and support local folders, ``s3://`` buckets, ``gs://`` buckets, ``gdc-manifest://`` manifests, and
-``image-list://`` file lists.  ``wsinsight import`` additionally accepts a two-column
-``sptx-list://`` manifest (``path``<TAB>``sample_id`` per line) for spatial-transcriptomics
-samples.
+``image-list://`` file lists.  ``wsinsight import`` additionally accepts an
+``sptx-list://`` manifest (``path``<TAB>``sample_id``<TAB>``transform_dir`` per line;
+columns 2 and 3 optional) for spatial-transcriptomics samples.
 
 
 Importing spatial-transcriptomics expression
 --------------------------------------------
 
-``wsinsight import`` (experimental) maps Xenium gene expression onto the H&E cells
-detected by ``infer``.  Provide a two-column ``sptx-list://`` manifest whose first column
-points at each Xenium sample directory (``cells.parquet`` + ``cell_feature_matrix.h5`` +
-``registration_params.json`` + ``direct_transf.txt``) and whose second column is the
-stable ``sample_id`` — this must equal the H&E / model-output stem, because Xenium
-exports reuse the same filenames across runs::
+``wsinsight import`` (experimental) maps spatial-transcriptomics expression onto
+the H&E cells detected by ``infer``. It supports two input platforms:
 
-   # samples.txt  (TAB-separated: path<TAB>sample_id)
+* ``--platform xenium`` (default): the manifest path points at each raw Xenium
+  sample directory (``cells.parquet`` + ``cell_feature_matrix.h5``).
+* ``--platform xenium-h5ad``: the manifest path points at each annotated ``.h5ad``;
+  the optional third column supplies each sample's ST2WSI transform folder
+  (must contain ``registration_params.json``; optional ``direct_transf.txt``).
+
+Use an ``sptx-list://`` manifest with ``path<TAB>sample_id<TAB>transform_dir``
+(columns 2 and 3 optional). ``sample_id`` must equal the H&E / model-output stem::
+
+   # samples.txt  (TAB-separated: path<TAB>sample_id<TAB>transform_dir)
    /data/xenium/1956A_0007330	BLCA_S01
-   /data/xenium/1302A_0007311	BLCA_S02
+   /data/xenium_h5ad/BLCA_S02.h5ad	BLCA_S02	/data/st2wsi/BLCA_S02
 
 Then run (set ``WSINSIGHT_EXPERIMENTAL=1`` to enable the command)::
 
@@ -170,13 +175,14 @@ Then run (set ``WSINSIGHT_EXPERIMENTAL=1`` to enable the command)::
      -s  sptx-list:///data/samples.txt \
      -i  slides/ \
      -o  results/ \
+     --platform xenium-h5ad \
      --transform affine+bspline \
      --include niche,hplot
 
 (``-s`` / ``-i`` / ``-o`` are short aliases for ``--sptx-dir`` / ``--wsi-dir`` /
 ``--results-dir``.)
 
-One AnnData ``.h5ad`` per sample is written under ``results/xenium-import/`` (sparse
+One AnnData ``.h5ad`` per sample is written under ``results/imported-xenium/`` (sparse
 expression in ``X``; the Xenium centroid in µm and H&E pixels, and **every**
 ``model-outputs-csv`` column of the matched detection copied into ``obs`` under a
 ``model_`` prefix — ``model_minx``, ``model_prob_*``, … — plus ``model_cell_id``

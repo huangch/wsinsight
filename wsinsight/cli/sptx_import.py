@@ -10,7 +10,8 @@ Inputs
 ------
 * ``--wsi-dir``   H&E slides (used for exact target dimensions and matched to a
   sample by stem == manifest ``sample_id``).
-* ``--sptx-dir``  a ``sptx-list://`` manifest (``path``<TAB>``sample_id``) whose
+* ``--sptx-dir``  a ``sptx-list://`` manifest
+    (``path``<TAB>``sample_id``<TAB>``transform_dir``) whose
   first column points at either:
     - (platform=xenium)     each Xenium sample directory (``cells.parquet`` +
                             ``cell_feature_matrix.h5`` + ``registration_params.json``
@@ -350,8 +351,9 @@ def _process_sample_h5ad(sample_id: str, h5ad_path: Path, reg_dir: Optional[Path
     """Process one pre-annotated ``.h5ad`` (sptxinsight output) for wsinsight import.
 
     Reads ``obsm[spatial_key]`` (µm) for cell coordinates and ``X`` for expression.
-    The ST2WSI registration transform is sourced from ``reg_dir/<sample_id>/``
-    (``registration_params.json`` + optional ``direct_transf.txt``).
+    The ST2WSI registration transform is sourced from ``reg_dir``
+    (``registration_params.json`` + optional ``direct_transf.txt``), where
+    ``reg_dir`` is provided per sample from sptx-list column 3.
     All downstream logic (spatial join, AnnData construction) is identical to the
     raw Xenium path.
     """

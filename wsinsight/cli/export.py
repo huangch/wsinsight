@@ -14,9 +14,6 @@ from ..export_helpers import (
     parse_include_sources,
 )
 from ..uri_path import URIPath, URIPathType
-from ..write_geojson import write_geojsons
-from ..write_h5ad import write_h5ads
-from ..write_omecsv import write_omecsvs
 from ._meta import write_runtime_metadata
 from ._paths import default_storage_kwargs
 
@@ -200,6 +197,8 @@ def export(
 
     # --- GeoJSON export (per-cell) --------------------------------------------
     if geojson:
+        from ..write_geojson import write_geojsons
+
         click.echo("\nWriting per-cell results to GeoJSON files...\n")
         write_geojsons(
             csvs=export_csvs,
@@ -215,6 +214,8 @@ def export(
 
     # --- OME-CSV export (per-cell) --------------------------------------------
     if omecsv:
+        from ..write_omecsv import write_omecsvs
+
         click.echo("\nWriting per-cell results to OME-CSV files...\n")
         h5s: list[Path] = []
         patches_dir = results_dir / "patches"
@@ -237,6 +238,8 @@ def export(
 
     # --- AnnData (.h5ad) export (per-cell) ------------------------------------
     if h5ad:
+        from ..write_h5ad import write_h5ads
+
         click.echo("\nWriting per-cell results to AnnData .h5ad files...\n")
         write_h5ads(
             csvs=export_csvs,

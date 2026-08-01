@@ -14,9 +14,7 @@ from pathlib import Path
 import click
 import pandas as pd
 
-from ..insightlib.niche_generation import niche_generation
 from ..uri_path import URIPath, URIPathType
-from ..write_geojson import write_geojsons
 from ._meta import write_runtime_metadata
 from ._paths import (
     default_storage_kwargs,
@@ -359,6 +357,14 @@ def niche(
         "\nRunning niche analysis.\n", fg="green"
     )
 
+    try:
+        from ..insightlib.niche_generation import niche_generation
+    except Exception as exc:  # noqa: BLE001
+        raise click.ClickException(
+            "Failed to load niche runtime dependencies. "
+            "Install torch/torch-geometric stack before running `wsinsight niche`."
+        ) from exc
+
     niche_generation(
         wsi_dir=wsi_dir,
         wsi_paths=slide_paths,
@@ -387,6 +393,8 @@ def niche(
 
     # --- GeoJSON: cell-level detections with niche labels ----------------------
     if export_geojson:
+        from ..write_geojson import write_geojsons
+
         niche_cells_dir = Path(str(results_dir)) / "niche-outputs-csv" / "cells"
         if niche_cells_dir.exists():
             niche_cell_csvs = sorted(niche_cells_dir.glob("*.csv"))

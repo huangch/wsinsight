@@ -35,9 +35,9 @@
         {
           "default": null,
           "flags": [
-            "--agg-name"
+            "--name"
           ],
-          "help": "Product label for this aggregate (lower-case [a-z0-9_]+), e.g. 'tls'.  Namespaces every artifact (object_<name>_prob_<name> column, agg-<name>-outputs-csv/, agg/<name>/ in the graph cache) and is usable as a type in `wsinsight hplot --hplot-target-by aggregate`.",
+          "help": "Product label for this aggregate (lower-case [a-z0-9_]+), e.g. 'tls'.  Namespaces every artifact (object_<name>_prob_<name> column, agg-<name>-outputs-csv/, agg/<name>/ in the graph cache) and is usable as a type in `wsinsight hplot --target-by aggregate`.",
           "is_flag": false,
           "kind": "string",
           "multiple": false,
@@ -48,7 +48,7 @@
         {
           "default": null,
           "flags": [
-            "--agg-types"
+            "--types"
           ],
           "help": "Comma-separated ingredient cell types that may join the aggregate, e.g. 't_cell,b_cell'.",
           "is_flag": false,
@@ -61,7 +61,7 @@
         {
           "default": 25.0,
           "flags": [
-            "--agg-max-neighbor-distance"
+            "--max-neighbor-distance"
           ],
           "help": "Maximum distance (\u00b5m) between neighboring cells in the Delaunay graph.",
           "is_flag": false,
@@ -74,7 +74,7 @@
         {
           "default": 2,
           "flags": [
-            "--agg-k"
+            "--k"
           ],
           "help": "k-hop neighborhood radius for the density gate.",
           "is_flag": false,
@@ -87,7 +87,7 @@
         {
           "default": 8,
           "flags": [
-            "--agg-n"
+            "--n"
           ],
           "help": "Minimum neighborhood size for a cell to be inside an aggregate region.",
           "is_flag": false,
@@ -100,7 +100,7 @@
         {
           "default": 0.5,
           "flags": [
-            "--agg-r"
+            "--r"
           ],
           "help": "Minimum fraction of ingredient cells in the neighborhood (density gate).",
           "is_flag": false,
@@ -113,7 +113,7 @@
         {
           "default": 10,
           "flags": [
-            "--agg-min-size"
+            "--min-size"
           ],
           "help": "Drop aggregates with fewer than this many cells.",
           "is_flag": false,
@@ -186,7 +186,7 @@
         {
           "default": 25.0,
           "flags": [
-            "--ecomp-max-edge"
+            "--max-edge"
           ],
           "help": "Maximum Delaunay edge length (\u00b5m); longer edges are pruned before building the line graph.",
           "is_flag": false,
@@ -199,7 +199,7 @@
         {
           "default": 2,
           "flags": [
-            "--ecomp-k"
+            "--k"
           ],
           "help": "Number of hops that define the edge-level neighborhood radius (k-hop on the line graph).",
           "is_flag": false,
@@ -238,7 +238,7 @@
         {
           "default": false,
           "flags": [
-            "--ecomp-no-neighborhood"
+            "--no-neighborhood"
           ],
           "help": "Skip line-graph construction and k-hop aggregation.  Output one row per Delaunay edge with geometry, cell types, edge type, and a ``center_region`` column (derived from per-vertex ``region_prob_*`` columns).  Much faster; no ``neighborhood_*`` columns are written.",
           "is_flag": true,
@@ -414,7 +414,7 @@
         {
           "default": 25.0,
           "flags": [
-            "--hplot-max-neighbor-distance"
+            "--max-neighbor-distance"
           ],
           "help": "A parameter of float value determining maximal distance (um) to a neighboring cell.",
           "is_flag": false,
@@ -427,7 +427,7 @@
         {
           "default": null,
           "flags": [
-            "--hplot-base-types"
+            "--base-types"
           ],
           "help": "Base cell type or cell type list that form(s) the cell cluster(s), e.g., tumor cells.",
           "is_flag": false,
@@ -440,7 +440,7 @@
         {
           "default": null,
           "flags": [
-            "--hplot-target-types"
+            "--target-types"
           ],
           "help": "Target cell type or cell type list whose layer-wise proportion is computed, e.g., lymphocytes.",
           "is_flag": false,
@@ -458,9 +458,9 @@
           ],
           "default": "celltype",
           "flags": [
-            "--hplot-base-by"
+            "--base-by"
           ],
-          "help": "Interpret --hplot-base-types as cell types, niche ids, or aggregate names.",
+          "help": "Interpret --base-types as cell types, niche ids, or aggregate names.",
           "is_flag": false,
           "kind": "choice",
           "multiple": false,
@@ -476,9 +476,9 @@
           ],
           "default": "celltype",
           "flags": [
-            "--hplot-target-by"
+            "--target-by"
           ],
-          "help": "Interpret --hplot-target-types as cell types, niche ids, or aggregate names. Use 'niche' for a niche's layer-wise fraction (requires `wsinsight niche`); use 'aggregate' for an aggregate's member-cell fraction (requires `wsinsight agg`).",
+          "help": "Interpret --target-types as cell types, niche ids, or aggregate names. Use 'niche' for a niche's layer-wise fraction (requires `wsinsight niche`); use 'aggregate' for an aggregate's member-cell fraction (requires `wsinsight agg`).",
           "is_flag": false,
           "kind": "choice",
           "multiple": false,
@@ -489,7 +489,7 @@
         {
           "default": 2,
           "flags": [
-            "--hplot-k"
+            "--k"
           ],
           "help": "The maximal edge distance for defining the neighborhood of a cell.",
           "is_flag": false,
@@ -502,7 +502,7 @@
         {
           "default": 8,
           "flags": [
-            "--hplot-n"
+            "--n"
           ],
           "help": "The minimal neighborhood size for a cell to be computed for determining tumor regions.",
           "is_flag": false,
@@ -515,7 +515,7 @@
         {
           "default": 0.5,
           "flags": [
-            "--hplot-r"
+            "--r"
           ],
           "help": "The minimal ratio of tumor cells in the neighborhood of a cell, determining is this cell included in a tumor region.",
           "is_flag": false,
@@ -528,7 +528,7 @@
         {
           "default": null,
           "flags": [
-            "--hplot-range-max"
+            "--range-max"
           ],
           "help": "The maximal layer index toward OUTSIDE of tumors for the range window of H-Plot.",
           "is_flag": false,
@@ -541,7 +541,7 @@
         {
           "default": null,
           "flags": [
-            "--hplot-range-min"
+            "--range-min"
           ],
           "help": "The minimal layer index toward INSIDE of tumors for the range window of H-Plot.",
           "is_flag": false,
@@ -554,7 +554,7 @@
         {
           "default": false,
           "flags": [
-            "--hplot-samples-with-valid-range-only"
+            "--samples-with-valid-range-only"
           ],
           "help": "H-Plot computing uses only samples with valid range of cellular-wise layers.",
           "is_flag": true,
@@ -626,7 +626,7 @@
       ]
     },
     "import": {
-      "help": "Import spatial-transcriptomics gene expression onto WSInsight cells.\n\n    \b\n    For each sample in the sptx-list manifest:\n      \u2022 map Xenium centroids (\u00b5m) onto the H&E via the ST2WSI transform,\n      \u2022 match each cell to the nearest model-output detection,\n      \u2022 write one AnnData whose obs carries EVERY model-output-csv column of the\n        matched detection (prefixed ``model_``, NaN when a cell has no match) plus\n        ``model_cell_id`` (== WSInsight's export-h5ad obs index), so the h5ad is\n        self-contained and needs no join back to the CSV. Optional per-cell\n        sources requested via ``--include`` are merged the same way under their\n        own prefixes (``niche_`` / ``hplot_`` / ``ncomp_``).\n\n    \b\n    Output written to <results-dir>/:\n      imported-xenium/<sample_id>.h5ad",
+      "help": "Import spatial-transcriptomics gene expression onto WSInsight cells.\n\n    \b\n    For each sample in the sptx-list manifest:\n      \u2022 map cell centroids (\u00b5m) onto the H&E via the ST2WSI transform,\n      \u2022 match each cell to the nearest model-output detection,\n      \u2022 write one AnnData whose obs carries EVERY model-output-csv column of the\n        matched detection (prefixed ``model_``, NaN when a cell has no match) plus\n        ``model_cell_id`` (== WSInsight's export-h5ad obs index), so the h5ad is\n        self-contained and needs no join back to the CSV. Optional per-cell\n        sources requested via ``--include`` are merged the same way under their\n        own prefixes (``niche_`` / ``hplot_`` / ``ncomp_``).\n\n    \b\n    platform=xenium (default):\n      sptx-list paths point to raw Xenium output directories.\n\n    \b\n    platform=xenium-h5ad:\n      sptx-list paths point to sptxinsight annotated.h5ad files.\n      The 3rd column of the sptx-list manifest supplies the per-sample\n      ST2WSI transform directory (registration_params.json etc.).\n      sptxinsight obs columns are carried over under the ``sptx_`` prefix.\n\n    \b\n    Output written to <results-dir>/:\n      imported-xenium/<sample_id>.h5ad",
       "name": "import",
       "params": [
         {
@@ -649,7 +649,7 @@
             "-s",
             "--sptx-dir"
           ],
-          "help": "A sptx-list:// manifest (path<TAB>sample_id per line). The path points at each Xenium sample directory; sample_id is the stable id used to match the H&E / model-output (Xenium filenames collide across runs).",
+          "help": "A sptx-list:// manifest (path<TAB>sample_id<TAB>transform_dir per line). Column 2 (sample_id) and column 3 (transform_dir) are optional. For platform=xenium: path points at each raw Xenium sample directory. For platform=xenium-h5ad: path points at each sptxinsight annotated.h5ad file.",
           "is_flag": false,
           "kind": "string",
           "multiple": false,
@@ -673,13 +673,14 @@
         },
         {
           "choices": [
-            "xenium"
+            "xenium",
+            "xenium-h5ad"
           ],
           "default": "xenium",
           "flags": [
             "--platform"
           ],
-          "help": "Spatial-transcriptomics platform to import (xenium by default).",
+          "help": "Spatial-transcriptomics platform to import. 'xenium': read from raw Xenium output directories (cells.parquet + cell_feature_matrix.h5). 'xenium-h5ad': read from sptxinsight annotated.h5ad files (obsm['spatial'] + X); the sptx-list 3rd column supplies the per-sample ST2WSI transform directory.",
           "is_flag": false,
           "kind": "choice",
           "multiple": false,
@@ -688,15 +689,29 @@
           "required": false
         },
         {
+          "default": "spatial",
+          "flags": [
+            "--spatial-key"
+          ],
+          "help": "(platform=xenium-h5ad only) Key in adata.obsm holding cell centroids in microns.",
+          "is_flag": false,
+          "kind": "string",
+          "multiple": false,
+          "name": "spatial_key",
+          "param_type": "option",
+          "required": false
+        },
+        {
           "choices": [
             "affine",
-            "affine+bspline"
+            "affine+bspline",
+            "none"
           ],
           "default": "affine+bspline",
           "flags": [
             "--transform"
           ],
-          "help": "ST2WSI coordinate transform: SIFT affine only, or affine + bUnwarpJ elastic B-spline (default; requires the H&E target dimensions).",
+          "help": "ST2WSI coordinate transform: SIFT affine only, or affine + bUnwarpJ elastic B-spline (default; requires the H&E target dimensions), or 'none' to pass \u00b5m coordinates through unchanged (useful when the h5ad already contains pixel coordinates).",
           "is_flag": false,
           "kind": "choice",
           "multiple": false,
@@ -923,9 +938,20 @@
         },
         {
           "choices": [
+            "10xGenomics-BRCA-CellViT-SAM-H-x40",
+            "10xGenomics-CRC-CellViT-SAM-H-x40",
+            "CellViT-256-x20",
+            "CellViT-256-x40",
+            "CellViT-256-x40-AMP",
+            "CellViT-SAM-H-x20",
+            "CellViT-SAM-H-x40",
+            "CellViT-SAM-H-x40-AMP",
+            "CellViT-Virchow-x40-AMP",
             "breast-tumor-resnet34.tcga-brca",
             "colorectal-resnet34.penn",
             "colorectal-tiatoolbox-resnet50.kather100k",
+            "hne_cell_classification",
+            "hovernet_fast_pannuke",
             "lung-tumor-resnet34.tcga-luad",
             "lymphnodes-tiatoolbox-resnet50.patchcamelyon",
             "pancancer-lymphocytes-inceptionv4.tcga",
@@ -1140,7 +1166,7 @@
         {
           "default": 25.0,
           "flags": [
-            "--ncomp-max-neighbor-distance"
+            "--max-neighbor-distance"
           ],
           "help": "Maximum distance (\u00b5m) between neighboring cells in the Delaunay graph.",
           "is_flag": false,
@@ -1153,7 +1179,7 @@
         {
           "default": 2,
           "flags": [
-            "--ncomp-k"
+            "--k"
           ],
           "help": "Number of hops that define the neighborhood radius (k-hop).",
           "is_flag": false,
@@ -1233,6 +1259,19 @@
           "kind": "bool",
           "multiple": false,
           "name": "niche_hoptimus",
+          "param_type": "option",
+          "required": false
+        },
+        {
+          "default": 32,
+          "flags": [
+            "--hoptimus-pca-dim"
+          ],
+          "help": "Number of PCA components used to reduce H-Optimus embeddings (1536-d) before they are concatenated with k-hop composition features.  Smaller values speed up DGI training; larger values retain more morphological detail.  Ignored unless --hoptimus is set.",
+          "is_flag": false,
+          "kind": "int",
+          "multiple": false,
+          "name": "niche_hoptimus_pca_dim",
           "param_type": "option",
           "required": false
         },
@@ -1337,6 +1376,71 @@
           "kind": "bool",
           "multiple": false,
           "name": "amp",
+          "param_type": "option",
+          "required": false
+        },
+        {
+          "default": 2,
+          "flags": [
+            "--k-hops"
+          ],
+          "help": "Number of neighborhood hops for the composition features.  Each hop adds one ring of the Delaunay graph, so the spatial extent a niche summarises grows roughly as k-hops x the typical cell spacing.  Raising this also grows the feature dimension linearly and the breadth-first traversal cost superlinearly.",
+          "is_flag": false,
+          "kind": "int",
+          "multiple": false,
+          "name": "niche_k_hops",
+          "param_type": "option",
+          "required": false
+        },
+        {
+          "default": 25.0,
+          "flags": [
+            "--max-edge-len-um"
+          ],
+          "help": "Maximal Delaunay edge length (um) when building the cell graph.  Longer edges are pruned, so this caps how far a single hop can reach and stops sparse tissue from being wired into spurious neighbourhoods.",
+          "is_flag": false,
+          "kind": "float",
+          "multiple": false,
+          "name": "niche_max_edge_len_um",
+          "param_type": "option",
+          "required": false
+        },
+        {
+          "default": 15.0,
+          "flags": [
+            "--max-cell-radius-um"
+          ],
+          "help": "Maximal cell radius (um) used when merging annotation-level regions.",
+          "is_flag": false,
+          "kind": "float",
+          "multiple": false,
+          "name": "niche_max_cell_radius_um",
+          "param_type": "option",
+          "required": false
+        },
+        {
+          "default": false,
+          "flags": [
+            "--soft"
+          ],
+          "help": "Use soft (probability) composition features instead of hard argmax labels.  Soft mode keeps the classifier's uncertainty, which helps when many cells have ambiguous class calls.",
+          "is_flag": true,
+          "kind": "bool",
+          "multiple": false,
+          "name": "niche_soft",
+          "param_type": "option",
+          "required": false
+        },
+        {
+          "default": 1.0,
+          "flags": [
+            "--alpha"
+          ],
+          "help": "Dirichlet/Laplace smoothing strength for the k-hop composition features: out = (p + alpha / n_classes) / (1 + alpha).  Larger values pull sparse neighbourhoods toward a uniform composition; 0 disables smoothing and allows exact zeros.",
+          "is_flag": false,
+          "kind": "float",
+          "multiple": false,
+          "name": "niche_alpha",
           "param_type": "option",
           "required": false
         },
@@ -1592,9 +1696,20 @@
         },
         {
           "choices": [
+            "10xGenomics-BRCA-CellViT-SAM-H-x40",
+            "10xGenomics-CRC-CellViT-SAM-H-x40",
+            "CellViT-256-x20",
+            "CellViT-256-x40",
+            "CellViT-256-x40-AMP",
+            "CellViT-SAM-H-x20",
+            "CellViT-SAM-H-x40",
+            "CellViT-SAM-H-x40-AMP",
+            "CellViT-Virchow-x40-AMP",
             "breast-tumor-resnet34.tcga-brca",
             "colorectal-resnet34.penn",
             "colorectal-tiatoolbox-resnet50.kather100k",
+            "hne_cell_classification",
+            "hovernet_fast_pannuke",
             "lung-tumor-resnet34.tcga-luad",
             "lymphnodes-tiatoolbox-resnet50.patchcamelyon",
             "pancancer-lymphocytes-inceptionv4.tcga",
@@ -1775,7 +1890,7 @@
         {
           "default": 0.0,
           "flags": [
-            "--patch-overlap-ratio"
+            "--overlap-ratio"
           ],
           "help": "The ratio of overlap among patches. The default value of 0 produces non-overlapping patches. A value in (0, 1) will produce overlapping patches. Negative values will add space between patches. A value of -1 would skip every other patch. A value of 0.5 will provide 50%% of overlap between patches. Values must be in (-inf, 1).",
           "is_flag": false,
@@ -1788,7 +1903,7 @@
         {
           "default": 0.0,
           "flags": [
-            "--patch-size-um"
+            "--size-um"
           ],
           "help": "The size of patch in um. The default value of 0 produces full patch size of the chosen model.",
           "is_flag": false,
@@ -1801,7 +1916,7 @@
         {
           "default": 0,
           "flags": [
-            "--patch-size-px"
+            "--size-px"
           ],
           "help": "The size of patch in pixel. The default value of 0 produces full patch size of the chosen model.",
           "is_flag": false,
@@ -2131,9 +2246,20 @@
         },
         {
           "choices": [
+            "10xGenomics-BRCA-CellViT-SAM-H-x40",
+            "10xGenomics-CRC-CellViT-SAM-H-x40",
+            "CellViT-256-x20",
+            "CellViT-256-x40",
+            "CellViT-256-x40-AMP",
+            "CellViT-SAM-H-x20",
+            "CellViT-SAM-H-x40",
+            "CellViT-SAM-H-x40-AMP",
+            "CellViT-Virchow-x40-AMP",
             "breast-tumor-resnet34.tcga-brca",
             "colorectal-resnet34.penn",
             "colorectal-tiatoolbox-resnet50.kather100k",
+            "hne_cell_classification",
+            "hovernet_fast_pannuke",
             "lung-tumor-resnet34.tcga-luad",
             "lymphnodes-tiatoolbox-resnet50.patchcamelyon",
             "pancancer-lymphocytes-inceptionv4.tcga",
@@ -2767,6 +2893,19 @@
           "required": false
         },
         {
+          "default": 32,
+          "flags": [
+            "--niche-hoptimus-pca-dim"
+          ],
+          "help": "PCA components used to reduce H-Optimus embeddings (1536-d) before concatenation with k-hop features.  Ignored unless --niche-hoptimus and --niche are both set.",
+          "is_flag": false,
+          "kind": "int",
+          "multiple": false,
+          "name": "niche_hoptimus_pca_dim",
+          "param_type": "option",
+          "required": false
+        },
+        {
           "default": null,
           "flags": [
             "--niche-clusters"
@@ -2871,6 +3010,71 @@
           "required": false
         },
         {
+          "default": 2,
+          "flags": [
+            "--niche-k-hops"
+          ],
+          "help": "Number of neighborhood hops for the niche composition features.  Each hop adds one ring of the Delaunay graph, so the spatial extent a niche summarises grows roughly as k-hops x the typical cell spacing.  Ignored unless --niche is set.",
+          "is_flag": false,
+          "kind": "int",
+          "multiple": false,
+          "name": "niche_k_hops",
+          "param_type": "option",
+          "required": false
+        },
+        {
+          "default": 25.0,
+          "flags": [
+            "--niche-max-edge-len-um"
+          ],
+          "help": "Maximal Delaunay edge length (um) when building the niche cell graph.  Longer edges are pruned, capping how far a single hop can reach.  Ignored unless --niche is set.",
+          "is_flag": false,
+          "kind": "float",
+          "multiple": false,
+          "name": "niche_max_edge_len_um",
+          "param_type": "option",
+          "required": false
+        },
+        {
+          "default": 15.0,
+          "flags": [
+            "--niche-max-cell-radius-um"
+          ],
+          "help": "Maximal cell radius (um) used when merging annotation-level niche regions.  Ignored unless --niche is set.",
+          "is_flag": false,
+          "kind": "float",
+          "multiple": false,
+          "name": "niche_max_cell_radius_um",
+          "param_type": "option",
+          "required": false
+        },
+        {
+          "default": false,
+          "flags": [
+            "--niche-soft"
+          ],
+          "help": "Use soft (probability) composition features for niche instead of hard argmax labels.  Ignored unless --niche is set.",
+          "is_flag": true,
+          "kind": "bool",
+          "multiple": false,
+          "name": "niche_soft",
+          "param_type": "option",
+          "required": false
+        },
+        {
+          "default": 1.0,
+          "flags": [
+            "--niche-alpha"
+          ],
+          "help": "Dirichlet/Laplace smoothing strength for the niche k-hop composition features: out = (p + alpha / n_classes) / (1 + alpha).  0 disables smoothing.  Ignored unless --niche is set.",
+          "is_flag": false,
+          "kind": "float",
+          "multiple": false,
+          "name": "niche_alpha",
+          "param_type": "option",
+          "required": false
+        },
+        {
           "default": 0,
           "flags": [
             "--niche-seed"
@@ -2880,6 +3084,75 @@
           "kind": "int",
           "multiple": false,
           "name": "niche_seed",
+          "param_type": "option",
+          "required": false
+        },
+        {
+          "default": false,
+          "flags": [
+            "--import"
+          ],
+          "help": "Run 'wsinsight import' after inference to map spatial-transcriptomics expression onto the H&E cells. Requires --import-sptx-dir. Use --import-platform to select the input format.",
+          "is_flag": true,
+          "kind": "bool",
+          "multiple": false,
+          "name": "run_import",
+          "param_type": "option",
+          "required": false
+        },
+        {
+          "default": null,
+          "flags": [
+            "--import-sptx-dir"
+          ],
+          "help": "sptx-list:// manifest for 'wsinsight import'. For --import-platform=xenium: paths to Xenium output directories. For --import-platform=xenium-h5ad: paths to sptxinsight annotated.h5ad files. Required when --import is set.",
+          "is_flag": false,
+          "kind": "string",
+          "multiple": false,
+          "name": "import_sptx_dir",
+          "param_type": "option",
+          "required": false
+        },
+        {
+          "choices": [
+            "xenium",
+            "xenium-h5ad"
+          ],
+          "default": "xenium",
+          "flags": [
+            "--import-platform"
+          ],
+          "help": "Input platform for 'wsinsight import'. 'xenium': raw Xenium output directories (cells.parquet + cell_feature_matrix.h5). 'xenium-h5ad': sptxinsight annotated.h5ad; the sptx-list 3rd column supplies the per-sample transform directory.",
+          "is_flag": false,
+          "kind": "choice",
+          "multiple": false,
+          "name": "import_platform",
+          "param_type": "option",
+          "required": false
+        },
+        {
+          "default": "spatial",
+          "flags": [
+            "--import-spatial-key"
+          ],
+          "help": "(--import-platform=xenium-h5ad only) obsm key for cell centroids in microns.",
+          "is_flag": false,
+          "kind": "string",
+          "multiple": false,
+          "name": "import_spatial_key",
+          "param_type": "option",
+          "required": false
+        },
+        {
+          "default": "niche",
+          "flags": [
+            "--import-include"
+          ],
+          "help": "Comma-separated per-cell sources to merge into the imported h5ad (niche, hplot, ncomp). Passed as --include to 'wsinsight import'. Ignored unless --import is set.",
+          "is_flag": false,
+          "kind": "string",
+          "multiple": false,
+          "name": "import_include",
           "param_type": "option",
           "required": false
         },
@@ -3106,7 +3379,7 @@
         {
           "default": 25.0,
           "flags": [
-            "--tcomp-max-edge"
+            "--max-edge"
           ],
           "help": "Maximum triad edge length (\u00b5m); triads whose longest edge exceeds this are dropped.",
           "is_flag": false,
@@ -3119,7 +3392,7 @@
         {
           "default": 2,
           "flags": [
-            "--tcomp-k"
+            "--k"
           ],
           "help": "Number of hops that define the triad-level neighborhood radius (k-hop on the dual graph).",
           "is_flag": false,
@@ -3158,7 +3431,7 @@
         {
           "default": false,
           "flags": [
-            "--tcomp-no-neighborhood"
+            "--no-neighborhood"
           ],
           "help": "Skip dual-graph construction and k-hop aggregation.  Output one row per Delaunay triad with geometry, cell types, triad type, and a ``centroid_region`` column (derived from per-vertex ``region_prob_*`` columns).  Much faster; no ``neighborhood_*`` columns are written.",
           "is_flag": true,

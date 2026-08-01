@@ -69,10 +69,12 @@ file lists
 (a text file with one slide path per line; blank lines and ``#`` comments
 are ignored).  A plain local text file passed directly as ``--wsi-dir`` is
 rejected — prefix it with ``image-list://`` to pass a slide list.
-``sptx-list://`` is a two-column variant (``path``<TAB>``sample_id`` per line)
-used by ``wsinsight import`` to carry a stable ``sample_id`` alongside each
-spatial-transcriptomics sample, because transcriptomics exports (e.g. Xenium)
-frequently reuse the same filename across runs.
+``sptx-list://`` is a manifest variant
+(``path``<TAB>``sample_id``<TAB>``transform_dir`` per line, columns 2 and 3 optional)
+used by ``wsinsight import``. ``sample_id`` carries a stable id alongside each
+spatial-transcriptomics sample (transcriptomics exports often reuse filenames),
+and ``transform_dir`` supplies the per-sample ST2WSI registration folder when
+importing ``xenium-h5ad`` inputs.
 
 Experimental commands
 ---------------------
@@ -122,17 +124,22 @@ Command                       Purpose
                               registered H&E via the ST2WSI (SIFT affine + bUnwarpJ B-spline)
                               transform, matches it to the nearest ``model-outputs-csv``
                               detection, and writes one AnnData ``.h5ad`` per slide under
-                              ``xenium-import/`` (the ``model-outputs-csv/`` is never
+                              ``imported-xenium/`` (the ``model-outputs-csv/`` is never
                               modified).  The matched detection's columns are carried into
                               ``obs`` under a ``model_`` prefix (plus ``model_cell_id``);
                               optional per-cell sidecars added with
                               ``--include niche,hplot,ncomp`` are merged under their own
                               ``niche_`` / ``hplot_`` / ``ncomp_`` prefixes (``model`` is
-                              always imported).  Reads a ``sptx-list://`` manifest via
-                              ``-s`` / ``--sptx-dir``; supports
-                              ``--transform affine|affine+bspline`` (default), ``--genes``,
-                              ``--include``, ``--match-max-dist``, and ``--dry-run`` (report
-                              the cell↔detection hit-rate only, writing nothing).
+                              always imported).  Supports ``--platform xenium`` (raw Xenium
+                              directories) and ``--platform xenium-h5ad`` (annotated ``.h5ad``
+                              inputs). Reads a ``sptx-list://`` manifest via
+                              ``-s`` / ``--sptx-dir`` (``path<TAB>sample_id<TAB>transform_dir``;
+                              columns 2 and 3 optional). For ``xenium-h5ad``, column 3 should
+                              point to each sample transform folder containing
+                              ``registration_params.json``. Supports
+                              ``--transform affine|affine+bspline|none`` (default affine+bspline),
+                              ``--genes``, ``--include``, ``--match-max-dist``, and ``--dry-run``
+                              (report the cell↔detection hit-rate only, writing nothing).
 ============================  ================================================================
 
 

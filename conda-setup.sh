@@ -60,7 +60,20 @@ fi
 echo "Target conda environment: ${ENV_NAME}  (reset=${DO_RESET}, mcp=${DO_MCP})"
 
 # ── (Re-)create environment ────────────────────────────────────────────────────
-source /opt/anaconda3/etc/profile.d/conda.sh
+CONDA_BASE="$(conda info --base 2>/dev/null || true)"
+if [[ -z "${CONDA_BASE}" ]]; then
+    for _base in /opt/conda /opt/anaconda3; do
+        if [[ -f "${_base}/etc/profile.d/conda.sh" ]]; then
+            CONDA_BASE="${_base}"
+            break
+        fi
+    done
+fi
+if [[ -z "${CONDA_BASE}" || ! -f "${CONDA_BASE}/etc/profile.d/conda.sh" ]]; then
+    echo "Error: cannot locate conda.sh. Activate conda first or set CONDA_BASE." >&2
+    exit 1
+fi
+source "${CONDA_BASE}/etc/profile.d/conda.sh"
 
 if [[ "$DO_RESET" -eq 1 ]]; then
     conda deactivate
