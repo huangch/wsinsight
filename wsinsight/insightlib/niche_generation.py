@@ -517,10 +517,17 @@ def _embed_hoptimus_subset_dataset(
     instead of being downloaded from HuggingFace.
     """
     import json
+    import logging as _logging
     import timm
     from timm.data import create_transform, resolve_data_config
     dev = device or ('cuda' if torch.cuda.is_available() else 'cpu')
-    if hoptimus_model_dir is not None:
+    # Suppress timm's "Loaded from checkpoint" INFO messages — they clutter
+    # the nested progress bar display without adding actionable information.
+    _timm_logger = _logging.getLogger("timm")
+    _timm_prev_level = _timm_logger.level
+    _timm_logger.setLevel(_logging.WARNING)
+    try:
+      if hoptimus_model_dir is not None:
         hoptimus_model_dir = Path(hoptimus_model_dir)
         config_path = hoptimus_model_dir / "config.json"
         if not config_path.exists():
@@ -557,8 +564,10 @@ def _embed_hoptimus_subset_dataset(
         )
         timm.models.load_checkpoint(model, str(checkpoint_path))
         model = model.to(dev).eval()
-    else:
+      else:
         model = timm.create_model("hf-hub:bioptimus/H-optimus-0", pretrained=True, num_classes=0).to(dev).eval()
+    finally:
+        _timm_logger.setLevel(_timm_prev_level)
     pre = create_transform(**resolve_data_config(model=model), is_training=False)
 
     # Spread batches across all available GPUs via DataParallel.
