@@ -482,10 +482,11 @@ def _auto_batch_size(
 ) -> int:
     """Return a batch size that fits comfortably in available VRAM.
 
-    After the model is already loaded on *dev*, queries free VRAM, subtracts a
-    safety margin, and divides by *bytes_per_image* (empirical per-image peak
-    during a forward pass with ``torch.no_grad``).  Result is rounded down to
-    the nearest power of two for DataParallel efficiency and clamped to
+    After the model is already loaded on *dev*, queries free VRAM on the primary
+    device, computes per-GPU capacity, then multiplies by *ngpu* so that
+    DataParallel distributes a full per-GPU load to every device rather than
+    splitting an under-sized total batch.  Result is rounded down to the nearest
+    power of two for uniform DataParallel geometry and clamped to
     [min_batch, max_batch].
 
     Falls back to *min_batch* on CPU or if VRAM introspection is unavailable.
@@ -493,10 +494,14 @@ def _auto_batch_size(
     if not torch.cuda.is_available():
         return min_batch
     try:
-        # mem_get_info() returns (free, total) for the current device in bytes.
+        n_gpu = max(1, torch.cuda.device_count())
+        # Query free VRAM on the primary device (model already loaded there).
         free_bytes, _total = torch.cuda.mem_get_info(torch.cuda.current_device())
-        usable = int(free_bytes * safety)
-        n = max(min_batch, min(max_batch, usable // bytes_per_image))
+        # Per-GPU capacity: how many images fit in one GPU's free VRAM.
+        per_gpu = int(free_bytes * safety) // bytes_per_image
+        # Total batch: DataParallel will split this evenly across all GPUs,
+        # so each GPU processes per_gpu images simultaneously.
+        n = max(min_batch, min(max_batch, per_gpu * n_gpu))
         # Snap to the largest power of two ≤ n for uniform batch geometry.
         return 2 ** int(math.log2(n))
     except Exception:
