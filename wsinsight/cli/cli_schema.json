@@ -1291,6 +1291,19 @@
         {
           "default": null,
           "flags": [
+            "--hoptimus-model-dir"
+          ],
+          "help": "Path to a local directory containing H-Optimus model weights (pytorch_model.bin or model.safetensors). When omitted, weights are downloaded from HuggingFace Hub. Ignored unless --hoptimus is set.",
+          "is_flag": false,
+          "kind": "path",
+          "multiple": false,
+          "name": "niche_hoptimus_model_dir",
+          "param_type": "option",
+          "required": false
+        },
+        {
+          "default": null,
+          "flags": [
             "--clusters"
           ],
           "help": "Number of microenvironment clusters (KMeans).  When omitted, the optimal number is determined automatically via a Leiden community-detection sweep.",
@@ -2928,6 +2941,19 @@
           "kind": "int",
           "multiple": false,
           "name": "niche_hoptimus_pca_dim",
+          "param_type": "option",
+          "required": false
+        },
+        {
+          "default": null,
+          "flags": [
+            "--niche-hoptimus-model-dir"
+          ],
+          "help": "Path to a local directory containing H-Optimus model weights (pytorch_model.bin or model.safetensors). When omitted, weights are downloaded from HuggingFace Hub. Ignored unless --niche-hoptimus and --niche are both set.",
+          "is_flag": false,
+          "kind": "path",
+          "multiple": false,
+          "name": "niche_hoptimus_model_dir",
           "param_type": "option",
           "required": false
         },

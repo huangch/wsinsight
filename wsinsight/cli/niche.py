@@ -123,6 +123,17 @@ def _num_cpus() -> int:
     ),
 )
 @click.option(
+    "--hoptimus-model-dir",
+    "niche_hoptimus_model_dir",
+    type=click.Path(exists=True, file_okay=False, dir_okay=True, path_type=Path),
+    default=None,
+    help=(
+        "Path to a local directory containing H-Optimus model weights "
+        "(pytorch_model.bin or model.safetensors). When omitted, weights are "
+        "downloaded from HuggingFace Hub. Ignored unless --hoptimus is set."
+    ),
+)
+@click.option(
     "--clusters",
     "niche_clusters",
     default=None,
@@ -313,6 +324,7 @@ def niche(
     niche_hoptimus: bool = False,
     niche_hoptimus_only: bool = False,
     niche_hoptimus_pca_dim: int | None = None,
+    niche_hoptimus_model_dir: Path | None = None,
     niche_clusters: int | None = None,
     niche_leiden_res: list[float] | None = None,
     niche_embed_dim: int = 32,
@@ -390,6 +402,7 @@ def niche(
         alpha=niche_alpha,
         use_hoptimus=niche_hoptimus,
         hoptimus_only=niche_hoptimus_only,
+        hoptimus_model_dir=niche_hoptimus_model_dir,
         pca_dim=niche_hoptimus_pca_dim,
         hidden=64,
         out_dim=niche_embed_dim,

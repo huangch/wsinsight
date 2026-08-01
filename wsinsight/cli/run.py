@@ -343,6 +343,7 @@ _NICHE_PARAM_NAMES: tuple[str, ...] = (
     "niche_hoptimus",
     "niche_hoptimus_only",
     "niche_hoptimus_pca_dim",
+    "niche_hoptimus_model_dir",
     "niche_clusters",
     "niche_leiden_res",
     "niche_embed_dim",
@@ -841,6 +842,18 @@ def _select_kwargs(values: dict[str, Any], keys: tuple[str, ...]) -> dict[str, A
     ),
 )
 @click.option(
+    "--niche-hoptimus-model-dir",
+    "niche_hoptimus_model_dir",
+    type=click.Path(exists=True, file_okay=False, dir_okay=True, path_type=Path),
+    default=None,
+    help=(
+        "Path to a local directory containing H-Optimus model weights "
+        "(pytorch_model.bin or model.safetensors). When omitted, weights are "
+        "downloaded from HuggingFace Hub. Ignored unless --niche-hoptimus and "
+        "--niche are both set."
+    ),
+)
+@click.option(
     "--niche-clusters",
     default=None,
     type=click.IntRange(min=2),
@@ -1212,6 +1225,7 @@ def run(
     niche_hoptimus: bool = False,
     niche_hoptimus_only: bool = False,
     niche_hoptimus_pca_dim: int | None = None,
+    niche_hoptimus_model_dir: Path | None = None,
     niche_clusters: int | None = None,
     niche_leiden_res: List | None = None,
     niche_embed_dim: int = 32,

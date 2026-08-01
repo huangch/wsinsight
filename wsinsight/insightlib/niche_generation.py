@@ -445,16 +445,37 @@ class DummyPatchDataset(Dataset):
 
 def _embed_hoptimus_subset_dataset(
     dataset: Dataset, sampled_ids: List[int],
-    batch_size: int = 128, device: Optional[str] = None
+    batch_size: int = 128, device: Optional[str] = None,
+    hoptimus_model_dir: Optional[Path] = None,
 ) -> np.ndarray:
     """
     Embed only a subset of cells using H-Optimus-0.
     'dataset' must support __getitem__(cell_id) -> PIL.Image or Tensor for that cell.
+    If hoptimus_model_dir is provided, the model is loaded from that local directory
+    instead of being downloaded from HuggingFace.
     """
     import timm
     from timm.data import create_transform
     dev = device or ('cuda' if torch.cuda.is_available() else 'cpu')
-    model = timm.create_model("hf-hub:bioptimus/H-optimus-0", pretrained=True, num_classes=0).to(dev).eval()
+    if hoptimus_model_dir is not None:
+        hoptimus_model_dir = Path(hoptimus_model_dir)
+        # Load architecture without pretrained weights, then load checkpoint from disk
+        model = timm.create_model("hoptimus_0", pretrained=False, num_classes=0)
+        checkpoint_candidates = [
+            hoptimus_model_dir / "pytorch_model.bin",
+            hoptimus_model_dir / "model.safetensors",
+            hoptimus_model_dir / "pytorch_model.safetensors",
+        ]
+        checkpoint_path = next((p for p in checkpoint_candidates if p.exists()), None)
+        if checkpoint_path is None:
+            raise FileNotFoundError(
+                f"--hoptimus-model-dir does not contain a recognised checkpoint file "
+                f"(pytorch_model.bin or model.safetensors): {hoptimus_model_dir}"
+            )
+        timm.models.load_checkpoint(model, str(checkpoint_path))
+        model = model.to(dev).eval()
+    else:
+        model = timm.create_model("hf-hub:bioptimus/H-optimus-0", pretrained=True, num_classes=0).to(dev).eval()
     pre = create_transform(**model.pretrained_cfg, is_training=False)
 
     # Build a Subset where sample index equals the cell_id we want
@@ -772,6 +793,7 @@ def prepare_slide_graph(
     # H-Optimus
     use_hoptimus: bool = False,
     hoptimus_only: bool = False,
+    hoptimus_model_dir: Optional[Path] = None,
     patch_dataset: Optional[Dataset] = None,  # your dataset: __getitem__(cell_id)-> PIL.Image / Tensor
     sample_frac: Optional[float] = 0.2,
     sample_count: Optional[int] = None,
@@ -849,7 +871,7 @@ def prepare_slide_graph(
         sampled_global_ids = kept_idx[sampled_local_idx].tolist()                      # map to original IDs for dataset
 
         # embed sampled
-        Hs = _embed_hoptimus_subset_dataset(patch_dataset, sampled_global_ids, batch_size=128, device=device)  # [m,1536]
+        Hs = _embed_hoptimus_subset_dataset(patch_dataset, sampled_global_ids, batch_size=128, device=device, hoptimus_model_dir=hoptimus_model_dir)  # [m,1536]
         # optional PCA
         if pca_dim is not None and Hs.shape[1] > pca_dim:
             from sklearn.decomposition import PCA
@@ -1123,7 +1145,7 @@ def estimate_niches_from_Z_list(
 def _prepare_slide_graph_worker(i, wsi_path, csv_path, ds,
         max_edge_len_um, class_order, k_hops, alpha,
         sample_frac, sample_count, pca_dim, knn_k, knn_sigma_um,
-    device, niche_soft_mode, use_hoptimus, hoptimus_only, graph_cache_dir):
+    device, niche_soft_mode, use_hoptimus, hoptimus_only, hoptimus_model_dir, graph_cache_dir):
     """Background worker to build one slide graph and return it with index."""
     df = pd.read_csv(csv_path)
     mpp = get_avg_mpp(wsi_path)
@@ -1135,6 +1157,7 @@ def _prepare_slide_graph_worker(i, wsi_path, csv_path, ds,
         class_order=class_order,
         k_hops=k_hops, alpha=alpha,
         hoptimus_only=hoptimus_only,
+        hoptimus_model_dir=hoptimus_model_dir,
         use_hoptimus=use_hoptimus, patch_dataset=ds,
         sample_frac=sample_frac, sample_count=sample_count,
         pca_dim=pca_dim, knn_k=knn_k, knn_sigma_um=knn_sigma_um,
@@ -1220,6 +1243,7 @@ def niche_generation(
     # H-Optimus switch & params
     use_hoptimus: bool = False,
     hoptimus_only: bool = False,
+    hoptimus_model_dir: Optional[Path] = None,
     patch_datasets: Optional[List[Dataset]] = None,  # list aligned with slides_inputs; if None, Dummy is used
     sample_frac: Optional[float] = 0.2,
     sample_count: Optional[int] = None,
@@ -1394,7 +1418,7 @@ def niche_generation(
             tasks.append((i, wsi_path, csv_path, ds,
                           max_edge_len_um, class_order, k_hops, alpha,
                           sample_frac, sample_count, pca_dim, knn_k, knn_sigma_um,
-                          device, niche_soft_mode, use_hoptimus, hoptimus_only, graph_cache_dir))
+                          device, niche_soft_mode, use_hoptimus, hoptimus_only, hoptimus_model_dir, graph_cache_dir))
             
         num_workers = pick_workers_safe(max_workers=os.cpu_count()-8, min_workers=8)
         
