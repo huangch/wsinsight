@@ -341,6 +341,7 @@ _NICHE_PARAM_NAMES: tuple[str, ...] = (
     "wsi_dir",
     "results_dir",
     "niche_hoptimus",
+    "niche_hoptimus_only",
     "niche_hoptimus_pca_dim",
     "niche_clusters",
     "niche_leiden_res",
@@ -816,6 +817,17 @@ def _select_kwargs(values: dict[str, Any], keys: tuple[str, ...]) -> dict[str, A
     ),
 )
 @click.option(
+    "--niche-hoptimus-only",
+    "niche_hoptimus_only",
+    is_flag=True,
+    default=False,
+    show_default=True,
+    help=(
+        "Use only H-Optimus features for niche (skip k-hop composition features). "
+        "Requires --niche-hoptimus and --niche."
+    ),
+)
+@click.option(
     "--niche-hoptimus-pca-dim",
     "niche_hoptimus_pca_dim",
     default=None,
@@ -1198,6 +1210,7 @@ def run(
     tcomp_no_neighborhood: bool = False,
     niche: bool = False,
     niche_hoptimus: bool = False,
+    niche_hoptimus_only: bool = False,
     niche_hoptimus_pca_dim: int | None = None,
     niche_clusters: int | None = None,
     niche_leiden_res: List | None = None,
