@@ -454,13 +454,24 @@ def _embed_hoptimus_subset_dataset(
     If hoptimus_model_dir is provided, the model is loaded from that local directory
     instead of being downloaded from HuggingFace.
     """
+    import json
     import timm
-    from timm.data import create_transform
+    from timm.data import create_transform, resolve_data_config
     dev = device or ('cuda' if torch.cuda.is_available() else 'cpu')
     if hoptimus_model_dir is not None:
         hoptimus_model_dir = Path(hoptimus_model_dir)
-        # Load architecture without pretrained weights, then load checkpoint from disk
-        model = timm.create_model("hoptimus_0", pretrained=False, num_classes=0)
+        config_path = hoptimus_model_dir / "config.json"
+        if not config_path.exists():
+            raise FileNotFoundError(
+                f"--hoptimus-model-dir does not contain config.json: {hoptimus_model_dir}"
+            )
+        with open(config_path) as _f:
+            _cfg = json.load(_f)
+        architecture = _cfg.get("architecture")
+        if not architecture:
+            raise ValueError(
+                f"config.json in --hoptimus-model-dir does not contain 'architecture' key: {config_path}"
+            )
         checkpoint_candidates = [
             hoptimus_model_dir / "pytorch_model.bin",
             hoptimus_model_dir / "model.safetensors",
@@ -472,11 +483,21 @@ def _embed_hoptimus_subset_dataset(
                 f"--hoptimus-model-dir does not contain a recognised checkpoint file "
                 f"(pytorch_model.bin or model.safetensors): {hoptimus_model_dir}"
             )
+        # Build pretrained_cfg from the values stored in config.json so that
+        # create_transform picks up the correct mean/std/input_size.
+        pretrained_cfg_overlay = _cfg.get("pretrained_cfg", {})
+        model = timm.create_model(
+            architecture,
+            pretrained=False,
+            num_classes=_cfg.get("num_classes", 0),
+            global_pool=_cfg.get("global_pool", "token"),
+            pretrained_cfg_overlay=pretrained_cfg_overlay,
+        )
         timm.models.load_checkpoint(model, str(checkpoint_path))
         model = model.to(dev).eval()
     else:
         model = timm.create_model("hf-hub:bioptimus/H-optimus-0", pretrained=True, num_classes=0).to(dev).eval()
-    pre = create_transform(**model.pretrained_cfg, is_training=False)
+    pre = create_transform(**resolve_data_config(model=model), is_training=False)
 
     # Build a Subset where sample index equals the cell_id we want
     subset = Subset(dataset, sampled_ids)
