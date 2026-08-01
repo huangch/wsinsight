@@ -32,7 +32,7 @@ classifiers = [
 ]
 # Version is dynamic via setuptools-scm (use tags). Keep only the hard compatibility rule here.
 dependencies = [
-  "anndata>=0.9",
+  "anndata>=0.9,<0.11",  # 0.11+ requires zarr>=3.0 which conflicts with numpy<2
   "click>=8.0,<9,!=8.1.4,!=8.1.5",
   "h5py",
   "numpy<2.0.0",
@@ -80,14 +80,44 @@ dependencies = [
 
   # Pathology / WSI ecosystem
   "openslide-python",
-  "histomicstk",
   "wsidicom",
 
   # QuPath integration
   "paquo",
 
-  # Model zoo (hyphen name, per you)
+  # Model zoo
   "wsinfer-zoo>=0.6.2",
+
+  # HistomicsTK runtime dependencies.
+  # NOTE: histomicstk itself is a pre-install step in conda-setup.sh / Dockerfiles.
+  # It hardpins girder-client==3.2.11 which is broken on PyPI (2026-06); see
+  # constraints.txt for the pinned working replacement (girder-client==5.0.10).
+  # All its transitive deps are declared here so `pip install -e .` satisfies them
+  # before the `pip install --no-deps histomicstk` pre-step runs.
+  "scipy",
+  "nimfa",
+  "imageio",
+  "sqlalchemy",
+  "ctk-cli",
+  "girder-slicer-cli-web",
+  "girder-client",
+  "dask[dataframe]<2024.11.0",
+  "distributed",
+
+  # large-image (histomicstk integration layer)
+  # Pre-installed from the girder wheel index for pre-built wheels; `pip install -e .`
+  # sees them as already satisfied and skips the PyPI fallback.
+  "pyvips",
+  "large-image",
+  "large-image-source-tifffile",
+  "large-image-source-pil",
+  "large-image-source-openslide",
+  "large-image-source-vips",
+  "large-image-converter",
+
+  # Additional runtime dependencies
+  "pexpect",
+  "huggingface_hub[hf_transfer]",
 ]
 dynamic = ["version"]
 

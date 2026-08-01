@@ -115,6 +115,25 @@ nimfa==1.4.0
 numba==0.62.1
 numcodecs==0.15.1
 numpy<2.0.0
+anndata<0.11          # 0.11+ requires zarr>=3.0 which requires numpy>=2.0
+google-resumable-media==2.10.0
+google-crc32c==1.8.0
+google-cloud-core==2.6.0
+google-cloud-storage==3.13.0
+google-api-core==2.30.3
+google-auth==2.56.2
+googleapis-common-protos==1.75.0
+proto-plus==1.28.2
+protobuf==6.32.1
+google-auth-oauthlib==1.4.0
+oauthlib==3.3.1
+requests-oauthlib==2.0.0
+fastmcp==3.4.5
+fastmcp-slim==3.4.5
+jaraco.classes==3.4.0
+jaraco.context==6.1.2
+jaraco.functools==4.6.0
+keyring==25.7.0
 nvidia-cublas-cu12==12.8.4.1
 nvidia-cuda-cupti-cu12==12.8.90
 nvidia-cuda-nvrtc-cu12==12.8.93
@@ -217,6 +236,7 @@ wsinfer_zoo==0.6.3
 xsdata==24.3.1
 yarl==1.22.0
 zarr==2.18.7
+ome-zarr==0.11.1   # last version compatible with zarr<3
 zict==3.0.0
 zipp==3.23.0
 

@@ -1,12 +1,14 @@
 #!/usr/bin/env bash
 # conda-setup.sh — create and populate the wsinsight conda environment.
 #
-# Usage:  bash ./conda-setup.sh [-n ENV_NAME] [-r|--reset]
+# Usage:  bash ./conda-setup.sh [-n ENV_NAME] [-r|--reset] [--mcp]
 #
 #   -n | --name  ENV_NAME   Conda environment to use (default: current active env).
 #   -r | --reset            Deactivate, remove, recreate, and activate the env.
 #                           Without this flag the script skips env creation and
 #                           only (re-)installs packages into the existing env.
+#   --mcp                   Also install fastmcp (MCP server support).
+#                           Not installed by default to avoid jaraco.* version scanning.
 #
 # Key workarounds:
 #   1. PIP_CACHE_DIR=/tmp/...   — redirects pip wheel cache to /tmp to bypass NAS inode quotas
@@ -21,6 +23,7 @@ SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 # ── Argument parsing ───────────────────────────────────────────────────────────
 ENV_NAME="${CONDA_DEFAULT_ENV:-}"   # default = current active env
 DO_RESET=0
+DO_MCP=0
 
 while [[ $# -gt 0 ]]; do
     case "$1" in
@@ -36,9 +39,13 @@ while [[ $# -gt 0 ]]; do
             DO_RESET=1
             shift
             ;;
+        --mcp)
+            DO_MCP=1
+            shift
+            ;;
         *)
             echo "Unknown option: $1" >&2
-            echo "Usage: bash ./conda-setup.sh [-n ENV_NAME] [-r|--reset]" >&2
+            echo "Usage: bash ./conda-setup.sh [-n ENV_NAME] [-r|--reset] [--mcp]" >&2
             exit 1
             ;;
     esac
@@ -50,7 +57,7 @@ if [[ -z "$ENV_NAME" ]]; then
     exit 1
 fi
 
-echo "Target conda environment: ${ENV_NAME}  (reset=${DO_RESET})"
+echo "Target conda environment: ${ENV_NAME}  (reset=${DO_RESET}, mcp=${DO_MCP})"
 
 # ── (Re-)create environment ────────────────────────────────────────────────────
 source /opt/anaconda3/etc/profile.d/conda.sh
@@ -71,13 +78,8 @@ pip install --upgrade pip
 pip cache purge || true
 export PIP_CACHE_DIR=/tmp/pip-cache-wsinsight
 
-pip install -c "${SCRIPT_DIR}/constraints.txt" "numpy<2"
-
-# heavy stacks first (torch/tensorflow dominate download time):
-pip install -c "${SCRIPT_DIR}/constraints.txt" torch torchvision torch-geometric tensorflow keras stardist nvidia-ml-py
-
-# histomicstk wheel source (same as before), still honoring constraints:
-# pip install -c constraints.txt "numpy<2" histomicstk --find-links https://girder.github.io/large_image_wheels
+# torch, tensorflow, and other ML deps are declared in pyproject.toml;
+# they are installed by `pip install -e .` below together with all other deps.
 # In case of SSL issues behind a corporate proxy, pre-install pyvips with cert check disabled,
 # then install histomicstk normally.
 pip install --trusted-host github.com --trusted-host raw.githubusercontent.com --trusted-host girder.github.io \
@@ -101,49 +103,53 @@ pip install --trusted-host github.com --trusted-host raw.githubusercontent.com -
     2>/dev/null \
   || echo "WARNING: pyvips install failed (all SSL fallbacks exhausted); continuing"
 
-# ── histomicstk: install ALL deps first, then the wheel itself ────────────────
-# Strategy: histomicstk is installed with --no-deps at the END of this block.
-# Every dep is present before histomicstk arrives, so no subsequent pip call
-# will ever see histomicstk with unsatisfied requirements (= no conflict warning).
-
-# 1. histomicstk runtime deps from PyPI
-pip install -c "${SCRIPT_DIR}/constraints.txt" \
-    nimfa pandas scipy scikit-image Pillow imageio sqlalchemy \
-    "ctk-cli" "girder-slicer-cli-web" "girder-client" \
-    "dask[dataframe]<2024.11.0" distributed
-
-# 2. large-image + sources + converter (from girder wheel index; SSL fallback for Pfizer proxy)
+# ── large-image from girder wheel index ──────────────────────────────────────
+# Pre-installed before `pip install -e .` to get the girder pre-built wheels.
+# `pip install -e .` sees them as already satisfied and skips re-downloading.
 pip install \
       --trusted-host github.com --trusted-host raw.githubusercontent.com \
       --trusted-host girder.github.io \
       --find-links https://girder.github.io/large_image_wheels \
+      -c "${SCRIPT_DIR}/constraints.txt" \
       "large-image" "large-image-source-tifffile" "large-image-source-pil" \
       "large-image-source-openslide" "large-image-source-vips" \
-      "large-image-converter" 2>/dev/null \
-  || pip install "large-image" "large-image-converter" \
+      "large-image-converter" \
+  || pip install -c "${SCRIPT_DIR}/constraints.txt" "large-image" "large-image-converter" \
   || echo "WARNING: large-image install failed; histomicstk will not import"
 
-# 3. histomicstk itself — all deps are already above, so --no-deps is safe and
-#    NO dependency conflict message will appear in any subsequent pip call.
+# ── All wsinsight dependencies declared in pyproject.toml ────────────────────
+# Installs torch, tensorflow, scikit-learn, scipy, nimfa, girder-client, etc.
+# pyvips and large-image above are already satisfied; pip skips them.
+# histomicstk is NOT in pyproject.toml (girder-client==3.2.11 hardpin issue);
+# it is installed below with --no-deps once all its transitive deps are present.
+# --no-build-isolation: uses the current env's setuptools so the wsinsight entry
+#   point is created correctly without a separate isolated build environment.
+pip install --no-build-isolation -c "${SCRIPT_DIR}/constraints.txt" -e "${SCRIPT_DIR}"
+
+# This script does not use `set -e`, so a failed editable install would otherwise
+# scroll past and only surface later as "wsinsight: command not found".
+command -v wsinsight >/dev/null || {
+    echo "ERROR: 'pip install -e' did not create the wsinsight console script." >&2
+    echo "       Scroll up for the pip resolver error; do not ignore it." >&2
+    exit 1
+}
+
+# ── histomicstk --no-deps (girder-client==3.2.11 hardpin bypass) ─────────────
+# histomicstk hardpins girder-client==3.2.11 which is broken on PyPI (2026-06).
+# All histomicstk runtime deps are already installed above via pyproject.toml.
 pip install --no-deps \
     --trusted-host github.com --trusted-host raw.githubusercontent.com \
     --trusted-host girder.github.io \
     --find-links https://girder.github.io/large_image_wheels \
     -c "${SCRIPT_DIR}/constraints.txt" histomicstk
 
-# ── Remaining wsinsight deps ──────────────────────────────────────────────────
-pip install -c "${SCRIPT_DIR}/constraints.txt" "numpy<2" \
-    click \
-    scikit-learn shapely geopandas pyproj rasterio pyogrio \
-    openslide-python wsidicom paquo "wsinfer-zoo>=0.6.2" \
-    igraph leidenalg pynndescent s3fs gcsfs boto3 platformdirs timm \
-    tiffslide imagecodecs opencv-python-headless orjson \
-    h5py anndata
-
-# the rest + your package (use --no-build-isolation to speed up resolve)
-# --no-deps: all real deps installed above; prevents pip re-resolving
-# histomicstk -> girder-client (broken on PyPI).
-pip install --no-deps --no-build-isolation -e "${SCRIPT_DIR}"
+# ── MCP server support (optional, --mcp flag) ─────────────────────────────────
+# Installed separately to avoid entangling fastmcp's jaraco.* dep chain with the
+# main wsinsight resolution. Pin versions are in constraints.txt.
+if [[ "${DO_MCP}" -eq 1 ]]; then
+    echo "Installing fastmcp (MCP server support)..."
+    pip install -c "${SCRIPT_DIR}/constraints.txt" fastmcp
+fi
 
 # ── CellViT training dependencies ─────────────────────────────────────────────
 # albumentations<2.0: versions >=2.0 require albucore which requires stringzilla,

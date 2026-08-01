@@ -18,11 +18,11 @@ Inputs
     - (platform=xenium-h5ad) each pre-annotated ``.h5ad`` produced by sptxinsight
                             (reads ``obsm["spatial"]`` for µm coordinates and ``X``
                             for expression; still uses the Xenium registration
-                            transforms located at ``--xenium-reg-dir``).
+                            transforms located at the 3rd column of the sptx-list manifest).
   The second column is the stable ``sample_id`` (must equal the H&E /
   model-output stem).
 * ``--results-dir``  holds ``model-outputs-csv/`` and receives ``imported-xenium/``.
-* ``--xenium-reg-dir``  (platform=xenium-h5ad only) directory that holds one
+* 3rd column of sptx-list  per-sample directory holding the ST2WSI transform files.
   sub-directory per sample_id containing the ST2WSI registration files
   (``registration_params.json`` + optional ``direct_transf.txt``).
 """
@@ -124,6 +124,71 @@ def _read_expression_h5(h5_path: Path, want_genes: Optional[set[str]]):
     X = X[:, keep]
     var = pd.DataFrame(index=pd.Index(names[keep], name="gene"))
     return X, var, barcodes
+
+
+def _read_h5ad_minimal_compat(h5ad_path: Path, spatial_key: str):
+    """Read only the pieces wsinsight import needs from an h5ad file.
+
+    Some files written by newer toolchains contain optional encoded elements
+    that older anndata versions cannot deserialize (for example
+    IOSpec(encoding_type='null')). This fallback avoids whole-file deserialization
+    and reads only X/obs/var/obsm[spatial_key].
+    """
+    import h5py
+    import numpy as np
+    import pandas as pd
+    from anndata import AnnData
+
+    read_elem = None
+    try:
+        from anndata.experimental import read_elem as _read_elem
+        read_elem = _read_elem
+    except Exception:
+        try:
+            from anndata._io.specs import read_elem as _read_elem
+            read_elem = _read_elem
+        except Exception:
+            read_elem = None
+
+    if read_elem is None:
+        raise click.ClickException(
+            "Failed to import anndata read helpers for compatibility loading. "
+            "Install a newer anndata, or regenerate the source h5ad with a "
+            "version compatible with this environment."
+        )
+
+    with h5py.File(os.fspath(h5ad_path), "r") as f:
+        if "X" not in f:
+            raise click.ClickException(f"No 'X' dataset/group found in: {h5ad_path}")
+
+        X = read_elem(f["X"])
+
+        try:
+            obs = read_elem(f["obs"])
+        except Exception:
+            # Minimal fallback: preserve cell ids even if full obs decoding fails.
+            idx_key = f["obs"].attrs.get("_index", "_index")
+            idx = read_elem(f["obs"][idx_key])
+            obs = pd.DataFrame(index=pd.Index(np.asarray(idx, dtype=str)))
+
+        try:
+            var = read_elem(f["var"])
+        except Exception:
+            # Minimal fallback: preserve gene ids even if full var decoding fails.
+            idx_key = f["var"].attrs.get("_index", "_index")
+            idx = read_elem(f["var"][idx_key])
+            var = pd.DataFrame(index=pd.Index(np.asarray(idx, dtype=str), name="gene"))
+
+        if "obsm" not in f or spatial_key not in f["obsm"]:
+            raise click.ClickException(
+                f"obsm[{spatial_key!r}] not found in {h5ad_path}. "
+                "sptxinsight annotated.h5ad must store cell centroids under this key."
+            )
+        spatial = np.asarray(read_elem(f["obsm"][spatial_key]), dtype=float)
+
+    adata = AnnData(X=X, obs=obs, var=var)
+    adata.obsm[spatial_key] = spatial
+    return adata
 
 
 # ---------------------------------------------------------------------------
@@ -297,7 +362,16 @@ def _process_sample_h5ad(sample_id: str, h5ad_path: Path, reg_dir: Optional[Path
     from scipy.spatial import cKDTree
 
     # ---- Read pre-annotated AnnData ----
-    adata_src = anndata.read_h5ad(os.fspath(h5ad_path))
+    try:
+        adata_src = anndata.read_h5ad(os.fspath(h5ad_path))
+    except Exception as exc:
+        # Compatibility path for newer h5ad encodings unsupported by the
+        # pinned anndata in this image (e.g., IOSpec encoding_type='null').
+        msg = str(exc)
+        if "IORegistryError" in type(exc).__name__ or "encoding_type='null'" in msg:
+            adata_src = _read_h5ad_minimal_compat(h5ad_path, spatial_key)
+        else:
+            raise
 
     if spatial_key not in adata_src.obsm:
         raise click.ClickException(
@@ -326,13 +400,15 @@ def _process_sample_h5ad(sample_id: str, h5ad_path: Path, reg_dir: Optional[Path
     # ---- transform µm -> full-res H&E px ----
     if reg_dir is None:
         raise click.ClickException(
-            f"[{sample_id}] --xenium-reg-dir is required for platform=xenium-h5ad."
+            f"[{sample_id}] sptx-list column 3 (transform_dir) is required "
+            "for platform=xenium-h5ad."
         )
-    sample_reg_dir = reg_dir / sample_id
+    sample_reg_dir = reg_dir
     if not sample_reg_dir.is_dir():
         raise click.ClickException(
             f"[{sample_id}] registration directory not found: {sample_reg_dir}. "
-            "Expected --xenium-reg-dir/<sample_id>/ with registration_params.json."
+            "Expected sptx-list column 3 to point at the sample transform folder "
+            "containing registration_params.json."
         )
     params_file = sample_reg_dir / "registration_params.json"
     elastic_file = sample_reg_dir / "direct_transf.txt"
@@ -494,7 +570,8 @@ def _write_h5ad(adata, out_path: URIPath) -> None:
     "-s", "--sptx-dir",
     type=URIPathType(exists=True, **_STORAGE_KWARGS),
     required=True,
-    help="A sptx-list:// manifest (path<TAB>sample_id per line). "
+    help="A sptx-list:// manifest (path<TAB>sample_id<TAB>transform_dir per line). "
+         "Column 2 (sample_id) and column 3 (transform_dir) are optional. "
          "For platform=xenium: path points at each raw Xenium sample directory. "
          "For platform=xenium-h5ad: path points at each sptxinsight annotated.h5ad file.",
 )
@@ -513,16 +590,7 @@ def _write_h5ad(adata, out_path: URIPath) -> None:
     help="Spatial-transcriptomics platform to import. "
          "'xenium': read from raw Xenium output directories (cells.parquet + cell_feature_matrix.h5). "
          "'xenium-h5ad': read from sptxinsight annotated.h5ad files (obsm['spatial'] + X); "
-         "requires --xenium-reg-dir for the ST2WSI registration transforms.",
-)
-@click.option(
-    "--xenium-reg-dir",
-    type=URIPathType(exists=True, **_STORAGE_KWARGS),
-    default=None,
-    help="(platform=xenium-h5ad only) Directory holding one sub-directory per "
-         "sample_id, each containing the ST2WSI registration files "
-         "(registration_params.json and optional direct_transf.txt). "
-         "Typically the parent of the original Xenium output directories.",
+         "the sptx-list 3rd column supplies the per-sample ST2WSI transform directory.",
 )
 @click.option(
     "--spatial-key",
@@ -532,11 +600,13 @@ def _write_h5ad(adata, out_path: URIPath) -> None:
 )
 @click.option(
     "--transform",
-    type=click.Choice(["affine", "affine+bspline"]),
+    type=click.Choice(["affine", "affine+bspline", "none"]),
     default="affine+bspline",
     show_default=True,
     help="ST2WSI coordinate transform: SIFT affine only, or affine + bUnwarpJ "
-         "elastic B-spline (default; requires the H&E target dimensions).",
+         "elastic B-spline (default; requires the H&E target dimensions), or "
+         "'none' to pass µm coordinates through unchanged (useful when the "
+         "h5ad already contains pixel coordinates).",
 )
 @click.option(
     "--genes",
@@ -584,7 +654,6 @@ def sptx_import(
     sptx_dir: URIPath,
     results_dir: URIPath,
     platform: str = "xenium",
-    xenium_reg_dir: Optional[URIPath] = None,
     spatial_key: str = "spatial",
     transform: str = "affine+bspline",
     genes: str = "all",
@@ -613,8 +682,8 @@ def sptx_import(
     \b
     platform=xenium-h5ad:
       sptx-list paths point to sptxinsight annotated.h5ad files.
-      Requires --xenium-reg-dir pointing to a directory with one sub-folder
-      per sample_id holding the ST2WSI registration files.
+      The 3rd column of the sptx-list manifest supplies the per-sample
+      ST2WSI transform directory (registration_params.json etc.).
       sptxinsight obs columns are carried over under the ``sptx_`` prefix.
 
     \b
@@ -626,10 +695,8 @@ def sptx_import(
     ensure_input_directory(wsi_dir, "--wsi-dir")
     ensure_input_directory(results_dir, "--results-dir")
 
-    if platform == "xenium-h5ad" and xenium_reg_dir is None:
-        raise click.UsageError(
-            "--xenium-reg-dir is required when --platform=xenium-h5ad."
-        )
+    if platform == "xenium-h5ad" and transform != "none":
+        pass  # per-sample transform_dir validated during iteration
 
     include_sources = tuple(
         s for s in (t.strip() for t in include.replace(",", " ").split()) if s
@@ -705,7 +772,9 @@ def sptx_import(
                     click.secho(f"  [skip] {sid}: h5ad path is not a file: {h5ad_path}", fg="yellow")
                     skipped.append(sid)
                     continue
-                reg_dir = Path(os.fspath(xenium_reg_dir)) if xenium_reg_dir is not None else None
+                # Per-sample transform dir comes from the sptx-list 3rd column.
+                sample_tdir = getattr(child, "transform_dir", None)
+                reg_dir = Path(sample_tdir) if sample_tdir else None
                 info = _process_sample_h5ad(
                     sid, h5ad_path, reg_dir, wsi_path, model_csv, out_path,
                     transform, want_genes, match_max_dist, dry_run,

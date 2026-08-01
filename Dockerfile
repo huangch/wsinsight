@@ -78,71 +78,59 @@ RUN mv /app/wsinsight/keras /app/
 RUN mv /app/wsinsight/zoo /app/
 
 # ------------------------------------
-# Install ML libraries (Torch + TensorFlow + Keras + StarDist)
-# pynvml conflicts with nvidia-ml-py; uninstall pynvml after install
+# Pre-install heavy ML stack explicitly
+# Torch + TF are in pyproject.toml but pre-installing ensures they land even
+# if the full dep walk of pip install -e . hits a constraint conflict.
 # ------------------------------------
-RUN pip install --retries 10 -c constraints.txt "numpy<2" \
-    torch torchvision torch-geometric tensorflow keras nvidia-ml-py stardist && \
-    pip uninstall -y pynvml || true
+RUN pip install --retries 10 -c /app/wsinsight/constraints.txt "numpy<2" \
+    torch torchvision torch-geometric tensorflow keras stardist nvidia-ml-py
+# pynvml conflicts with nvidia-ml-py; removal is best-effort only.
+RUN pip uninstall -y pynvml || true
 
 # ------------------------------------
-# Install HistomicsTK for staining normalization
+# Pre-install pyvips (SSL fallback chain for corporate proxy)
 # ------------------------------------
-# The girder large_image_wheels index redirects wheel downloads to github.com,
-# which a corporate proxy may intercept with a self-signed certificate, so a
-# plain `pip install histomicstk --find-links ...` dies pulling pyvips.
-# Mirror conda-setup.sh: (1) pre-install pyvips through an SSL fallback chain and
-# tolerate failure; (2) install histomicstk runtime deps from PyPI; (3) install
-# large-image + sources from the girder index with a PyPI fallback; (4) install
-# histomicstk itself with --no-deps so it never re-triggers the proxied wheel
-# downloads.
 RUN set -eu; \
     CONSTR=/app/wsinsight/constraints.txt; \
     GIRDER="--trusted-host github.com --trusted-host raw.githubusercontent.com --trusted-host girder.github.io --find-links https://girder.github.io/large_image_wheels"; \
-    ( pip install --retries 5 $GIRDER -c "$CONSTR" "numpy<2" pyvips \
-      || pip install --retries 5 $GIRDER -c "$CONSTR" "numpy<2" pyvips --cert /etc/pki/tls/certs/ca-bundle.crt \
-      || pip install --retries 5 $GIRDER -c "$CONSTR" "numpy<2" pyvips --cert /etc/ssl/certs/ca-certificates.crt \
-      || CURL_CA_BUNDLE="" pip install --retries 5 $GIRDER -c "$CONSTR" "numpy<2" pyvips \
-      || echo "WARNING: pyvips install failed (all SSL fallbacks exhausted); continuing" ); \
-    pip install --retries 10 -c "$CONSTR" "numpy<2" \
-        nimfa pandas scipy scikit-image Pillow imageio sqlalchemy \
-        ctk-cli girder-slicer-cli-web girder-client \
-        "dask[dataframe]<2024.11.0" distributed; \
-    ( pip install --retries 5 $GIRDER "large-image" "large-image-source-tifffile" "large-image-source-pil" \
+    ( pip install --retries 5 $GIRDER -c "$CONSTR" pyvips \
+      || pip install --retries 5 $GIRDER -c "$CONSTR" pyvips --cert /etc/pki/tls/certs/ca-bundle.crt \
+      || pip install --retries 5 $GIRDER -c "$CONSTR" pyvips --cert /etc/ssl/certs/ca-certificates.crt \
+      || CURL_CA_BUNDLE="" pip install --retries 5 $GIRDER -c "$CONSTR" pyvips \
+      || echo "WARNING: pyvips install failed (all SSL fallbacks exhausted); continuing" )
+
+# ------------------------------------
+# Pre-install large-image from girder wheel index
+# MUST honour constraints.txt: without it large-image pulls zarr>=3 / dask 2026.x,
+# which then makes the constrained `pip install -e .` below unsatisfiable
+# (anndata<0.11 requires zarr<3).
+# ------------------------------------
+RUN set -eu; \
+    CONSTR=/app/wsinsight/constraints.txt; \
+    GIRDER="--trusted-host github.com --trusted-host raw.githubusercontent.com --trusted-host girder.github.io --find-links https://girder.github.io/large_image_wheels"; \
+    ( pip install --retries 5 $GIRDER -c "$CONSTR" "large-image" "large-image-source-tifffile" "large-image-source-pil" \
         "large-image-source-openslide" "large-image-source-vips" "large-image-converter" \
-      || pip install "large-image" "large-image-converter" \
-      || echo "WARNING: large-image install failed; histomicstk may not import" ); \
-    pip install --no-deps --retries 10 $GIRDER -c "$CONSTR" histomicstk
+      || pip install --retries 5 -c "$CONSTR" "large-image" "large-image-converter" \
+      || echo "WARNING: large-image install failed; histomicstk may not import" )
 
 # ------------------------------------
-# Install H-plot and WSInsight packages
+# Install remaining wsinsight dependencies (via pyproject.toml)
+# torch/tf/pyvips/large-image above are already satisfied — pip skips them.
+# histomicstk is NOT in pyproject.toml (girder-client hardpin); installed below.
 # ------------------------------------
-# RUN pip install --upgrade "numpy<2" -e ./hplot
-# Installing `-e ".[mcp]"` directly makes pip re-resolve the ENTIRE dependency
-# graph (already-installed histomicstk large-image[sources] + the [mcp] extra's
-# fastmcp -> keyring -> jaraco.* subtree) and hit pip's "resolution-too-deep".
-# Mirror conda-setup.sh: pre-install the runtime deps (and fastmcp for the MCP
-# extra) in bounded steps, then install the package itself with --no-deps so pip
-# never re-resolves the already-satisfied graph.
-RUN pip install --retries 10 -c constraints.txt "numpy<2" \
-    click \
-    scikit-learn shapely geopandas pyproj rasterio pyogrio \
-    openslide-python wsidicom paquo "wsinfer-zoo>=0.6.2" \
-    igraph leidenalg pynndescent s3fs gcsfs boto3 platformdirs timm \
-    tiffslide imagecodecs opencv-python-headless orjson \
-    h5py anndata lz4 \
-    "huggingface_hub[hf_transfer]"
-RUN pip install --retries 10 -c constraints.txt fastmcp
-RUN pip install --no-deps --no-build-isolation -e "."
+RUN pip install --retries 10 -c /app/wsinsight/constraints.txt -e "/app/wsinsight"
+# pynvml conflicts with nvidia-ml-py; removal is best-effort only.
+RUN pip uninstall -y pynvml || true
+RUN pip install --retries 10 -c /app/wsinsight/constraints.txt fastmcp
 
 # ------------------------------------
-# Hugging Face hub cache (first-run model auto-download)
-# Model weights are NOT baked into the image; the wsinfer-zoo client
-# fetches them on first use via the registry (no user input required for
-# public repos). HF_HOME is placed under /app so a named volume can be
-# mounted there to persist the cache across container runs.
+# histomicstk --no-deps (girder-client==3.2.11 hardpin bypass)
 # ------------------------------------
-RUN pip install --retries 10 -c constraints.txt "huggingface_hub[hf_transfer]"
+RUN pip install --no-deps \
+    --trusted-host github.com --trusted-host raw.githubusercontent.com \
+    --trusted-host girder.github.io \
+    --find-links https://girder.github.io/large_image_wheels \
+    -c /app/wsinsight/constraints.txt histomicstk
 
 # ------------------------------------
 # Sanity check (runs at build time)
@@ -154,6 +142,24 @@ subprocess.run(["java","-version"], check=False)
 print("Torch:", torch.__version__, "CUDA:", torch.version.cuda, "GPU?", torch.cuda.is_available())
 print("TF:", tf.__version__, "GPUs:", tf.config.list_physical_devices("GPU"))
 PY
+
+# ------------------------------------
+# Environment variables
+# ------------------------------------
+ENV WSINSIGHT_ZOO_REGISTRY_PATH=/app/zoo/wsinsight-zoo-registry.json
+ENV KERAS_HOME=/app/keras
+# Persistent Hugging Face cache for first-run model auto-download.
+# Mount a named volume on /app/hf-cache (see docker-run.sh) to keep weights
+# across container restarts.
+ENV HF_HOME=/app/hf-cache \
+    HF_HUB_ENABLE_HF_TRANSFER=1
+
+# Fail the build if the console scripts were not installed. Without this the
+# image can ship with a working Python package but no `wsinsight` on PATH.
+RUN python -c "import wsinsight; print('wsinsight package OK:', wsinsight.__file__)" && \
+    command -v wsinsight && \
+    command -v wsinsight-mcp && \
+    wsinsight --help > /dev/null
 
 # ------------------------------------
 # Non-root user
@@ -180,17 +186,6 @@ RUN chown -R 1000:1000 /workspace
 # entrypoint can remap ``user`` to the mount owner, then drops privileges via
 # setpriv. Passing ``docker run --user ...`` still works: the entrypoint detects
 # a non-root start and execs the command unchanged.
-
-# ------------------------------------
-# Environment variables
-# ------------------------------------
-ENV WSINSIGHT_ZOO_REGISTRY_PATH=/app/zoo/wsinsight-zoo-registry.json
-ENV KERAS_HOME=/app/keras
-# Persistent Hugging Face cache for first-run model auto-download.
-# Mount a named volume on /app/hf-cache (see docker-run.sh) to keep weights
-# across container restarts.
-ENV HF_HOME=/app/hf-cache \
-    HF_HUB_ENABLE_HF_TRANSFER=1
 
 # ------------------------------------
 # Default interactive shell

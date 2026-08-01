@@ -37,24 +37,28 @@ logging.getLogger("botocore.credentials").setLevel(logging.WARNING)
 _LIST_SCHEMES = ("sptx-list", "image-list")
 
 
-def _split_sample_list_line(line: str) -> Tuple[str, Optional[str]]:
-    """Split a ``sptx-list`` manifest line into ``(path, sample_id)``.
+def _split_sample_list_line(line: str) -> Tuple[str, Optional[str], Optional[str]]:
+    """Split a ``sptx-list`` manifest line into ``(path, sample_id, transform_dir)``.
 
-    The optional second column (an explicit sample id) is separated from the
-    path by a TAB or a comma; a TAB takes precedence so that comma-bearing
-    paths still parse. Returns ``(path, None)`` when no id column is present.
+    Columns are separated by TAB (preferred) or comma.  All three columns are
+    optional beyond the first:
 
-    The id column exists because transcriptomics exports (e.g. Xenium) often
-    reuse the same filename (``cells.h5ad``) across projects, so the file stem
-    is not a reliable per-sample identifier.
+    * 1 column : ``/path/to/sample``
+    * 2 columns: ``/path/to/sample<TAB>sample_id``
+    * 3 columns: ``/path/to/sample<TAB>sample_id<TAB>/path/to/transform_dir``
+
+    An empty second column (``<TAB><TAB>``) is treated as absent so the stem
+    is used as sample_id while still allowing a 3rd-column transform_dir.
+    A TAB separator takes precedence over comma so comma-bearing paths parse.
     """
-    if "\t" in line:
-        path_str, _, id_str = line.partition("\t")
-    elif "," in line:
-        path_str, _, id_str = line.partition(",")
-    else:
-        return line.strip(), None
-    return path_str.strip(), (id_str.strip() or None)
+    sep = "\t" if "\t" in line else ("," if "," in line else None)
+    if sep is None:
+        return line.strip(), None, None
+    parts = [p.strip() for p in line.split(sep)]
+    path_str = parts[0]
+    sample_id = parts[1] if len(parts) > 1 and parts[1] else None
+    transform_dir = parts[2] if len(parts) > 2 and parts[2] else None
+    return path_str, sample_id, transform_dir
 
 
 class URIPath:
@@ -297,6 +301,13 @@ class URIPath:
         (``cells.h5ad``) across projects, so stems collide.
         """
         return self._sample_id or self.stem
+
+    @property
+    def transform_dir(self) -> Optional[str]:
+        """Per-sample ST2WSI transform directory from the optional 3rd column of a
+        ``sptx-list`` manifest, or ``None`` if not specified.
+        """
+        return getattr(self, "_transform_dir", None)
 
     @property
     def parent(self) -> "URIPath":
@@ -557,10 +568,12 @@ class URIPath:
                 line = raw.strip()
                 if not line or line.startswith("#"):
                     continue
-                path_str, sample_id = _split_sample_list_line(line)
+                path_str, sample_id, transform_dir = _split_sample_list_line(line)
                 child = self._child(path_str)
                 if sample_id:
                     child._sample_id = sample_id
+                if transform_dir:
+                    child._transform_dir = transform_dir
                 yield child
 
     # ------------------------ Scheme helpers: REMOTE (fsspec, e.g., S3) ------------------------

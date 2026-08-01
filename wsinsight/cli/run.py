@@ -1006,18 +1006,8 @@ def _select_kwargs(values: dict[str, Any], keys: tuple[str, ...]) -> dict[str, A
     help=(
         "Input platform for 'wsinsight import'. "
         "'xenium': raw Xenium output directories (cells.parquet + cell_feature_matrix.h5). "
-        "'xenium-h5ad': sptxinsight annotated.h5ad (obsm['spatial'] + X); "
-        "requires --import-xenium-reg-dir."
-    ),
-)
-@click.option(
-    "--import-xenium-reg-dir",
-    type=URIPathType(exists=True, **_STORAGE_KWARGS),
-    default=None,
-    help=(
-        "(--import-platform=xenium-h5ad only) Directory holding one sub-directory "
-        "per sample_id with the ST2WSI registration files "
-        "(registration_params.json + optional direct_transf.txt)."
+        "'xenium-h5ad': sptxinsight annotated.h5ad; "
+        "the sptx-list 3rd column supplies the per-sample transform directory."
     ),
 )
 @click.option(
@@ -1234,7 +1224,6 @@ def run(
     run_import: bool = False,
     import_sptx_dir: URIPath | None = None,
     import_platform: str = "xenium",
-    import_xenium_reg_dir: URIPath | None = None,
     import_spatial_key: str = "spatial",
     import_include: str = "niche",
     export_geojson: bool = False,
@@ -1377,10 +1366,6 @@ def run(
     if run_import:
         if import_sptx_dir is None:
             raise click.UsageError("--import requires --import-sptx-dir.")
-        if import_platform == "xenium-h5ad" and import_xenium_reg_dir is None:
-            raise click.UsageError(
-                "--import-platform=xenium-h5ad requires --import-xenium-reg-dir."
-            )
         click.echo("\nRunning wsinsight import...\n")
         ctx.invoke(
             import_command,
@@ -1388,7 +1373,6 @@ def run(
             sptx_dir=import_sptx_dir,
             results_dir=results_dir,
             platform=import_platform,
-            xenium_reg_dir=import_xenium_reg_dir,
             spatial_key=import_spatial_key,
             include=import_include,
             overwrite=overwrite,
