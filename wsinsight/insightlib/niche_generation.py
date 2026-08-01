@@ -583,7 +583,7 @@ def _embed_hoptimus_subset_dataset(
     # per-GPU batch is batch_size / ngpu.
     if batch_size is None:
         batch_size = _auto_batch_size(model, dev)
-        _logger.debug("H-optimus auto batch_size=%d (ngpu=%d, per-GPU≈%d)",
+        _logging.getLogger(__name__).debug("H-optimus auto batch_size=%d (ngpu=%d, per-GPU≈%d)",
                       batch_size, max(ngpu, 1), batch_size // max(ngpu, 1))
 
     # Build a Subset where sample index equals the cell_id we want
@@ -627,7 +627,7 @@ def _embed_hoptimus_subset_dataset(
                     new_bs = max(1, batch_size // 2)
                     if new_bs == batch_size:
                         raise  # already at minimum; propagate
-                    _logger.warning(
+                    _logging.getLogger(__name__).warning(
                         "H-optimus OOM at batch_size=%d; retrying with %d", batch_size, new_bs
                     )
                     batch_size = new_bs
