@@ -99,6 +99,17 @@ def _num_cpus() -> int:
     ),
 )
 @click.option(
+    "--hoptimus-only",
+    "niche_hoptimus_only",
+    is_flag=True,
+    default=False,
+    show_default=True,
+    help=(
+        "Use only H-Optimus features for niche (skip k-hop composition features). "
+        "Requires --hoptimus."
+    ),
+)
+@click.option(
     "--hoptimus-pca-dim",
     "niche_hoptimus_pca_dim",
     default=None,
@@ -300,6 +311,7 @@ def niche(
     wsi_dir: URIPath,
     results_dir: URIPath,
     niche_hoptimus: bool = False,
+    niche_hoptimus_only: bool = False,
     niche_hoptimus_pca_dim: int | None = None,
     niche_clusters: int | None = None,
     niche_leiden_res: list[float] | None = None,
@@ -357,6 +369,9 @@ def niche(
         "\nRunning niche analysis.\n", fg="green"
     )
 
+    if niche_hoptimus_only and not niche_hoptimus:
+        raise click.UsageError("--hoptimus-only requires --hoptimus.")
+
     try:
         from ..insightlib.niche_generation import niche_generation
     except Exception as exc:  # noqa: BLE001
@@ -374,6 +389,7 @@ def niche(
         k_hops=niche_k_hops,
         alpha=niche_alpha,
         use_hoptimus=niche_hoptimus,
+        hoptimus_only=niche_hoptimus_only,
         pca_dim=niche_hoptimus_pca_dim,
         hidden=64,
         out_dim=niche_embed_dim,

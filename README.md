@@ -712,6 +712,7 @@ where 1.0 is equilateral).  Edges and triads are **not** merged into
  Option             | Default | Description
 --------------------|---------|------------------------------------------------------------------------------------
  `--hoptimus`   | off     | Enable H-Optimus tissue morphology features (requires GPU + timm)
+ `--hoptimus-only` | off  | Use only H-Optimus features for niche and skip k-hop composition features (requires `--hoptimus`)
  `--hoptimus-pca-dim` | raw (unset) | Optional PCA dimensionality for H-Optimus embeddings; if omitted, raw H-Optimus features are used (no PCA)
  `--clusters`   | auto    | Number of KMeans clusters; when omitted, determined via Leiden community detection
  `--leiden-res` | `0.5,1.0,2.0` | Comma-separated Leiden resolutions to sweep when `--clusters` is omitted

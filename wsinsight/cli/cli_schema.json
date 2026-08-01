@@ -1263,6 +1263,19 @@
           "required": false
         },
         {
+          "default": false,
+          "flags": [
+            "--hoptimus-only"
+          ],
+          "help": "Use only H-Optimus features for niche (skip k-hop composition features). Requires --hoptimus.",
+          "is_flag": true,
+          "kind": "bool",
+          "multiple": false,
+          "name": "niche_hoptimus_only",
+          "param_type": "option",
+          "required": false
+        },
+        {
           "default": null,
           "flags": [
             "--hoptimus-pca-dim"
@@ -2889,6 +2902,19 @@
           "kind": "bool",
           "multiple": false,
           "name": "niche_hoptimus",
+          "param_type": "option",
+          "required": false
+        },
+        {
+          "default": false,
+          "flags": [
+            "--niche-hoptimus-only"
+          ],
+          "help": "Use only H-Optimus features for niche (skip k-hop composition features). Requires --niche-hoptimus and --niche.",
+          "is_flag": true,
+          "kind": "bool",
+          "multiple": false,
+          "name": "niche_hoptimus_only",
           "param_type": "option",
           "required": false
         },

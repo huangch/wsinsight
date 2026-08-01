@@ -771,6 +771,7 @@ def prepare_slide_graph(
     alpha: float = 1.0,
     # H-Optimus
     use_hoptimus: bool = False,
+    hoptimus_only: bool = False,
     patch_dataset: Optional[Dataset] = None,  # your dataset: __getitem__(cell_id)-> PIL.Image / Tensor
     sample_frac: Optional[float] = 0.2,
     sample_count: Optional[int] = None,
@@ -821,9 +822,13 @@ def prepare_slide_graph(
     # P_all, _ = probs_from_df(df, class_order=class_order)  # [N,C]
     P = P_all[kept_idx]  # [N_kept,C]
 
-    # k-hop features (always on; biologically grounded)
+    if hoptimus_only and not use_hoptimus:
+        raise ValueError("hoptimus_only=True requires use_hoptimus=True")
+
+    # k-hop features (default path unless H-Optimus-only mode is requested).
     X_khop = khop_features(P=P, edge_index=edge_index, N=N_kept, k=k_hops, alpha=alpha, mode=mode)  # [N_kept,(k+1)C]
-    blocks = [X_khop.astype(np.float32)]
+    blocks = [] if hoptimus_only else [X_khop.astype(np.float32)]
+    hoptimus_dim = 0
 
     # Optional: H-Optimus (sample subset via DataLoader, then KNN impute to all)
     if use_hoptimus:
@@ -854,6 +859,7 @@ def prepare_slide_graph(
         # KNN impute to all kept nodes (micron distances)
         H_full = _impute_knn(coords_um=coords_um, sampled_idx=sampled_local_idx,
                              sampled_feats=Hs, k=knn_k, sigma_um=knn_sigma_um)  # [N_kept,D]
+        hoptimus_dim = int(H_full.shape[1])
         blocks.append(H_full.astype(np.float32))
 
     # concatenate feature blocks (khop [+ H0])
@@ -865,6 +871,9 @@ def prepare_slide_graph(
         "kept_idx": kept_idx.astype(np.int64),
         "classes": classes,
         "edges_df": edges_df,
+        "khop_dim": int(X_khop.shape[1]),
+        "hoptimus_dim": int(hoptimus_dim),
+        "hoptimus_only": bool(hoptimus_only),
     }
     
 # =============================================================================
@@ -1114,7 +1123,7 @@ def estimate_niches_from_Z_list(
 def _prepare_slide_graph_worker(i, wsi_path, csv_path, ds,
         max_edge_len_um, class_order, k_hops, alpha,
         sample_frac, sample_count, pca_dim, knn_k, knn_sigma_um,
-        device, niche_soft_mode, use_hoptimus, graph_cache_dir):
+    device, niche_soft_mode, use_hoptimus, hoptimus_only, graph_cache_dir):
     """Background worker to build one slide graph and return it with index."""
     df = pd.read_csv(csv_path)
     mpp = get_avg_mpp(wsi_path)
@@ -1125,6 +1134,7 @@ def _prepare_slide_graph_worker(i, wsi_path, csv_path, ds,
         max_edge_len_um=max_edge_len_um,
         class_order=class_order,
         k_hops=k_hops, alpha=alpha,
+        hoptimus_only=hoptimus_only,
         use_hoptimus=use_hoptimus, patch_dataset=ds,
         sample_frac=sample_frac, sample_count=sample_count,
         pca_dim=pca_dim, knn_k=knn_k, knn_sigma_um=knn_sigma_um,
@@ -1144,15 +1154,22 @@ def _niche_cellular_worker(args):
     writes on interruption (the parent handles cancellation between futures).
     """
     (wsi_path, model_output_csv, kept_idx, X_raw, classes,
-     labels, k_hops, niche_clustering_k, cell_csv, overwrite) = args
+     labels, k_hops, niche_clustering_k, cell_csv, overwrite,
+     hoptimus_only, khop_dim) = args
     cell_csv = Path(cell_csv)
     if not overwrite and cell_csv.exists():
         return str(cell_csv), "skip"
 
     niche_detection_df = pd.read_csv(model_output_csv)
-    feature_cols = [f"feature_k{k}_{c.replace('prob_', '')}"
-                    for k in range(k_hops + 1) for c in classes]
-    niche_detection_df.loc[kept_idx, feature_cols] = X_raw
+    if hoptimus_only:
+        feature_cols = [f"hoptimus_feature_{j}" for j in range(X_raw.shape[1])]
+        niche_detection_df.loc[kept_idx, feature_cols] = X_raw
+    else:
+        feature_cols = [f"feature_k{k}_{c.replace('prob_', '')}"
+                        for k in range(k_hops + 1) for c in classes]
+        # Keep the CSV contract stable: export only the k-hop feature block even
+        # when niche training used concatenated k-hop + H-Optimus features.
+        niche_detection_df.loc[kept_idx, feature_cols] = X_raw[:, :int(khop_dim)]
     niche_cols = [f"niche_{l}" for l in range(niche_clustering_k)]
     label_one_hot = np.eye(niche_clustering_k, dtype=np.float32)[labels]
     niche_detection_df.loc[kept_idx, niche_cols] = label_one_hot
@@ -1202,6 +1219,7 @@ def niche_generation(
     alpha: float = 1.0,
     # H-Optimus switch & params
     use_hoptimus: bool = False,
+    hoptimus_only: bool = False,
     patch_datasets: Optional[List[Dataset]] = None,  # list aligned with slides_inputs; if None, Dummy is used
     sample_frac: Optional[float] = 0.2,
     sample_count: Optional[int] = None,
@@ -1233,6 +1251,8 @@ def niche_generation(
     Prepare graphs for multiple slides, train one DGI on the raw k-hop
     composition features, and cluster per slide.
     """
+    if hoptimus_only and not use_hoptimus:
+        raise ValueError("hoptimus_only=True requires use_hoptimus=True")
     
     if os.getenv("WSINFER_FORCE_CPU", "0").lower() not in {"0", "f", "false"}:
         device = torch.device("cpu")
@@ -1374,7 +1394,7 @@ def niche_generation(
             tasks.append((i, wsi_path, csv_path, ds,
                           max_edge_len_um, class_order, k_hops, alpha,
                           sample_frac, sample_count, pca_dim, knn_k, knn_sigma_um,
-                          device, niche_soft_mode, use_hoptimus, graph_cache_dir))
+                          device, niche_soft_mode, use_hoptimus, hoptimus_only, graph_cache_dir))
             
         num_workers = pick_workers_safe(max_workers=os.cpu_count()-8, min_workers=8)
         
@@ -1487,7 +1507,8 @@ def niche_generation(
             cell_csv = niche_cells_output_dir / niche_csv_name
             _p4_tasks.append((wsi_path, model_output_paths[i], slides[i]["kept_idx"],
                               slides[i]["X"], slides[i]["classes"],
-                              labels_list[i], k_hops, niche_clustering_k, cell_csv, overwrite))
+                              labels_list[i], k_hops, niche_clustering_k, cell_csv, overwrite,
+                              bool(slides[i].get("hoptimus_only", False)), int(slides[i].get("khop_dim", 0))))
         _p4_workers = pick_workers_safe(max_workers=os.cpu_count() - 2, min_workers=2)
         _p4_ctx = mp.get_context("spawn")
         with ProcessPoolExecutor(max_workers=_p4_workers, mp_context=_p4_ctx) as _ex:
