@@ -466,9 +466,46 @@ def _make_short_ids(stems: List[str]) -> dict:
     return make_short_ids(stems)
 
 
+# Empirical activation memory per 224×224 RGB image through ViT-H/14 with no_grad.
+# Measured as ~64 MB per image (input tensor + 32-layer transformer activations).
+# Used by _auto_batch_size to estimate how many images safely fit in free VRAM.
+_HOPTIMUS_BYTES_PER_IMAGE: int = 64 * 1024 ** 2  # 64 MiB
+
+
+def _auto_batch_size(
+    model: nn.Module,
+    dev: str,
+    safety: float = 0.75,
+    min_batch: int = 8,
+    max_batch: int = 4096,
+    bytes_per_image: int = _HOPTIMUS_BYTES_PER_IMAGE,
+) -> int:
+    """Return a batch size that fits comfortably in available VRAM.
+
+    After the model is already loaded on *dev*, queries free VRAM, subtracts a
+    safety margin, and divides by *bytes_per_image* (empirical per-image peak
+    during a forward pass with ``torch.no_grad``).  Result is rounded down to
+    the nearest power of two for DataParallel efficiency and clamped to
+    [min_batch, max_batch].
+
+    Falls back to *min_batch* on CPU or if VRAM introspection is unavailable.
+    """
+    if not torch.cuda.is_available():
+        return min_batch
+    try:
+        # mem_get_info() returns (free, total) for the current device in bytes.
+        free_bytes, _total = torch.cuda.mem_get_info(torch.cuda.current_device())
+        usable = int(free_bytes * safety)
+        n = max(min_batch, min(max_batch, usable // bytes_per_image))
+        # Snap to the largest power of two ≤ n for uniform batch geometry.
+        return 2 ** int(math.log2(n))
+    except Exception:
+        return min_batch
+
+
 def _embed_hoptimus_subset_dataset(
     dataset: Dataset, sampled_ids: List[int],
-    batch_size: int = 128, device: Optional[str] = None,
+    batch_size: Optional[int] = None, device: Optional[str] = None,
     hoptimus_model_dir: Optional[Path] = None,
     slide_id: Optional[str] = None,
     display_id: Optional[str] = None,
@@ -530,36 +567,77 @@ def _embed_hoptimus_subset_dataset(
     if ngpu > 1 and model.parameters().__next__().is_cuda:
         model = nn.DataParallel(model)  # splits each batch across all GPUs automatically
 
+    # Determine batch size dynamically from available VRAM when caller passes None.
+    # _auto_batch_size() queries free VRAM after model load, divides by the empirical
+    # per-image activation footprint of ViT-H/14, and rounds to a power of two.
+    # DataParallel distributes this batch evenly across all GPUs, so the effective
+    # per-GPU batch is batch_size / ngpu.
+    if batch_size is None:
+        batch_size = _auto_batch_size(model, dev)
+        _logger.debug("H-optimus auto batch_size=%d (ngpu=%d, per-GPU≈%d)",
+                      batch_size, max(ngpu, 1), batch_size // max(ngpu, 1))
+
     # Build a Subset where sample index equals the cell_id we want
     subset = Subset(dataset, sampled_ids)
-    loader = DataLoader(subset, batch_size=batch_size, shuffle=False, num_workers=0,
-                        collate_fn=list)  # PIL.Image is not tensor-stackable by default_collate
 
-    n_batches = math.ceil(len(sampled_ids) / batch_size)
-    # Use display_id (short label) for the progress bar if provided
+    def _build_loader(bs: int) -> DataLoader:
+        return DataLoader(subset, batch_size=bs, shuffle=False, num_workers=0,
+                          collate_fn=list)  # PIL.Image is not tensor-stackable by default_collate
+
+    def _preprocess_batch(batch) -> torch.Tensor:
+        if isinstance(batch, list):
+            return torch.stack([pre(im) for im in batch]).to(dev)
+        elif isinstance(batch, torch.Tensor):
+            if batch.dim() == 4 and batch.shape[1] in (1, 3):
+                return torch.stack([pre(transforms.ToPILImage()(t)) for t in batch]).to(dev)
+            return torch.stack([pre(b) for b in batch]).to(dev)
+        else:
+            try:
+                return torch.stack([pre(im) for im in batch]).to(dev)
+            except Exception:
+                return batch.to(dev)
+
     _label = display_id or slide_id or "H-optimus"
     desc = f"  [{_label}]"
     feats = []
+    loader = _build_loader(batch_size)
+    n_batches = math.ceil(len(sampled_ids) / batch_size)
+    pbar = tqdm(total=n_batches, desc=desc, leave=False, position=1, unit="batch")
     with torch.no_grad():
-        for batch in tqdm(loader, total=n_batches, desc=desc, leave=False, position=1, unit="batch"):
-            # batch may be PIL Images (list) or already tensors
-            if isinstance(batch, list):
-                x = torch.stack([pre(im) for im in batch]).to(dev)      # [B,3,224,224]
-            elif isinstance(batch, torch.Tensor):
-                # If user returns raw tensors, ensure shape and normalize via pre
-                if batch.dim() == 4 and batch.shape[1] in (1, 3):
-                    x = torch.stack([pre(transforms.ToPILImage()(t)) for t in batch]).to(dev)
-                else:
-                    x = torch.stack([pre(b) if not isinstance(b, torch.Tensor) else pre(b) for b in batch]).to(dev)
-            else:
-                # If DataLoader collate returns arbitrary type, try element-wise preprocessing
+        for batch in loader:
+            while True:
                 try:
-                    x = torch.stack([pre(im) for im in batch]).to(dev)
-                except Exception:
-                    # Fallback: assume batch is already preprocessed tensor
-                    x = batch.to(dev)
-            z = model(x)                                               # [B,1536]
-            feats.append(z.detach().cpu())
+                    x = _preprocess_batch(batch)
+                    z = model(x)
+                    feats.append(z.detach().cpu())
+                    pbar.update(1)
+                    break
+                except torch.cuda.OutOfMemoryError:
+                    # Halve batch size and rebuild loader from remaining items.
+                    torch.cuda.empty_cache()
+                    new_bs = max(1, batch_size // 2)
+                    if new_bs == batch_size:
+                        raise  # already at minimum; propagate
+                    _logger.warning(
+                        "H-optimus OOM at batch_size=%d; retrying with %d", batch_size, new_bs
+                    )
+                    batch_size = new_bs
+                    # Re-emit remaining items with reduced batch size by splitting current batch
+                    sub_batches = [batch[i:i + batch_size] for i in range(0, len(batch), batch_size)]
+                    x = _preprocess_batch(sub_batches[0])
+                    z = model(x)
+                    feats.append(z.detach().cpu())
+                    pbar.update(1)
+                    for sb in sub_batches[1:]:
+                        x = _preprocess_batch(sb)
+                        feats.append(model(x).detach().cpu())
+                        pbar.update(1)
+                    # Rebuild loader with new batch size for remaining slides
+                    loader = _build_loader(batch_size)
+                    n_batches = math.ceil(len(sampled_ids) / batch_size)
+                    pbar.reset(total=n_batches)
+                    break
+    pbar.close()
     return torch.cat(feats, dim=0).numpy().astype(np.float32)
 
 def _impute_knn(coords_um: np.ndarray, sampled_idx: np.ndarray, sampled_feats: np.ndarray,
@@ -929,7 +1007,7 @@ def prepare_slide_graph(
         sampled_global_ids = kept_idx[sampled_local_idx].tolist()                      # map to original IDs for dataset
 
         # embed sampled
-        Hs = _embed_hoptimus_subset_dataset(patch_dataset, sampled_global_ids, batch_size=128, device=device, hoptimus_model_dir=hoptimus_model_dir, slide_id=slide_id, display_id=display_id)  # [m,1536]
+        Hs = _embed_hoptimus_subset_dataset(patch_dataset, sampled_global_ids, device=device, hoptimus_model_dir=hoptimus_model_dir, slide_id=slide_id, display_id=display_id)  # [m,1536]
         # optional PCA
         if pca_dim is not None and Hs.shape[1] > pca_dim:
             from sklearn.decomposition import PCA
