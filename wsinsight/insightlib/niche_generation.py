@@ -1496,6 +1496,10 @@ def niche_generation(
         for _ckpt in (niche_slide_graph_file, niche_dgi_embeddings_file, niche_labels_file):
             if _ckpt.exists():
                 _ckpt.unlink()
+        # Also wipe the per-slide graph cache so Phase 1 recomputes every slide.
+        _per_slide_cache_dir = Path(str(results_dir)) / "slide-graphs-cache"
+        if _per_slide_cache_dir.exists():
+            shutil.rmtree(_per_slide_cache_dir, ignore_errors=True)
     
     # 1) Build slides (reusing your funcs)
     slides = []
@@ -1559,6 +1563,12 @@ def niche_generation(
         graph_cache_dir = Path(str(results_dir)) / "graphs"
         graph_cache_dir.mkdir(parents=True, exist_ok=True)
 
+        # Per-slide checkpoint directory: each slide's graph is saved as soon
+        # as it completes so that an interrupted run can resume without
+        # recomputing already-finished slides.
+        slide_graph_cache_dir = Path(str(results_dir)) / "slide-graphs-cache"
+        slide_graph_cache_dir.mkdir(parents=True, exist_ok=True)
+
         # Process slides sequentially so DataParallel can use all GPUs for each
         # slide's H-optimus embedding, with a clean nested progress display.
         slide_stems = [Path(str(p)).stem for p in slide_paths]
@@ -1568,6 +1578,16 @@ def niche_generation(
         for i, (wsi_path, csv_path) in enumerate(zip(slide_paths, model_output_paths)):
             slide_id = Path(str(wsi_path)).stem
             display_id = short_ids.get(slide_id, slide_id)
+            per_slide_cache = slide_graph_cache_dir / f"{slide_id}.joblib"
+
+            # Resume: skip slides already computed in a previous interrupted run.
+            if not overwrite and per_slide_cache.exists():
+                slides[i] = joblib.load(per_slide_cache)
+                if classes is None:
+                    classes = slides[i]["classes"]
+                slide_bar.update(1)
+                continue
+
             ds = None
             if use_hoptimus and patch_datasets is not None and i < len(patch_datasets):
                 ds = patch_datasets[i]
@@ -1593,6 +1613,8 @@ def niche_generation(
             slides[i] = s
             if classes is None:
                 classes = s["classes"]
+            # Persist this slide immediately so an interrupted run can resume.
+            joblib.dump(s, per_slide_cache, compress=("lz4", 3))
             # Clean up temporary files after each slide to prevent /tmp from filling up
             # (especially important when using H-optimus, which may create many temp files)
             _cleanup_tmpdir()
