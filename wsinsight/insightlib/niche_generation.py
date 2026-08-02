@@ -1096,33 +1096,37 @@ def _embed_hoptimus_subset_dataset(
     if torch.cuda.is_available():
         torch.cuda.empty_cache()
 
-    # Golden-ratio probe strategy:
-    #   start   = calibrated / φ  ≈ 0.618 × calibrated
-    #   ceiling = calibrated       (full estimate, allow exploration up to it)
-    #   upward probe factor = φ ≈ 1.618  (gentler than ×2)
+    # Why we never probe upward for H-Optimus:
     #
-    # Why φ beats ×2 for H-Optimus:
-    #   The two-point calibration overestimates by ~2×, so the actual max is
-    #   around 0.5–0.75 × calibrated.  Starting at 0.618 × calibrated almost
-    #   always succeeds on the first try.  Probing up by ×1.618 reaches the
-    #   ceiling in ~3 OOM calls instead of 13, causing far less allocator
-    #   fragmentation — the cascade seen with ×2 (where eventually even
-    #   previously-working batches OOM) does not occur.
-    #   When the user sets --hoptimus-batch-size explicitly we trust that value.
+    #   _start_bs = calibrated / φ  ≈ 0.618 × calibrated
+    #   _max_bs   = _start_bs        (ceiling == start → no upward probing)
+    #
+    # The improved 64→256 calibration overestimates the true max by ~φ, so
+    # calibrated/φ ≈ true_max.  The first attempt usually succeeds.
+    #
+    # Upward probing after the first success sounds appealing but is
+    # destructive: each OOM call flushes the CUDA allocator cache, fragmenting
+    # the free block pool.  After enough OOM calls (as few as 12), even the
+    # originally-working batch size starts failing — triggering a collapse to
+    # batch_size=14.  We already found the sweet spot on step 1; there is
+    # nothing above worth chasing.
+    #
+    # If the start itself OOMs (e.g. another process grabbed VRAM), the
+    # downward golden-ratio bisect finds a stable smaller value cleanly with
+    # at most log_φ(start) ≈ 20 steps.
     _PHI = (1.0 + 5.0 ** 0.5) / 2.0  # ≈ 1.618
     if _user_specified_batch_size:
-        _start_bs  = max(len(replicas), batch_size)
-        _max_bs    = _start_bs
-        _probe     = 2.0          # irrelevant: max_batch == start so no upward probe
+        _start_bs = max(len(replicas), batch_size)
     else:
-        _start_bs  = max(len(replicas), int(batch_size / _PHI))
-        _max_bs    = batch_size
-        _probe     = _PHI
+        _start_bs = max(len(replicas), int(batch_size / _PHI))
+    _max_bs = _start_bs   # cap = start: never probe upward
     feats = _run_adaptive_batches(
         n_total=n_total,
         batch_size=_start_bs,
         max_batch=_max_bs,
-        probe_factor=_probe,
+        # probe_factor is irrelevant here (max_batch == batch_size → no upward
+        # probing ever triggers); the golden-ratio downward fallback is still
+        # active via the default probe_factor=φ in _run_adaptive_batches.
         fetch=_fetch,
         forward=_forward,
         on_oom=_flush_caches,
