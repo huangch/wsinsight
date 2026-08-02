@@ -466,11 +466,39 @@ def _make_short_ids(stems: List[str]) -> dict:
     return make_short_ids(stems)
 
 
-# Empirical activation memory per 224×224 RGB image through ViT-H/14 with no_grad.
-# Derived from observed runtime: 20 GB used per GPU with 512 images/GPU gives
-# (20 GB - 2.5 GB model) / 512 ≈ 34 MB per image. Use 32 MB (rounded to power-of-2)
-# as the per-image budget so the safety factor provides the remaining headroom.
-_HOPTIMUS_BYTES_PER_IMAGE: int = 32 * 1024 ** 2  # 32 MiB
+# Fallback per-image memory estimate used when GPU calibration is unavailable.
+_HOPTIMUS_BYTES_PER_IMAGE_FALLBACK: int = 32 * 1024 ** 2  # 32 MiB
+
+
+def _calibrate_bytes_per_image(model: nn.Module, dev: str) -> int:
+    """Measure peak GPU memory consumed by a single forward pass.
+
+    Runs one dummy 224×224 RGB image through *model* with ``torch.no_grad``,
+    records the peak additional memory allocated on the current device, and
+    returns that as the per-image budget for batch-size calculation.
+
+    This replaces the hardcoded constant so the estimate is correct for any
+    model architecture or input size, not just ViT-H/14.
+
+    Falls back to ``_HOPTIMUS_BYTES_PER_IMAGE_FALLBACK`` on any error.
+    """
+    if not torch.cuda.is_available():
+        return _HOPTIMUS_BYTES_PER_IMAGE_FALLBACK
+    try:
+        torch.cuda.synchronize()
+        torch.cuda.reset_peak_memory_stats()
+        baseline = torch.cuda.memory_allocated()
+        dummy = torch.zeros(1, 3, 224, 224, device=dev)
+        with torch.no_grad():
+            model(dummy)
+        torch.cuda.synchronize()
+        peak = torch.cuda.max_memory_allocated()
+        torch.cuda.empty_cache()
+        measured = max(peak - baseline, 1 * 1024 * 1024)  # at least 1 MiB
+        return measured
+    except Exception:
+        torch.cuda.empty_cache()
+        return _HOPTIMUS_BYTES_PER_IMAGE_FALLBACK
 
 
 def _auto_batch_size(
@@ -479,20 +507,22 @@ def _auto_batch_size(
     safety: float = 0.75,
     min_batch: int = 8,
     max_batch: int = 8192,
-    bytes_per_image: int = _HOPTIMUS_BYTES_PER_IMAGE,
+    bytes_per_image: Optional[int] = None,
 ) -> int:
     """Return a batch size that fills ~75% of available VRAM across all GPUs.
 
-    After the model is already loaded on *dev*, queries free VRAM on the primary
-    device, computes per-GPU capacity, multiplies by *ngpu* for the total batch,
-    then rounds to the nearest multiple of *ngpu* so DataParallel distributes
-    an equal sub-batch to every device.
+    Calibrates per-image memory cost by running a single dummy forward pass,
+    then queries free VRAM on the primary device, computes per-GPU capacity,
+    and multiplies by *ngpu* so DataParallel distributes a full per-GPU load
+    to every device.
 
     Falls back to *min_batch* on CPU or if VRAM introspection is unavailable.
     """
     if not torch.cuda.is_available():
         return min_batch
     try:
+        if bytes_per_image is None:
+            bytes_per_image = _calibrate_bytes_per_image(model, dev)
         n_gpu = max(1, torch.cuda.device_count())
         # Query free VRAM on the primary device (model already loaded there).
         free_bytes, _total = torch.cuda.mem_get_info(torch.cuda.current_device())
