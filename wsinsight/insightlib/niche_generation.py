@@ -1678,19 +1678,37 @@ def _niche_cellular_worker(args):
         return str(cell_csv), "skip"
 
     niche_detection_df = pd.read_csv(model_output_csv)
+
     if hoptimus_only:
         feature_cols = [f"hoptimus_feature_{j}" for j in range(X_raw.shape[1])]
-        niche_detection_df.loc[kept_idx, feature_cols] = X_raw
+        feature_block = X_raw
     else:
         feature_cols = [f"feature_k{k}_{c.replace('prob_', '')}"
                         for k in range(k_hops + 1) for c in classes]
         # Keep the CSV contract stable: export only the k-hop feature block even
         # when niche training used concatenated k-hop + H-Optimus features.
-        niche_detection_df.loc[kept_idx, feature_cols] = X_raw[:, :int(khop_dim)]
-    # Single categorical niche_id column (integer, 0-indexed) — replaces the
-    # former one-hot niche_0…niche_N block.  The annotation worker and
-    # voronoi helper read niche_id directly.
-    niche_detection_df.loc[kept_idx, "niche_id"] = labels.astype(int)
+        feature_block = X_raw[:, :int(khop_dim)]
+
+    # Assemble every new column in one array and concat once. Assigning them
+    # individually via .loc inserts hundreds of columns one at a time, which
+    # pandas warns about ("DataFrame is highly fragmented") and which costs
+    # O(n_columns^2) copies -- noticeable at 128-1536 H-Optimus features.
+    n_rows = len(niche_detection_df)
+    kept = np.asarray(kept_idx, dtype=int)
+
+    block = np.full((n_rows, len(feature_cols)), np.nan, dtype=np.float32)
+    block[kept, :] = feature_block
+
+    # Cells dropped as isolated keep NaN; the voronoi helper treats NaN as
+    # "unassigned" when building niche regions.
+    niche_id = np.full(n_rows, np.nan, dtype=np.float64)
+    niche_id[kept] = np.asarray(labels, dtype=int)
+
+    new_cols = pd.DataFrame(block, columns=feature_cols,
+                            index=niche_detection_df.index)
+    new_cols["niche_id"] = niche_id
+
+    niche_detection_df = pd.concat([niche_detection_df, new_cols], axis=1)
 
     tmp = str(cell_csv) + ".tmp"
     niche_detection_df.to_csv(tmp, index=False)
