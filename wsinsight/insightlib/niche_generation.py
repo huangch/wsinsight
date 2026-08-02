@@ -467,9 +467,10 @@ def _make_short_ids(stems: List[str]) -> dict:
 
 
 # Empirical activation memory per 224×224 RGB image through ViT-H/14 with no_grad.
-# Measured as ~64 MB per image (input tensor + 32-layer transformer activations).
-# Used by _auto_batch_size to estimate how many images safely fit in free VRAM.
-_HOPTIMUS_BYTES_PER_IMAGE: int = 64 * 1024 ** 2  # 64 MiB
+# Derived from observed runtime: 20 GB used per GPU with 512 images/GPU gives
+# (20 GB - 2.5 GB model) / 512 ≈ 34 MB per image. Use 32 MB (rounded to power-of-2)
+# as the per-image budget so the safety factor provides the remaining headroom.
+_HOPTIMUS_BYTES_PER_IMAGE: int = 32 * 1024 ** 2  # 32 MiB
 
 
 def _auto_batch_size(
@@ -477,17 +478,15 @@ def _auto_batch_size(
     dev: str,
     safety: float = 0.75,
     min_batch: int = 8,
-    max_batch: int = 4096,
+    max_batch: int = 8192,
     bytes_per_image: int = _HOPTIMUS_BYTES_PER_IMAGE,
 ) -> int:
-    """Return a batch size that fits comfortably in available VRAM.
+    """Return a batch size that fills ~75% of available VRAM across all GPUs.
 
     After the model is already loaded on *dev*, queries free VRAM on the primary
-    device, computes per-GPU capacity, then multiplies by *ngpu* so that
-    DataParallel distributes a full per-GPU load to every device rather than
-    splitting an under-sized total batch.  Result is rounded down to the nearest
-    power of two for uniform DataParallel geometry and clamped to
-    [min_batch, max_batch].
+    device, computes per-GPU capacity, multiplies by *ngpu* for the total batch,
+    then rounds to the nearest multiple of *ngpu* so DataParallel distributes
+    an equal sub-batch to every device.
 
     Falls back to *min_batch* on CPU or if VRAM introspection is unavailable.
     """
@@ -499,11 +498,12 @@ def _auto_batch_size(
         free_bytes, _total = torch.cuda.mem_get_info(torch.cuda.current_device())
         # Per-GPU capacity: how many images fit in one GPU's free VRAM.
         per_gpu = int(free_bytes * safety) // bytes_per_image
-        # Total batch: DataParallel will split this evenly across all GPUs,
-        # so each GPU processes per_gpu images simultaneously.
-        n = max(min_batch, min(max_batch, per_gpu * n_gpu))
-        # Snap to the largest power of two ≤ n for uniform batch geometry.
-        return 2 ** int(math.log2(n))
+        per_gpu = max(min_batch, per_gpu)
+        # Total batch scaled by number of GPUs; round to nearest multiple of
+        # n_gpu so DataParallel always distributes evenly.
+        total = per_gpu * n_gpu
+        total = max(min_batch, min(max_batch, (total // n_gpu) * n_gpu))
+        return total
     except Exception:
         return min_batch
 
