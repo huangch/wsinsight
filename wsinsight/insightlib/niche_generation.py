@@ -468,17 +468,17 @@ def _make_short_ids(stems: List[str]) -> dict:
 
 # Fallback per-image memory estimate used when GPU calibration is unavailable.
 _HOPTIMUS_BYTES_PER_IMAGE_FALLBACK: int = 32 * 1024 ** 2  # 32 MiB
+# Calibration batch size: large enough to amortize PyTorch's fixed per-batch
+# allocator blocks so the per-image estimate reflects large-batch inference cost.
+_CALIBRATION_BATCH: int = 16
 
 
-def _calibrate_bytes_per_image(model: nn.Module, dev: str) -> int:
-    """Measure peak GPU memory consumed by a single forward pass.
+def _calibrate_bytes_per_image(model: nn.Module, dev: str, cal_batch: int = _CALIBRATION_BATCH) -> int:
+    """Measure amortized peak GPU memory per image over a small calibration batch.
 
-    Runs one dummy 224×224 RGB image through *model* with ``torch.no_grad``,
-    records the peak additional memory allocated on the current device, and
-    returns that as the per-image budget for batch-size calculation.
-
-    This replaces the hardcoded constant so the estimate is correct for any
-    model architecture or input size, not just ViT-H/14.
+    Running with cal_batch > 1 amortizes PyTorch's fixed per-batch allocator
+    blocks so the per-image estimate reflects actual large-batch inference cost,
+    not the inflated cost seen when batch_size=1.
 
     Falls back to ``_HOPTIMUS_BYTES_PER_IMAGE_FALLBACK`` on any error.
     """
@@ -488,14 +488,17 @@ def _calibrate_bytes_per_image(model: nn.Module, dev: str) -> int:
         torch.cuda.synchronize()
         torch.cuda.reset_peak_memory_stats()
         baseline = torch.cuda.memory_allocated()
-        dummy = torch.zeros(1, 3, 224, 224, device=dev)
-        with torch.no_grad():
+        dummy = torch.zeros(cal_batch, 3, 224, 224, device=dev)
+        # Calibrate in BF16 so the measured cost reflects the actual inference
+        # dtype; BF16 activations are half the size of FP32.
+        with torch.no_grad(), torch.autocast(device_type="cuda", dtype=torch.bfloat16):
             model(dummy)
         torch.cuda.synchronize()
         peak = torch.cuda.max_memory_allocated()
+        del dummy
         torch.cuda.empty_cache()
-        measured = max(peak - baseline, 1 * 1024 * 1024)  # at least 1 MiB
-        return measured
+        per_image = max((peak - baseline) // cal_batch, 1 * 1024 * 1024)  # at least 1 MiB
+        return per_image
     except Exception:
         torch.cuda.empty_cache()
         return _HOPTIMUS_BYTES_PER_IMAGE_FALLBACK
@@ -504,7 +507,7 @@ def _calibrate_bytes_per_image(model: nn.Module, dev: str) -> int:
 def _auto_batch_size(
     model: nn.Module,
     dev: str,
-    safety: float = 0.75,
+    safety: float = 0.95,
     min_batch: int = 8,
     max_batch: int = 8192,
     bytes_per_image: Optional[int] = None,
@@ -605,82 +608,124 @@ def _embed_hoptimus_subset_dataset(
         _timm_logger.setLevel(_timm_prev_level)
     pre = create_transform(**resolve_data_config(model=model), is_training=False)
 
-    # Spread batches across all available GPUs via DataParallel.
-    # Only applies when the model is on a CUDA device.
+    # Calibrate per-image memory cost on the plain single-GPU model BEFORE
+    # replicating to other GPUs.  A dummy batch of 1 on the plain model gives
+    # the true per-image activation footprint without replication overhead.
+    _bytes_per_image = _calibrate_bytes_per_image(model, dev)
+
+    # Build one persistent model replica per GPU.
+    # Unlike nn.DataParallel (which re-replicates weights every forward pass),
+    # this copies the model once per slide and dispatches sub-batches in
+    # parallel via threads — each GPU runs independently with no gather bottleneck.
     ngpu = torch.cuda.device_count() if torch.cuda.is_available() else 0
-    if ngpu > 1 and model.parameters().__next__().is_cuda:
-        model = nn.DataParallel(model)  # splits each batch across all GPUs automatically
+    if ngpu > 1 and next(model.parameters()).is_cuda:
+        import copy
+        from concurrent.futures import ThreadPoolExecutor as _TPE
+        _replicas = [model] + [
+            copy.deepcopy(model).to(f"cuda:{i}").eval() for i in range(1, ngpu)
+        ]
+    else:
+        _replicas = [model]
+        ngpu = max(ngpu, 1)
 
     # Determine batch size dynamically from available VRAM when caller passes None.
-    # _auto_batch_size() queries free VRAM after model load, divides by the empirical
-    # per-image activation footprint of ViT-H/14, and rounds to a power of two.
-    # DataParallel distributes this batch evenly across all GPUs, so the effective
-    # per-GPU batch is batch_size / ngpu.
     if batch_size is None:
-        batch_size = _auto_batch_size(model, dev)
-        _logging.getLogger(__name__).debug("H-optimus auto batch_size=%d (ngpu=%d, per-GPU≈%d)",
-                      batch_size, max(ngpu, 1), batch_size // max(ngpu, 1))
+        batch_size = _auto_batch_size(model, dev, bytes_per_image=_bytes_per_image)
+        _logging.getLogger(__name__).debug(
+            "H-optimus auto batch_size=%d (ngpu=%d, per-GPU≈%d, bytes_per_image=%dMB)",
+            batch_size, ngpu, batch_size // ngpu, _bytes_per_image // 1024 // 1024,
+        )
 
     # Build a Subset where sample index equals the cell_id we want
     subset = Subset(dataset, sampled_ids)
 
-    def _build_loader(bs: int) -> DataLoader:
-        return DataLoader(subset, batch_size=bs, shuffle=False, num_workers=0,
-                          collate_fn=list)  # PIL.Image is not tensor-stackable by default_collate
-
-    def _preprocess_batch(batch) -> torch.Tensor:
+    def _preprocess_batch_cpu(batch) -> torch.Tensor:
+        """Preprocess batch to a CPU tensor; GPU transfer done per-replica."""
         if isinstance(batch, list):
-            return torch.stack([pre(im) for im in batch]).to(dev)
+            return torch.stack([pre(im) for im in batch])
         elif isinstance(batch, torch.Tensor):
             if batch.dim() == 4 and batch.shape[1] in (1, 3):
-                return torch.stack([pre(transforms.ToPILImage()(t)) for t in batch]).to(dev)
-            return torch.stack([pre(b) for b in batch]).to(dev)
+                return torch.stack([pre(transforms.ToPILImage()(t)) for t in batch])
+            return torch.stack([pre(b) for b in batch])
         else:
             try:
-                return torch.stack([pre(im) for im in batch]).to(dev)
+                return torch.stack([pre(im) for im in batch])
             except Exception:
-                return batch.to(dev)
+                return batch if isinstance(batch, torch.Tensor) else torch.stack(list(batch))
 
+    def _run_on_replica(replica_idx: int, x_cpu: torch.Tensor) -> torch.Tensor:
+        """Transfer sub-batch to one GPU replica and run BF16 forward pass."""
+        x = x_cpu.to(f"cuda:{replica_idx}")
+        with torch.no_grad(), torch.autocast(device_type="cuda", dtype=torch.bfloat16):
+            return _replicas[replica_idx](x).float().cpu()  # cast back to FP32 for downstream
+
+    def _forward(x_cpu: torch.Tensor) -> torch.Tensor:
+        """Dispatch a preprocessed CPU tensor across all GPU replicas in parallel."""
+        if len(_replicas) > 1:
+            splits = x_cpu.chunk(len(_replicas), dim=0)
+            with _TPE(max_workers=len(_replicas)) as _pool:
+                _futs = [_pool.submit(_run_on_replica, ri, s) for ri, s in enumerate(splits)]
+                return torch.cat([f.result() for f in _futs], dim=0)
+        with torch.no_grad(), torch.autocast(device_type="cuda", dtype=torch.bfloat16):
+            return _replicas[0](x_cpu.to(dev)).float().cpu()
+
+    # ── Adaptive inference loop ───────────────────────────────────────────────
+    # Manual index-based batching (no DataLoader rebuild) so we can grow/shrink
+    # batch_size freely at any point without restarting iteration:
+    #   • OOM → halve batch_size, clear caches, retry immediately
+    #   • Every _GROW_EVERY successful batches → probe free VRAM; grow back if
+    #     memory has been freed by other processes
+    _GROW_EVERY = 10   # how often to probe for growth opportunity
+    _n_ok = 0          # consecutive successful batches since last resize
     _label = display_id or slide_id or "H-optimus"
     desc = f"  [{_label}]"
-    feats = []
-    loader = _build_loader(batch_size)
-    n_batches = math.ceil(len(sampled_ids) / batch_size)
-    pbar = tqdm(total=n_batches, desc=desc, leave=False, position=1, unit="batch")
-    with torch.no_grad():
-        for batch in loader:
-            while True:
-                try:
-                    x = _preprocess_batch(batch)
-                    z = model(x)
-                    feats.append(z.detach().cpu())
-                    pbar.update(1)
-                    break
-                except torch.cuda.OutOfMemoryError:
-                    # Halve batch size and rebuild loader from remaining items.
-                    torch.cuda.empty_cache()
-                    new_bs = max(1, batch_size // 2)
-                    if new_bs == batch_size:
-                        raise  # already at minimum; propagate
-                    _logging.getLogger(__name__).warning(
-                        "H-optimus OOM at batch_size=%d; retrying with %d", batch_size, new_bs
-                    )
-                    batch_size = new_bs
-                    # Re-emit remaining items with reduced batch size by splitting current batch
-                    sub_batches = [batch[i:i + batch_size] for i in range(0, len(batch), batch_size)]
-                    x = _preprocess_batch(sub_batches[0])
-                    z = model(x)
-                    feats.append(z.detach().cpu())
-                    pbar.update(1)
-                    for sb in sub_batches[1:]:
-                        x = _preprocess_batch(sb)
-                        feats.append(model(x).detach().cpu())
-                        pbar.update(1)
-                    # Rebuild loader with new batch size for remaining slides
-                    loader = _build_loader(batch_size)
-                    n_batches = math.ceil(len(sampled_ids) / batch_size)
-                    pbar.reset(total=n_batches)
-                    break
+    feats: list = []
+    n_total = len(sampled_ids)
+    pos = 0            # index into sampled_ids
+
+    pbar = tqdm(total=math.ceil(n_total / batch_size), desc=desc,
+                leave=False, position=1, unit="batch")
+
+    while pos < n_total:
+        end = min(pos + batch_size, n_total)
+        ids_chunk = sampled_ids[pos:end]
+        items = [dataset[idx] for idx in ids_chunk]
+
+        while True:   # OOM retry loop for this chunk
+            try:
+                x_cpu = _preprocess_batch_cpu(items)
+                feats.append(_forward(x_cpu))
+                pbar.update(1)
+                pos += len(items)
+                _n_ok += 1
+
+                # Periodically probe free VRAM and grow batch_size if space freed up.
+                if _n_ok % _GROW_EVERY == 0:
+                    candidate = _auto_batch_size(
+                        _replicas[0], dev, bytes_per_image=_bytes_per_image)
+                    if candidate > batch_size:
+                        batch_size = candidate
+                        remaining_batches = math.ceil((n_total - pos) / batch_size)
+                        pbar.reset(total=pbar.n + remaining_batches)
+                break
+
+            except torch.cuda.OutOfMemoryError:
+                for ri in range(len(_replicas)):
+                    with torch.cuda.device(ri):
+                        torch.cuda.empty_cache()
+                new_bs = max(len(_replicas), len(items) // 2)
+                if new_bs >= len(items):
+                    raise   # already at minimum; propagate
+                _logging.getLogger(__name__).warning(
+                    "H-optimus OOM at batch_size=%d; retrying with %d",
+                    len(items), new_bs,
+                )
+                batch_size = new_bs
+                items = items[:new_bs]   # retry with the smaller chunk; remainder picked up in next iteration
+                _n_ok = 0
+                remaining_batches = math.ceil((n_total - pos) / batch_size)
+                pbar.reset(total=pbar.n + remaining_batches)
+
     pbar.close()
     return torch.cat(feats, dim=0).numpy().astype(np.float32)
 
