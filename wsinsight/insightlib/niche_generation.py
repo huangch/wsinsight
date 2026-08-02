@@ -468,37 +468,53 @@ def _make_short_ids(stems: List[str]) -> dict:
 
 # Fallback per-image memory estimate used when GPU calibration is unavailable.
 _HOPTIMUS_BYTES_PER_IMAGE_FALLBACK: int = 32 * 1024 ** 2  # 32 MiB
-# Calibration batch size: large enough to amortize PyTorch's fixed per-batch
-# allocator blocks so the per-image estimate reflects large-batch inference cost.
-_CALIBRATION_BATCH: int = 16
+# Two batch sizes used for two-point calibration.  The DIFFERENCE between the
+# two measurements cancels the fixed cuDNN/allocator overhead, leaving only the
+# true marginal cost per additional image.
+_CAL_B1: int = 8
+_CAL_B2: int = 32
 
 
-def _calibrate_bytes_per_image(model: nn.Module, dev: str, cal_batch: int = _CALIBRATION_BATCH) -> int:
-    """Measure amortized peak GPU memory per image over a small calibration batch.
+def _calibrate_bytes_per_image(model: nn.Module, dev: str,
+                                cal_b1: int = _CAL_B1,
+                                cal_b2: int = _CAL_B2) -> int:
+    """Two-point calibration: measure marginal GPU memory cost per image.
 
-    Running with cal_batch > 1 amortizes PyTorch's fixed per-batch allocator
-    blocks so the per-image estimate reflects actual large-batch inference cost,
-    not the inflated cost seen when batch_size=1.
+    Single-point calibration (peak / batch_size) includes a large fixed
+    overhead from cuDNN workspace buffers (~2-3 GB for ViT-H/14) that inflates
+    the per-image estimate by 5-10×, causing drastically undersized batches.
+
+    Two-point calibration runs at *cal_b1* and *cal_b2* images and takes the
+    slope (peak_b2 - peak_b1) / (cal_b2 - cal_b1), which cancels the fixed
+    overhead and returns the true marginal cost per image.
 
     Falls back to ``_HOPTIMUS_BYTES_PER_IMAGE_FALLBACK`` on any error.
     """
     if not torch.cuda.is_available():
         return _HOPTIMUS_BYTES_PER_IMAGE_FALLBACK
-    try:
+
+    def _measure(n: int) -> int:
         torch.cuda.synchronize()
         torch.cuda.reset_peak_memory_stats()
         baseline = torch.cuda.memory_allocated()
-        dummy = torch.zeros(cal_batch, 3, 224, 224, device=dev)
-        # Calibrate in BF16 so the measured cost reflects the actual inference
-        # dtype; BF16 activations are half the size of FP32.
+        dummy = torch.zeros(n, 3, 224, 224, device=dev)
         with torch.no_grad(), torch.autocast(device_type="cuda", dtype=torch.bfloat16):
             model(dummy)
         torch.cuda.synchronize()
         peak = torch.cuda.max_memory_allocated()
         del dummy
         torch.cuda.empty_cache()
-        per_image = max((peak - baseline) // cal_batch, 1 * 1024 * 1024)  # at least 1 MiB
-        return per_image
+        return peak - baseline
+
+    try:
+        m1 = _measure(cal_b1)
+        m2 = _measure(cal_b2)
+        delta_images = cal_b2 - cal_b1
+        if m2 <= m1 or delta_images <= 0:
+            # Degenerate: fall back to single-point on larger batch
+            return max(m2 // cal_b2, 1 * 1024 * 1024)
+        marginal = (m2 - m1) // delta_images
+        return max(marginal, 1 * 1024 * 1024)  # at least 1 MiB
     except Exception:
         torch.cuda.empty_cache()
         return _HOPTIMUS_BYTES_PER_IMAGE_FALLBACK
@@ -527,6 +543,9 @@ def _auto_batch_size(
         if bytes_per_image is None:
             bytes_per_image = _calibrate_bytes_per_image(model, dev)
         n_gpu = max(1, torch.cuda.device_count())
+        # Release any cached-but-unused blocks so mem_get_info reflects the true
+        # available memory rather than the allocator's reserved headroom.
+        torch.cuda.empty_cache()
         # Query free VRAM on the primary device (model already loaded there).
         free_bytes, _total = torch.cuda.mem_get_info(torch.cuda.current_device())
         # Per-GPU capacity: how many images fit in one GPU's free VRAM.
@@ -611,6 +630,9 @@ def _embed_hoptimus_subset_dataset(
     # Calibrate per-image memory cost on the plain single-GPU model BEFORE
     # replicating to other GPUs.  A dummy batch of 1 on the plain model gives
     # the true per-image activation footprint without replication overhead.
+    # Clear the cache first so calibration starts from a clean baseline.
+    if torch.cuda.is_available():
+        torch.cuda.empty_cache()
     _bytes_per_image = _calibrate_bytes_per_image(model, dev)
 
     # Build one persistent model replica per GPU.
@@ -624,6 +646,10 @@ def _embed_hoptimus_subset_dataset(
         _replicas = [model] + [
             copy.deepcopy(model).to(f"cuda:{i}").eval() for i in range(1, ngpu)
         ]
+        # Deepcopy briefly allocates on cuda:0 before moving to cuda:i, leaving
+        # cached blocks that make mem_get_info underreport free memory.  Clear
+        # the cache now so _auto_batch_size sees the true available space.
+        torch.cuda.empty_cache()
     else:
         _replicas = [model]
         ngpu = max(ngpu, 1)
