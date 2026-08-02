@@ -1,18 +1,27 @@
-"""
-Diagnostic: compare single-point vs two-point GPU memory calibration.
+"""Verify the adaptive H-optimus batch sizing against real GPU behaviour.
+
+Imports the *shipped* helpers from ``niche_generation`` so a pass here means the
+production code path is correct — not a reimplementation of it.
 
 Run inside the container:
     python tests/test_calibration.py --model-dir /app/zoo/hoptimus/
-
-This script proves whether two-point calibration correctly measures the marginal
-per-image cost, independent of the fixed cuDNN/allocator overhead that made the
-single-point approach produce 5-10× overestimates.
 """
 import argparse
 import math
 import sys
 import torch
 import torch.nn as nn
+
+from wsinsight.insightlib.niche_generation import (
+    _auto_batch_size,
+    _available_vram,
+    _calibrate_bytes_per_image,
+    _is_oom,
+)
+
+GIB = 1024 ** 3
+MIB = 1024 ** 2
+SAFETY = 0.95
 
 
 def _load_model(model_dir: str | None, dev: str) -> nn.Module:
@@ -45,120 +54,96 @@ def _load_model(model_dir: str | None, dev: str) -> nn.Module:
 
 
 def _measure_peak(model: nn.Module, dev: str, n: int) -> int:
-    """Peak memory delta for a forward pass of n images (BF16)."""
+    """Peak memory delta for a real forward pass of n images (BF16)."""
     torch.cuda.synchronize()
     torch.cuda.reset_peak_memory_stats()
     baseline = torch.cuda.memory_allocated()
     dummy = torch.zeros(n, 3, 224, 224, device=dev)
     with torch.no_grad(), torch.autocast(device_type="cuda", dtype=torch.bfloat16):
-        model(dummy)
+        out = model(dummy)
     torch.cuda.synchronize()
     peak = torch.cuda.max_memory_allocated()
-    del dummy
+    del dummy, out
     torch.cuda.empty_cache()
     return peak - baseline
 
 
-def _single_point(model, dev, cal_batch=16) -> int:
-    m = _measure_peak(model, dev, cal_batch)
-    return m // cal_batch
-
-
-def _two_point(model, dev, b1=8, b2=32) -> int:
-    m1 = _measure_peak(model, dev, b1)
-    m2 = _measure_peak(model, dev, b2)
-    if m2 <= m1:
-        return m2 // b2
-    return (m2 - m1) // (b2 - b1)
-
-
-def _batch_size_from(bytes_per_image: int, safety: float = 0.95) -> int:
-    ngpu = torch.cuda.device_count()
-    torch.cuda.empty_cache()
-    free, total = torch.cuda.mem_get_info(torch.cuda.current_device())
-    per_gpu = int(free * safety) // bytes_per_image
-    total_bs = per_gpu * ngpu
-    return total_bs, per_gpu, free
-
-
-def _verify_actual_usage(model: nn.Module, dev: str, batch_size: int) -> float:
-    """Run a real batch at batch_size and measure actual GB used per GPU."""
-    torch.cuda.empty_cache()
-    before = torch.cuda.memory_allocated()
-    dummy = torch.zeros(batch_size, 3, 224, 224, device=dev)
-    with torch.no_grad(), torch.autocast(device_type="cuda", dtype=torch.bfloat16):
-        out = model(dummy)
-    torch.cuda.synchronize()
-    after = torch.cuda.memory_allocated()
-    del dummy, out
-    torch.cuda.empty_cache()
-    return (after - before) / 1024**3
-
-
-def main():
+def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--model-dir", default=None)
     args = parser.parse_args()
 
     if not torch.cuda.is_available():
-        print("CUDA not available — cannot run this test.")
-        sys.exit(1)
+        print("CUDA not available — cannot verify GPU behaviour.")
+        return 1
 
     dev = "cuda:0"
     ngpu = torch.cuda.device_count()
-    total_mem = torch.cuda.get_device_properties(0).total_memory / 1024**3
+    card = torch.cuda.get_device_properties(0).total_memory
 
-    print(f"\n{'='*60}")
-    print(f"  GPU: {torch.cuda.get_device_name(0)}")
-    print(f"  Total VRAM per GPU: {total_mem:.1f} GB  |  GPUs: {ngpu}")
-    print(f"{'='*60}\n")
+    print(f"\nGPU        : {torch.cuda.get_device_name(0)} x{ngpu}")
+    print(f"VRAM/card  : {card / GIB:.1f} GiB")
 
-    print("Loading model...")
     model = _load_model(args.model_dir, dev)
     torch.cuda.empty_cache()
-    model_mem = torch.cuda.memory_allocated() / 1024**3
-    print(f"  Model memory: {model_mem:.2f} GB\n")
+    model_mem = torch.cuda.memory_allocated()
+    print(f"model VRAM : {model_mem / GIB:.2f} GiB")
 
-    # ── Single-point calibration (old approach) ──────────────────────────────
-    sp = _single_point(model, dev, cal_batch=16)
-    sp_bs, sp_per_gpu, free = _batch_size_from(sp)
-    print(f"[OLD] Single-point (batch=16):")
-    print(f"      bytes_per_image = {sp/1024**2:.1f} MB")
-    print(f"      → batch_size = {sp_bs}  ({sp_per_gpu}/GPU)")
+    failures: list[str] = []
 
-    # ── Two-point calibration (new approach) ─────────────────────────────────
-    tp = _two_point(model, dev, b1=8, b2=32)
-    tp_bs, tp_per_gpu, free = _batch_size_from(tp)
-    print(f"\n[NEW] Two-point (b1=8, b2=32):")
-    print(f"      bytes_per_image = {tp/1024**2:.1f} MB")
-    print(f"      → batch_size = {tp_bs}  ({tp_per_gpu}/GPU)")
+    # ── 1. shipped calibration + sizing ──────────────────────────────────────
+    per_image = _calibrate_bytes_per_image(model, dev)
+    usable = _available_vram(torch.cuda.current_device())
+    total_bs = _auto_batch_size(model, dev, safety=SAFETY, bytes_per_image=per_image)
+    per_gpu = total_bs // ngpu
 
-    print(f"\n  Overestimate factor (old/new): {sp/tp:.1f}×")
-    print(f"  Free VRAM (after empty_cache): {free/1024**3:.1f} GB\n")
+    print(f"\nper-image  : {per_image / MIB:.1f} MiB")
+    print(f"usable VRAM: {usable / GIB:.1f} GiB")
+    print(f"batch size : {total_bs} total ({per_gpu}/GPU)")
 
-    # ── Verify actual GPU usage at the NEW batch size ─────────────────────────
-    verify_bs = min(tp_per_gpu, 512)   # cap at 512 for the verification run
-    print(f"Verifying actual GPU memory at batch_size={verify_bs} (capped for safety)...")
-    actual_gb = _verify_actual_usage(model, dev, verify_bs)
-    expected_gb = verify_bs * tp / 1024**3
-    print(f"  Expected (two-point estimate): {expected_gb:.2f} GB")
-    print(f"  Actual measured:               {actual_gb:.2f} GB")
-    ratio = actual_gb / expected_gb if expected_gb > 0 else float('inf')
-    print(f"  Accuracy ratio (actual/expected): {ratio:.2f}  (1.0 = perfect)\n")
+    # ViT-scale activations land in single-digit-to-tens of MiB. Hundreds of MiB
+    # means fixed cuDNN overhead leaked into the estimate (the original bug).
+    if not (1 * MIB <= per_image <= 128 * MIB):
+        failures.append(
+            f"per-image {per_image / MIB:.1f} MiB outside plausible 1-128 MiB band"
+        )
 
-    # ── Verdict ──────────────────────────────────────────────────────────────
-    print("="*60)
-    if 0.7 <= ratio <= 1.4:
-        print("  PASS: two-point calibration is accurate.")
-        print(f"  At full scale ({tp_per_gpu}/GPU × {ngpu} GPUs = {tp_bs} total):")
-        expected_total = model_mem + tp_per_gpu * tp / 1024**3
-        print(f"  Estimated GPU usage: {expected_total:.1f} GB / {total_mem:.0f} GB"
-              f"  ({100*expected_total/total_mem:.0f}%)")
-    else:
-        print(f"  WARN: ratio {ratio:.2f} outside expected 0.7–1.4.")
-        print("  Calibration may need further investigation.")
-    print("="*60)
+    # ── 2. prediction vs measured reality ────────────────────────────────────
+    probe_n = max(64, min(per_gpu, 512))
+    predicted = probe_n * per_image
+    actual = _measure_peak(model, dev, probe_n)
+    ratio = actual / predicted if predicted else float("inf")
+
+    print(f"\nprobe batch: {probe_n} images")
+    print(f"  predicted: {predicted / GIB:.2f} GiB")
+    print(f"  actual   : {actual / GIB:.2f} GiB")
+    print(f"  ratio    : {ratio:.2f}")
+
+    if not (0.5 <= ratio <= 1.5):
+        failures.append(f"prediction off by {ratio:.2f}x (want 0.5-1.5)")
+
+    # ── 3. projected full-scale utilisation ──────────────────────────────────
+    projected = model_mem + per_gpu * per_image
+    pct = 100 * projected / card
+    print(f"\nprojected at {per_gpu}/GPU: {projected / GIB:.1f} GiB ({pct:.0f}% of card)")
+    if pct < 70:
+        failures.append(f"projected utilisation only {pct:.0f}% (want >=70%)")
+
+    # ── 4. OOM classification used by the retry loop ─────────────────────────
+    if not _is_oom(RuntimeError("CUDA out of memory. Tried to allocate 2.00 GiB")):
+        failures.append("_is_oom missed a RuntimeError OOM message")
+    if _is_oom(ValueError("unrelated")):
+        failures.append("_is_oom misclassified a non-OOM error")
+
+    print()
+    if failures:
+        print("FAIL")
+        for f in failures:
+            print(f"  - {f}")
+        return 1
+    print("PASS - calibration, prediction, utilisation and OOM handling all check out.")
+    return 0
 
 
 if __name__ == "__main__":
-    main()
+    sys.exit(main())

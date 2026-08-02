@@ -520,20 +520,54 @@ def _calibrate_bytes_per_image(model: nn.Module, dev: str,
         return _HOPTIMUS_BYTES_PER_IMAGE_FALLBACK
 
 
+def _available_vram(device_index: int) -> int:
+    """Bytes usable for new activations on *device_index*.
+
+    ``mem_get_info`` reports only memory the driver considers free; blocks the
+    PyTorch caching allocator has reserved but is not currently using are
+    counted as *not* free even though they are immediately reusable.  Ignoring
+    them makes any steady-state probe wildly underestimate capacity, so add
+    ``reserved - allocated`` back in.
+    """
+    free_bytes, _total = torch.cuda.mem_get_info(device_index)
+    reserved = torch.cuda.memory_reserved(device_index)
+    allocated = torch.cuda.memory_allocated(device_index)
+    return free_bytes + max(0, reserved - allocated)
+
+
+def _is_oom(exc: BaseException) -> bool:
+    """True if *exc* is an out-of-memory / unsupported-workspace CUDA error.
+
+    ``torch.cuda.OutOfMemoryError`` covers the common case, but large batches
+    can also surface as a plain ``RuntimeError`` from cuDNN or cuBLAS when a
+    workspace allocation fails.  Both are recoverable by shrinking the batch.
+    """
+    if isinstance(exc, torch.cuda.OutOfMemoryError):
+        return True
+    if isinstance(exc, RuntimeError):
+        msg = str(exc).lower()
+        return (
+            "out of memory" in msg
+            or "cudnn_status_not_supported" in msg
+            or "cublas_status_alloc_failed" in msg
+        )
+    return False
+
+
 def _auto_batch_size(
     model: nn.Module,
     dev: str,
     safety: float = 0.95,
     min_batch: int = 8,
-    max_batch: int = 8192,
+    max_batch: int = 65536,
     bytes_per_image: Optional[int] = None,
 ) -> int:
-    """Return a batch size that fills ~75% of available VRAM across all GPUs.
+    """Return a total batch size that fills ``safety`` of usable VRAM.
 
-    Calibrates per-image memory cost by running a single dummy forward pass,
-    then queries free VRAM on the primary device, computes per-GPU capacity,
-    and multiplies by *ngpu* so DataParallel distributes a full per-GPU load
-    to every device.
+    Per-GPU capacity is ``usable_vram * safety / bytes_per_image``; the total is
+    that times the GPU count, since the caller splits each batch evenly across
+    replicas.  The result is a multiple of the GPU count so every replica gets
+    an equal share.
 
     Falls back to *min_batch* on CPU or if VRAM introspection is unavailable.
     """
@@ -543,19 +577,10 @@ def _auto_batch_size(
         if bytes_per_image is None:
             bytes_per_image = _calibrate_bytes_per_image(model, dev)
         n_gpu = max(1, torch.cuda.device_count())
-        # Release any cached-but-unused blocks so mem_get_info reflects the true
-        # available memory rather than the allocator's reserved headroom.
-        torch.cuda.empty_cache()
-        # Query free VRAM on the primary device (model already loaded there).
-        free_bytes, _total = torch.cuda.mem_get_info(torch.cuda.current_device())
-        # Per-GPU capacity: how many images fit in one GPU's free VRAM.
-        per_gpu = int(free_bytes * safety) // bytes_per_image
-        per_gpu = max(min_batch, per_gpu)
-        # Total batch scaled by number of GPUs; round to nearest multiple of
-        # n_gpu so DataParallel always distributes evenly.
+        usable = _available_vram(torch.cuda.current_device())
+        per_gpu = max(min_batch, int(usable * safety) // bytes_per_image)
         total = per_gpu * n_gpu
-        total = max(min_batch, min(max_batch, (total // n_gpu) * n_gpu))
-        return total
+        return max(min_batch, min(max_batch, (total // n_gpu) * n_gpu))
     except Exception:
         return min_batch
 
@@ -628,9 +653,9 @@ def _embed_hoptimus_subset_dataset(
     pre = create_transform(**resolve_data_config(model=model), is_training=False)
 
     # Calibrate per-image memory cost on the plain single-GPU model BEFORE
-    # replicating to other GPUs.  A dummy batch of 1 on the plain model gives
-    # the true per-image activation footprint without replication overhead.
-    # Clear the cache first so calibration starts from a clean baseline.
+    # replicating to other GPUs, so replication overhead does not pollute the
+    # measurement.  Clear the cache first for a clean baseline.
+    from concurrent.futures import ThreadPoolExecutor as _TPE
     if torch.cuda.is_available():
         torch.cuda.empty_cache()
     _bytes_per_image = _calibrate_bytes_per_image(model, dev)
@@ -642,7 +667,6 @@ def _embed_hoptimus_subset_dataset(
     ngpu = torch.cuda.device_count() if torch.cuda.is_available() else 0
     if ngpu > 1 and next(model.parameters()).is_cuda:
         import copy
-        from concurrent.futures import ThreadPoolExecutor as _TPE
         _replicas = [model] + [
             copy.deepcopy(model).to(f"cuda:{i}").eval() for i in range(1, ngpu)
         ]
@@ -696,13 +720,13 @@ def _embed_hoptimus_subset_dataset(
             return _replicas[0](x_cpu.to(dev)).float().cpu()
 
     # ── Adaptive inference loop ───────────────────────────────────────────────
-    # Manual index-based batching (no DataLoader rebuild) so we can grow/shrink
-    # batch_size freely at any point without restarting iteration:
-    #   • OOM → halve batch_size, clear caches, retry immediately
-    #   • Every _GROW_EVERY successful batches → probe free VRAM; grow back if
-    #     memory has been freed by other processes
-    _GROW_EVERY = 10   # how often to probe for growth opportunity
-    _n_ok = 0          # consecutive successful batches since last resize
+    # Manual index-based batching (no DataLoader) so batch_size can change at
+    # any point without restarting iteration:
+    #   • OOM → halve batch_size, clear caches, retry the same chunk
+    #   • Every _GROW_EVERY successful batches → re-probe usable VRAM and grow
+    #     back if another process released memory
+    _GROW_EVERY = 20   # probe cadence for growth opportunities
+    _n_ok = 0          # successful batches since the last resize
     _label = display_id or slide_id or "H-optimus"
     desc = f"  [{_label}]"
     feats: list = []
@@ -712,45 +736,54 @@ def _embed_hoptimus_subset_dataset(
     pbar = tqdm(total=math.ceil(n_total / batch_size), desc=desc,
                 leave=False, position=1, unit="batch")
 
+    def _retotal() -> None:
+        """Update the bar's total after a resize.
+
+        ``pbar.reset()`` zeroes ``n``, which would rewind the visible progress,
+        so mutate ``total`` directly and refresh instead.
+        """
+        pbar.total = pbar.n + math.ceil(max(0, n_total - pos) / batch_size)
+        pbar.refresh()
+
     while pos < n_total:
-        end = min(pos + batch_size, n_total)
-        ids_chunk = sampled_ids[pos:end]
-        items = [dataset[idx] for idx in ids_chunk]
+        chunk_len = min(batch_size, n_total - pos)
+        items = [dataset[idx] for idx in sampled_ids[pos:pos + chunk_len]]
 
         while True:   # OOM retry loop for this chunk
             try:
-                x_cpu = _preprocess_batch_cpu(items)
-                feats.append(_forward(x_cpu))
+                feats.append(_forward(_preprocess_batch_cpu(items)))
                 pbar.update(1)
                 pos += len(items)
                 _n_ok += 1
 
-                # Periodically probe free VRAM and grow batch_size if space freed up.
+                # Periodically re-probe and grow if memory has been released.
                 if _n_ok % _GROW_EVERY == 0:
                     candidate = _auto_batch_size(
                         _replicas[0], dev, bytes_per_image=_bytes_per_image)
                     if candidate > batch_size:
                         batch_size = candidate
-                        remaining_batches = math.ceil((n_total - pos) / batch_size)
-                        pbar.reset(total=pbar.n + remaining_batches)
+                        _retotal()
                 break
 
-            except torch.cuda.OutOfMemoryError:
+            except Exception as exc:
+                if not _is_oom(exc):
+                    raise
                 for ri in range(len(_replicas)):
                     with torch.cuda.device(ri):
                         torch.cuda.empty_cache()
                 new_bs = max(len(_replicas), len(items) // 2)
                 if new_bs >= len(items):
-                    raise   # already at minimum; propagate
+                    raise   # already at the floor; nothing left to shrink
                 _logging.getLogger(__name__).warning(
                     "H-optimus OOM at batch_size=%d; retrying with %d",
                     len(items), new_bs,
                 )
                 batch_size = new_bs
-                items = items[:new_bs]   # retry with the smaller chunk; remainder picked up in next iteration
+                # Retry just the head of the chunk; the tail is re-fetched on
+                # the next outer iteration because *pos* has not advanced.
+                items = items[:new_bs]
                 _n_ok = 0
-                remaining_batches = math.ceil((n_total - pos) / batch_size)
-                pbar.reset(total=pbar.n + remaining_batches)
+                _retotal()
 
     pbar.close()
     return torch.cat(feats, dim=0).numpy().astype(np.float32)
