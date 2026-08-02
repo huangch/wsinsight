@@ -489,9 +489,8 @@ def run_inference(
                 num_workers=_effective_num_workers,
                 worker_init_fn=dset.worker_init,
                 pin_memory=_effective_pin_memory and (torch.cuda.is_available() or torch.backends.mps.is_available()),
-                # persistent_workers=True,      # add this for better performance?
-                persistent_workers=False,       # Useless as wsinsight is working in eval only
-                # prefetch_factor=2,              # add this for better performance?
+                persistent_workers=_effective_num_workers > 0,
+                prefetch_factor=2 if _effective_num_workers > 0 else None,
                 multiprocessing_context="spawn",
             )
     
@@ -724,7 +723,8 @@ def run_inference(
                                 num_workers=_effective_num_workers,
                                 worker_init_fn=dset.worker_init,
                                 pin_memory=_effective_pin_memory and (torch.cuda.is_available() or torch.backends.mps.is_available()),
-                                persistent_workers=False,
+                                persistent_workers=_effective_num_workers > 0,
+                                prefetch_factor=2 if _effective_num_workers > 0 else None,
                                 multiprocessing_context="spawn",
                             )
                             continue
@@ -772,7 +772,8 @@ def run_inference(
                             num_workers=_effective_num_workers,
                             worker_init_fn=dset.worker_init,
                             pin_memory=_effective_pin_memory and (torch.cuda.is_available() or torch.backends.mps.is_available()),
-                            persistent_workers=False,
+                            persistent_workers=_effective_num_workers > 0,
+                            prefetch_factor=2 if _effective_num_workers > 0 else None,
                             multiprocessing_context="spawn",
                         )
                 if _oom_skip:
@@ -911,7 +912,8 @@ def run_inference(
                                 num_workers=_effective_num_workers,
                                 worker_init_fn=dset.worker_init,
                                 pin_memory=_effective_pin_memory and (torch.cuda.is_available() or torch.backends.mps.is_available()),
-                                persistent_workers=False,
+                                persistent_workers=_effective_num_workers > 0,
+                                prefetch_factor=2 if _effective_num_workers > 0 else None,
                                 multiprocessing_context="spawn",
                             )
                             continue
@@ -957,7 +959,8 @@ def run_inference(
                             num_workers=_effective_num_workers,
                             worker_init_fn=dset.worker_init,
                             pin_memory=_effective_pin_memory and (torch.cuda.is_available() or torch.backends.mps.is_available()),
-                            persistent_workers=False,
+                            persistent_workers=_effective_num_workers > 0,
+                            prefetch_factor=2 if _effective_num_workers > 0 else None,
                             multiprocessing_context="spawn",
                         )
                 if _oom_skip:
