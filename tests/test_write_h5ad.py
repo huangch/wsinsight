@@ -81,6 +81,22 @@ def test_write_h5ads_roundtrip(tmp_path: Path) -> None:
     assert reloaded.obs["hplot_layer"].tolist() == [-2, 0, 3]
 
 
+def test_niche_id_becomes_categorical_obs_in_h5ad() -> None:
+    """niche_id integer column must land as a Categorical in obs."""
+    df = _sample_df().copy()
+    df["niche_id"] = [2, 0, 3]
+
+    adata = build_anndata_from_df(df, prefix="prob", slide_id="s")
+
+    assert "niche_id" in adata.obs.columns
+    assert list(adata.obs["niche_id"]) == [2, 0, 3]
+    assert hasattr(adata.obs["niche_id"], "cat"), "niche_id must be Categorical"
+
+    # prob_* columns still form X (unchanged behaviour)
+    assert adata.X.shape == (3, 2)
+    assert "classification" in adata.obs.columns
+
+
 def test_write_h5ads_skips_existing_without_overwrite(tmp_path: Path) -> None:
     csv_dir = tmp_path / "export-csv"
     csv_dir.mkdir(parents=True)

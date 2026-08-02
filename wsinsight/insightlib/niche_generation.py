@@ -5,6 +5,7 @@
 
 from __future__ import annotations
 import math, os, time, shutil, tempfile, atexit
+import logging as _logging
 import multiprocessing as mp
 from typing import Any, List, Dict, Iterable, Optional, Sequence, Tuple # , Callable
 import numpy as np
@@ -585,206 +586,283 @@ def _auto_batch_size(
         return min_batch
 
 
-def _embed_hoptimus_subset_dataset(
-    dataset: Dataset, sampled_ids: List[int],
-    batch_size: Optional[int] = None, device: Optional[str] = None,
-    hoptimus_model_dir: Optional[Path] = None,
-    slide_id: Optional[str] = None,
-    display_id: Optional[str] = None,
-) -> np.ndarray:
+def _remaining_batches(n_total: int, pos: int, batch_size: int) -> int:
+    """How many further batches are needed to consume items ``pos..n_total``."""
+    return math.ceil(max(0, n_total - pos) / batch_size)
+
+
+def _run_adaptive_batches(
+    n_total: int,
+    batch_size: int,
+    fetch,
+    forward,
+    on_oom=None,
+    min_batch: int = 1,
+    max_batch: int = 65536,
+    pbar=None,
+) -> list:
+    """Consume ``0..n_total`` items, adapting batch size via binary search.
+
+    Uses the same ``(lo, hi)`` binary-search algorithm as
+    ``run_inference._advance_batch_search``:
+
+    * ``lo`` — largest batch size confirmed to fit in memory (0 = none yet)
+    * ``hi`` — smallest batch size confirmed to OOM (max_batch+1 = no ceiling)
+
+    On **success**: raise ``lo`` to the current size; if a ceiling is known
+    bisect upward toward it, otherwise probe exponentially.
+
+    On **OOM**: tighten ``hi``; lower ``lo`` to prevent the ``lo+1==hi``
+    deadlock; bisect downward.
+
+    This converges on the exact largest batch that fits rather than
+    oscillating around it, and automatically grows back when external pressure
+    subsides — with no separate "grow every N batches" probe needed.
+
+    Parameters
+    ----------
+    on_oom:
+        Called before each retry, e.g. to flush the allocator cache.
+    pbar:
+        Optional tqdm bar, advanced one step per completed batch.
     """
-    Embed only a subset of cells using H-Optimus-0.
-    'dataset' must support __getitem__(cell_id) -> PIL.Image or Tensor for that cell.
-    If hoptimus_model_dir is provided, the model is loaded from that local directory
-    instead of being downloaded from HuggingFace.
-    """
-    import json
-    import logging as _logging
-    import timm
-    from timm.data import create_transform, resolve_data_config
-    dev = device or ('cuda' if torch.cuda.is_available() else 'cpu')
-    # Suppress timm's "Loaded from checkpoint" INFO messages — they clutter
-    # the nested progress bar display without adding actionable information.
-    _timm_logger = _logging.getLogger("timm")
-    _timm_prev_level = _timm_logger.level
-    _timm_logger.setLevel(_logging.WARNING)
-    try:
-      if hoptimus_model_dir is not None:
-        hoptimus_model_dir = Path(hoptimus_model_dir)
-        config_path = hoptimus_model_dir / "config.json"
-        if not config_path.exists():
-            raise FileNotFoundError(
-                f"--hoptimus-model-dir does not contain config.json: {hoptimus_model_dir}"
-            )
-        with open(config_path) as _f:
-            _cfg = json.load(_f)
-        architecture = _cfg.get("architecture")
-        if not architecture:
-            raise ValueError(
-                f"config.json in --hoptimus-model-dir does not contain 'architecture' key: {config_path}"
-            )
-        checkpoint_candidates = [
-            hoptimus_model_dir / "pytorch_model.bin",
-            hoptimus_model_dir / "model.safetensors",
-            hoptimus_model_dir / "pytorch_model.safetensors",
-        ]
-        checkpoint_path = next((p for p in checkpoint_candidates if p.exists()), None)
-        if checkpoint_path is None:
-            raise FileNotFoundError(
-                f"--hoptimus-model-dir does not contain a recognised checkpoint file "
-                f"(pytorch_model.bin or model.safetensors): {hoptimus_model_dir}"
-            )
-        # Build pretrained_cfg from the values stored in config.json so that
-        # create_transform picks up the correct mean/std/input_size.
-        pretrained_cfg_overlay = _cfg.get("pretrained_cfg", {})
-        model = timm.create_model(
-            architecture,
-            pretrained=False,
-            num_classes=_cfg.get("num_classes", 0),
-            global_pool=_cfg.get("global_pool", "token"),
-            pretrained_cfg_overlay=pretrained_cfg_overlay,
-        )
-        timm.models.load_checkpoint(model, str(checkpoint_path))
-        model = model.to(dev).eval()
-      else:
-        model = timm.create_model("hf-hub:bioptimus/H-optimus-0", pretrained=True, num_classes=0).to(dev).eval()
-    finally:
-        _timm_logger.setLevel(_timm_prev_level)
-    pre = create_transform(**resolve_data_config(model=model), is_training=False)
-
-    # Calibrate per-image memory cost on the plain single-GPU model BEFORE
-    # replicating to other GPUs, so replication overhead does not pollute the
-    # measurement.  Clear the cache first for a clean baseline.
-    from concurrent.futures import ThreadPoolExecutor as _TPE
-    if torch.cuda.is_available():
-        torch.cuda.empty_cache()
-    _bytes_per_image = _calibrate_bytes_per_image(model, dev)
-
-    # Build one persistent model replica per GPU.
-    # Unlike nn.DataParallel (which re-replicates weights every forward pass),
-    # this copies the model once per slide and dispatches sub-batches in
-    # parallel via threads — each GPU runs independently with no gather bottleneck.
-    ngpu = torch.cuda.device_count() if torch.cuda.is_available() else 0
-    if ngpu > 1 and next(model.parameters()).is_cuda:
-        import copy
-        _replicas = [model] + [
-            copy.deepcopy(model).to(f"cuda:{i}").eval() for i in range(1, ngpu)
-        ]
-        # Deepcopy briefly allocates on cuda:0 before moving to cuda:i, leaving
-        # cached blocks that make mem_get_info underreport free memory.  Clear
-        # the cache now so _auto_batch_size sees the true available space.
-        torch.cuda.empty_cache()
-    else:
-        _replicas = [model]
-        ngpu = max(ngpu, 1)
-
-    # Determine batch size dynamically from available VRAM when caller passes None.
-    if batch_size is None:
-        batch_size = _auto_batch_size(model, dev, bytes_per_image=_bytes_per_image)
-        _logging.getLogger(__name__).debug(
-            "H-optimus auto batch_size=%d (ngpu=%d, per-GPU≈%d, bytes_per_image=%dMB)",
-            batch_size, ngpu, batch_size // ngpu, _bytes_per_image // 1024 // 1024,
-        )
-
-    # Build a Subset where sample index equals the cell_id we want
-    subset = Subset(dataset, sampled_ids)
-
-    def _preprocess_batch_cpu(batch) -> torch.Tensor:
-        """Preprocess batch to a CPU tensor; GPU transfer done per-replica."""
-        if isinstance(batch, list):
-            return torch.stack([pre(im) for im in batch])
-        elif isinstance(batch, torch.Tensor):
-            if batch.dim() == 4 and batch.shape[1] in (1, 3):
-                return torch.stack([pre(transforms.ToPILImage()(t)) for t in batch])
-            return torch.stack([pre(b) for b in batch])
-        else:
-            try:
-                return torch.stack([pre(im) for im in batch])
-            except Exception:
-                return batch if isinstance(batch, torch.Tensor) else torch.stack(list(batch))
-
-    def _run_on_replica(replica_idx: int, x_cpu: torch.Tensor) -> torch.Tensor:
-        """Transfer sub-batch to one GPU replica and run BF16 forward pass."""
-        x = x_cpu.to(f"cuda:{replica_idx}")
-        with torch.no_grad(), torch.autocast(device_type="cuda", dtype=torch.bfloat16):
-            return _replicas[replica_idx](x).float().cpu()  # cast back to FP32 for downstream
-
-    def _forward(x_cpu: torch.Tensor) -> torch.Tensor:
-        """Dispatch a preprocessed CPU tensor across all GPU replicas in parallel."""
-        if len(_replicas) > 1:
-            splits = x_cpu.chunk(len(_replicas), dim=0)
-            with _TPE(max_workers=len(_replicas)) as _pool:
-                _futs = [_pool.submit(_run_on_replica, ri, s) for ri, s in enumerate(splits)]
-                return torch.cat([f.result() for f in _futs], dim=0)
-        with torch.no_grad(), torch.autocast(device_type="cuda", dtype=torch.bfloat16):
-            return _replicas[0](x_cpu.to(dev)).float().cpu()
-
-    # ── Adaptive inference loop ───────────────────────────────────────────────
-    # Manual index-based batching (no DataLoader) so batch_size can change at
-    # any point without restarting iteration:
-    #   • OOM → halve batch_size, clear caches, retry the same chunk
-    #   • Every _GROW_EVERY successful batches → re-probe usable VRAM and grow
-    #     back if another process released memory
-    _GROW_EVERY = 20   # probe cadence for growth opportunities
-    _n_ok = 0          # successful batches since the last resize
-    _label = display_id or slide_id or "H-optimus"
-    desc = f"  [{_label}]"
-    feats: list = []
-    n_total = len(sampled_ids)
-    pos = 0            # index into sampled_ids
-
-    pbar = tqdm(total=math.ceil(n_total / batch_size), desc=desc,
-                leave=False, position=1, unit="batch")
+    outputs: list = []
+    pos = 0
+    lo = 0               # largest confirmed-safe batch size
+    hi = max_batch + 1   # smallest confirmed-OOM size (unknown ceiling = max+1)
 
     def _retotal() -> None:
-        """Update the bar's total after a resize.
-
-        ``pbar.reset()`` zeroes ``n``, which would rewind the visible progress,
-        so mutate ``total`` directly and refresh instead.
-        """
-        pbar.total = pbar.n + math.ceil(max(0, n_total - pos) / batch_size)
+        if pbar is None:
+            return
+        pbar.total = pbar.n + _remaining_batches(n_total, pos, batch_size)
         pbar.refresh()
 
+    def _next_batch_size(oom: bool, current: int) -> int:
+        """Binary-search step: same logic as run_inference._advance_batch_search.
+
+        Extra guard: when the search has converged (lo+1 == hi == current) but
+        OOM still fires — external memory pressure or allocator fragmentation —
+        reset lo to 0 and try hi//2, mirroring the bisection-reset in
+        run_inference to avoid the decrement-by-one loop.
+        """
+        nonlocal lo, hi
+        if oom:
+            # Converged but still OOM → bisection reset (mirrors run_inference).
+            if lo > 0 and hi == lo + 1 and current == lo:
+                lo = 0
+                return max(min_batch, hi // 2)
+            hi = current
+            lo = min(lo, current - 1)
+            new_bs = max(min_batch, (lo + hi) // 2)
+            # Safety: if bisection made no progress (new_bs >= current), halve.
+            return new_bs if new_bs < current else max(min_batch, current // 2)
+        else:
+            lo = current
+            if hi <= max_batch:
+                cand = (lo + hi) // 2
+                return max(min_batch, cand if cand > lo else lo)
+            else:
+                return max(min_batch, min(lo * 2, max_batch) if lo > 0 else max_batch)
+
     while pos < n_total:
-        chunk_len = min(batch_size, n_total - pos)
-        items = [dataset[idx] for idx in sampled_ids[pos:pos + chunk_len]]
+        items = fetch(pos, pos + min(batch_size, n_total - pos))
 
-        while True:   # OOM retry loop for this chunk
+        while True:   # retry-on-OOM loop for this chunk
             try:
-                feats.append(_forward(_preprocess_batch_cpu(items)))
-                pbar.update(1)
+                outputs.append(forward(items))
                 pos += len(items)
-                _n_ok += 1
-
-                # Periodically re-probe and grow if memory has been released.
-                if _n_ok % _GROW_EVERY == 0:
-                    candidate = _auto_batch_size(
-                        _replicas[0], dev, bytes_per_image=_bytes_per_image)
-                    if candidate > batch_size:
-                        batch_size = candidate
-                        _retotal()
+                if pbar is not None:
+                    pbar.update(1)
+                batch_size = min(max_batch, _next_batch_size(oom=False, current=len(items)))
+                _retotal()
                 break
 
             except Exception as exc:
                 if not _is_oom(exc):
                     raise
-                for ri in range(len(_replicas)):
-                    with torch.cuda.device(ri):
-                        torch.cuda.empty_cache()
-                new_bs = max(len(_replicas), len(items) // 2)
+                if on_oom is not None:
+                    on_oom()
+                new_bs = _next_batch_size(oom=True, current=len(items))
                 if new_bs >= len(items):
-                    raise   # already at the floor; nothing left to shrink
+                    raise   # already at the floor; nothing left to give
                 _logging.getLogger(__name__).warning(
-                    "H-optimus OOM at batch_size=%d; retrying with %d",
-                    len(items), new_bs,
+                    "OOM at batch_size=%d; retrying with %d", len(items), new_bs
                 )
                 batch_size = new_bs
-                # Retry just the head of the chunk; the tail is re-fetched on
-                # the next outer iteration because *pos* has not advanced.
                 items = items[:new_bs]
-                _n_ok = 0
                 _retotal()
 
+    return outputs
+
+
+def _embed_hoptimus_subset_dataset(
+    dataset: Dataset,
+    sampled_ids: List[int],
+    batch_size: Optional[int] = None,
+    device: Optional[str] = None,
+    hoptimus_model_dir: Optional[Path] = None,
+    slide_id: Optional[str] = None,
+    display_id: Optional[str] = None,
+) -> np.ndarray:
+    """Embed a subset of cells through H-Optimus-0 and return FP32 features.
+
+    *batch_size* is the starting point for the binary-search adaptive loop.
+    When ``None``, it is auto-calibrated from available VRAM using a two-point
+    memory measurement that cancels the fixed cuDNN workspace overhead.
+
+    Returns
+    -------
+    np.ndarray of shape (len(sampled_ids), 1536), dtype float32
+    """
+    import copy
+    import json
+    import timm
+    from concurrent.futures import ThreadPoolExecutor as _TPE
+    from timm.data import create_transform, resolve_data_config
+
+    dev = device or ("cuda" if torch.cuda.is_available() else "cpu")
+
+    # ── 1. Load model, silencing timm's checkpoint INFO noise ────────────────
+    _timm_logger = _logging.getLogger("timm")
+    _prev_level = _timm_logger.level
+    _timm_logger.setLevel(_logging.WARNING)
+    try:
+        if hoptimus_model_dir is not None:
+            hoptimus_model_dir = Path(hoptimus_model_dir)
+            config_path = hoptimus_model_dir / "config.json"
+            if not config_path.exists():
+                raise FileNotFoundError(
+                    f"--hoptimus-model-dir does not contain config.json: {hoptimus_model_dir}"
+                )
+            with open(config_path) as _f:
+                cfg = json.load(_f)
+            architecture = cfg.get("architecture")
+            if not architecture:
+                raise ValueError(
+                    f"config.json in --hoptimus-model-dir does not contain "
+                    f"'architecture' key: {config_path}"
+                )
+            checkpoint_candidates = [
+                hoptimus_model_dir / "pytorch_model.bin",
+                hoptimus_model_dir / "model.safetensors",
+                hoptimus_model_dir / "pytorch_model.safetensors",
+            ]
+            checkpoint_path = next(
+                (p for p in checkpoint_candidates if p.exists()), None
+            )
+            if checkpoint_path is None:
+                raise FileNotFoundError(
+                    f"--hoptimus-model-dir does not contain a recognised checkpoint "
+                    f"(pytorch_model.bin or model.safetensors): {hoptimus_model_dir}"
+                )
+            model = timm.create_model(
+                architecture,
+                pretrained=False,
+                num_classes=cfg.get("num_classes", 0),
+                global_pool=cfg.get("global_pool", "token"),
+                pretrained_cfg_overlay=cfg.get("pretrained_cfg", {}),
+            )
+            timm.models.load_checkpoint(model, str(checkpoint_path))
+        else:
+            model = timm.create_model(
+                "hf-hub:bioptimus/H-optimus-0", pretrained=True, num_classes=0
+            )
+        model = model.to(dev).eval()
+    finally:
+        _timm_logger.setLevel(_prev_level)
+
+    pre = create_transform(**resolve_data_config(model=model), is_training=False)
+
+    # ── 2. Calibrate per-image memory BEFORE replication ─────────────────────
+    # Two-point calibration cancels the fixed cuDNN/allocator workspace overhead
+    # so the estimate reflects the true marginal cost per additional image.
+    if torch.cuda.is_available():
+        torch.cuda.empty_cache()
+    bytes_per_image = _calibrate_bytes_per_image(model, dev)
+
+    # ── 3. Build one persistent replica per GPU ───────────────────────────────
+    # Unlike nn.DataParallel (which replicates weights on every forward pass),
+    # this copies once per slide so replication cost is amortised.
+    ngpu = torch.cuda.device_count() if torch.cuda.is_available() else 0
+    if ngpu > 1 and next(model.parameters()).is_cuda:
+        replicas = [model] + [
+            copy.deepcopy(model).to(f"cuda:{i}").eval() for i in range(1, ngpu)
+        ]
+        # The deepcopy briefly allocates on cuda:0 before moving to cuda:i;
+        # clear cached blocks so _auto_batch_size reads true available VRAM.
+        torch.cuda.empty_cache()
+    else:
+        replicas = [model]
+        ngpu = max(ngpu, 1)
+
+    # ── 4. Determine starting batch size ─────────────────────────────────────
+    # User may override with an explicit value; None means auto-calibrate.
+    # Either way the binary-search loop will probe up/down from this starting
+    # point, so it is an initial estimate rather than a hard cap.
+    if batch_size is None:
+        batch_size = _auto_batch_size(model, dev, bytes_per_image=bytes_per_image)
+        _logging.getLogger(__name__).debug(
+            "H-optimus auto batch_size=%d (ngpu=%d, per-GPU≈%d, bytes_per_image=%dMiB)",
+            batch_size, ngpu, batch_size // ngpu, bytes_per_image // (1024 * 1024),
+        )
+
+    # ── 5. Preprocessing and per-replica forward helpers ─────────────────────
+    def _preprocess(items) -> torch.Tensor:
+        """Convert dataset items to a CPU float tensor."""
+        if isinstance(items, list):
+            return torch.stack([pre(im) for im in items])
+        if isinstance(items, torch.Tensor):
+            if items.dim() == 4 and items.shape[1] in (1, 3):
+                return torch.stack([pre(transforms.ToPILImage()(t)) for t in items])
+            return torch.stack([pre(b) for b in items])
+        try:
+            return torch.stack([pre(im) for im in items])
+        except Exception:
+            return items if isinstance(items, torch.Tensor) else torch.stack(list(items))
+
+    def _run_replica(idx: int, x_cpu: torch.Tensor) -> torch.Tensor:
+        """BF16 forward on one GPU replica; result is FP32 on CPU."""
+        with torch.no_grad(), torch.autocast(device_type="cuda", dtype=torch.bfloat16):
+            return replicas[idx](x_cpu.to(f"cuda:{idx}")).float().cpu()
+
+    def _forward(items) -> torch.Tensor:
+        """Preprocess and dispatch across all replicas in parallel."""
+        x_cpu = _preprocess(items)
+        if len(replicas) > 1:
+            splits = x_cpu.chunk(len(replicas), dim=0)
+            with _TPE(max_workers=len(replicas)) as pool:
+                futs = [pool.submit(_run_replica, i, s) for i, s in enumerate(splits)]
+                return torch.cat([f.result() for f in futs], dim=0)
+        with torch.no_grad(), torch.autocast(device_type="cuda", dtype=torch.bfloat16):
+            return replicas[0](x_cpu.to(dev)).float().cpu()
+
+    def _flush_caches() -> None:
+        for i in range(len(replicas)):
+            with torch.cuda.device(i):
+                torch.cuda.empty_cache()
+
+    # ── 6. Adaptive inference loop (binary-search batch sizing) ───────────────
+    # _run_adaptive_batches tracks lo (largest confirmed-safe) and hi (smallest
+    # confirmed-OOM).  On success it probes upward; on OOM it bisects downward.
+    # Both directions converge on the exact largest batch that fits in VRAM.
+    _label = display_id or slide_id or "H-optimus"
+    n_total = len(sampled_ids)
+    pbar = tqdm(
+        total=math.ceil(n_total / batch_size),
+        desc=f"  [{_label}]",
+        leave=False,
+        position=1,
+        unit="batch",
+    )
+    feats = _run_adaptive_batches(
+        n_total=n_total,
+        batch_size=batch_size,
+        fetch=lambda start, stop: [dataset[i] for i in sampled_ids[start:stop]],
+        forward=_forward,
+        on_oom=_flush_caches,
+        min_batch=len(replicas),
+        pbar=pbar,
+    )
     pbar.close()
     return torch.cat(feats, dim=0).numpy().astype(np.float32)
 
@@ -1077,6 +1155,7 @@ def prepare_slide_graph(
     use_hoptimus: bool = False,
     hoptimus_only: bool = False,
     hoptimus_model_dir: Optional[Path] = None,
+    hoptimus_batch_size: Optional[int] = None,  # None = auto-calibrate from VRAM
     patch_dataset: Optional[Dataset] = None,  # your dataset: __getitem__(cell_id)-> PIL.Image / Tensor
     sample_frac: Optional[float] = 0.2,
     sample_count: Optional[int] = None,
@@ -1155,7 +1234,7 @@ def prepare_slide_graph(
         sampled_global_ids = kept_idx[sampled_local_idx].tolist()                      # map to original IDs for dataset
 
         # embed sampled
-        Hs = _embed_hoptimus_subset_dataset(patch_dataset, sampled_global_ids, device=device, hoptimus_model_dir=hoptimus_model_dir, slide_id=slide_id, display_id=display_id)  # [m,1536]
+        Hs = _embed_hoptimus_subset_dataset(patch_dataset, sampled_global_ids, device=device, hoptimus_model_dir=hoptimus_model_dir, batch_size=hoptimus_batch_size, slide_id=slide_id, display_id=display_id)  # [m,1536]
         # optional PCA
         if pca_dim is not None and Hs.shape[1] > pca_dim:
             from sklearn.decomposition import PCA
@@ -1477,9 +1556,10 @@ def _niche_cellular_worker(args):
         # Keep the CSV contract stable: export only the k-hop feature block even
         # when niche training used concatenated k-hop + H-Optimus features.
         niche_detection_df.loc[kept_idx, feature_cols] = X_raw[:, :int(khop_dim)]
-    niche_cols = [f"niche_{l}" for l in range(niche_clustering_k)]
-    label_one_hot = np.eye(niche_clustering_k, dtype=np.float32)[labels]
-    niche_detection_df.loc[kept_idx, niche_cols] = label_one_hot
+    # Single categorical niche_id column (integer, 0-indexed) — replaces the
+    # former one-hot niche_0…niche_N block.  The annotation worker and
+    # voronoi helper read niche_id directly.
+    niche_detection_df.loc[kept_idx, "niche_id"] = labels.astype(int)
 
     tmp = str(cell_csv) + ".tmp"
     niche_detection_df.to_csv(tmp, index=False)
@@ -1528,6 +1608,7 @@ def niche_generation(
     use_hoptimus: bool = False,
     hoptimus_only: bool = False,
     hoptimus_model_dir: Optional[Path] = None,
+    hoptimus_batch_size: Optional[int] = None,  # None = auto-calibrate from VRAM
     patch_datasets: Optional[List[Dataset]] = None,  # list aligned with slides_inputs; if None, Dummy is used
     sample_frac: Optional[float] = 0.2,
     sample_count: Optional[int] = None,
@@ -1735,6 +1816,7 @@ def niche_generation(
                 k_hops=k_hops, alpha=alpha,
                 hoptimus_only=hoptimus_only,
                 hoptimus_model_dir=hoptimus_model_dir,
+                hoptimus_batch_size=hoptimus_batch_size,
                 use_hoptimus=use_hoptimus, patch_dataset=ds,
                 sample_frac=sample_frac, sample_count=sample_count,
                 pca_dim=pca_dim, knn_k=knn_k, knn_sigma_um=knn_sigma_um,

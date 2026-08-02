@@ -154,10 +154,16 @@ def build_capped_voronoi_from_df(
     pts_all = np.column_stack([cx, cy])
 
     niche_cols = [c for c in df.columns if c.startswith(niche_prefix)]
-    if not niche_cols:
-        raise ValueError(f"No columns start with '{niche_prefix}'.")
-    niche_mat = df[niche_cols].to_numpy(float)
-    valid_mask = np.asarray(niche_mat.sum(axis=1) > 0.0, dtype=bool)
+    if not niche_cols and "niche_id" not in df.columns:
+        raise ValueError(f"No columns start with '{niche_prefix}' and no 'niche_id' column found.")
+    if "niche_id" in df.columns:
+        niche_ids = df["niche_id"].to_numpy()
+        valid_mask = ~pd.isna(df["niche_id"]).to_numpy()
+        labels_full = niche_ids[~pd.isna(df["niche_id"]).to_numpy()].astype(int)
+    else:
+        niche_mat = df[niche_cols].to_numpy(float)
+        valid_mask = np.asarray(niche_mat.sum(axis=1) > 0.0, dtype=bool)
+        labels_full = niche_mat.argmax(axis=1)
     if not np.any(valid_mask):
         return {}, np.array([], dtype=int)
 
@@ -462,10 +468,17 @@ def merge_same_label_by_shared_edges_iterative(
     pts_all = np.column_stack([cx, cy])
 
     niche_cols = [c for c in df.columns if c.startswith(niche_prefix)]
-    if not niche_cols:
-        raise ValueError(f"No columns start with '{niche_prefix}'.")
-    niche_mat = df[niche_cols].to_numpy(float)
-    valid_mask = niche_mat.sum(axis=1) > 0.0
+    if not niche_cols and "niche_id" not in df.columns:
+        raise ValueError(f"No columns start with '{niche_prefix}' and no 'niche_id' column found.")
+    if "niche_id" in df.columns:
+        niche_ids = df["niche_id"].to_numpy()
+        valid_mask = ~pd.isna(df["niche_id"]).to_numpy()
+        labels_full = niche_ids.astype(int)
+        labels_full[pd.isna(df["niche_id"]).to_numpy()] = 0
+    else:
+        niche_mat = df[niche_cols].to_numpy(float)
+        valid_mask = niche_mat.sum(axis=1) > 0.0
+        labels_full = niche_mat.argmax(axis=1)
     if not np.any(valid_mask):
         return _pieces_dict_to_dataframe({}, niche_clustering_k=niche_clustering_k)
 
@@ -617,9 +630,9 @@ def _pieces_dict_to_dataframe(
     geom_col: str = "polygon_wkt",
     geom_format: str = "wkt",
 ) -> pd.DataFrame:
-    """Serialize merged polygons back to a DataFrame with niche one-hot columns."""
+    """Serialize merged polygons back to a DataFrame with niche_id column."""
     import json, binascii
-    niche_cols = [f"niche_{i}" for i in range(niche_clustering_k)]
+
     rows = []
 
     def serialize_geom(poly: Polygon):
@@ -635,7 +648,7 @@ def _pieces_dict_to_dataframe(
         else:
             raise ValueError("geom_format must be 'wkt', 'wkb_hex', or 'coords_json'")
 
-    def label_to_one_hot(lab: Any):
+    def label_to_int(lab):
         if isinstance(lab, str):
             if lab.startswith("niche_"):
                 lab = int(lab.split("_", 1)[1])
@@ -644,18 +657,16 @@ def _pieces_dict_to_dataframe(
         lab = int(lab)
         if not (0 <= lab < niche_clustering_k):
             raise ValueError(f"Label {lab} out of range for K={niche_clustering_k}.")
-        vec = np.zeros(niche_clustering_k, dtype=np.float32); vec[lab] = 1.0
-        return vec
+        return lab
 
     for lab, polys in pieces_dict.items():
         for poly in polys:
             if poly.is_empty or not isinstance(poly, (Polygon, MultiPolygon)):
                 continue
-            geom_val = serialize_geom(poly)
-            one_hot = label_to_one_hot(lab)
-            row = {n: float(v) for n, v in zip(niche_cols, one_hot)}
-            row[geom_col] = geom_val
-            row["area"] = float(poly.area)
-            rows.append(row)
+            rows.append({
+                "niche_id": label_to_int(lab),
+                geom_col: serialize_geom(poly),
+                "area": float(poly.area),
+            })
 
-    return pd.DataFrame(rows, columns=niche_cols + [geom_col, "area"])
+    return pd.DataFrame(rows, columns=["niche_id", geom_col, "area"])

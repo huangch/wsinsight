@@ -7,7 +7,8 @@ Each slide's merged ``export-csv/<slide>.csv`` table becomes one AnnData object:
                      non-geometry measurement columns.
 * ``var_names``    — class / feature names (the ``<prefix>_`` stripped off).
 * ``obs``          — ``slide_id``, ``object_type``, argmax ``classification``,
-                     plus every geometry and extra (hplot / ncomp / niche) column.
+                     ``niche_id`` (Categorical integer from the ``niche_id`` column
+                     in the niche CSV), plus every geometry and extra column.
 * ``obsm["spatial"]`` — cell centroid coordinates ``[center_x, center_y]``.
 * ``uns["wsinsight"]`` — provenance metadata.
 
@@ -102,11 +103,16 @@ def build_anndata_from_df(
         obs["classification"] = pd.Categorical([var_names[a] for a in arg])
 
     # Carry every column that is not part of X into obs (geometry + extras).
+    # niche_id (if present) is already an integer categorical and lands here
+    # naturally — no special handling needed.
     x_set = set(x_cols)
     for c in df.columns:
         if c in x_set or c in obs.columns:
             continue
-        obs[c] = df[c].to_numpy()
+        if c == "niche_id":
+            obs["niche_id"] = pd.Categorical(df["niche_id"].to_numpy())
+        else:
+            obs[c] = df[c].to_numpy()
 
     # Spatial coordinates for squidpy / scanpy spatial tooling.
     if {"center_x", "center_y"}.issubset(df.columns):

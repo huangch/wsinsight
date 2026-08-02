@@ -344,6 +344,7 @@ _NICHE_PARAM_NAMES: tuple[str, ...] = (
     "niche_hoptimus_only",
     "niche_hoptimus_pca_dim",
     "niche_hoptimus_model_dir",
+    "niche_hoptimus_batch_size",
     "niche_clusters",
     "niche_leiden_res",
     "niche_embed_dim",
@@ -494,10 +495,10 @@ def _select_kwargs(values: dict[str, Any], keys: tuple[str, ...]) -> dict[str, A
     "-b",
     "--batch-size",
     type=click.IntRange(min=1),
-    default=32,
+    default=None,
     show_default=True,
-    help="Batch size during model inference. If using multiple GPUs, increase the"
-    " batch size.",
+    help="Batch size during model inference. When omitted (recommended), the batch "
+    "size is auto-calibrated from available GPU memory at runtime.",
 )
 @click.option(
     "-n",
@@ -854,6 +855,19 @@ def _select_kwargs(values: dict[str, Any], keys: tuple[str, ...]) -> dict[str, A
     ),
 )
 @click.option(
+    "--niche-hoptimus-batch-size",
+    "niche_hoptimus_batch_size",
+    default=None,
+    type=click.IntRange(min=1),
+    help=(
+        "Number of image patches per H-Optimus forward pass. When omitted "
+        "(recommended), the batch size is auto-calibrated from available GPU "
+        "memory at runtime and adapts via binary search if OOM occurs. Set "
+        "explicitly only to override the automatic sizing. Ignored unless "
+        "--niche-hoptimus and --niche are both set."
+    ),
+)
+@click.option(
     "--niche-clusters",
     default=None,
     type=click.IntRange(min=2),
@@ -1180,7 +1194,7 @@ def run(
     config: Path | None,
     model_path: Path | None,
     zoo_model_dir: Path | None = None,
-    batch_size: int = 32,
+    batch_size: int | None = None,
     num_workers: int = 4,
     pin_memory: bool = True,
     # speedup: bool = False,
@@ -1226,6 +1240,7 @@ def run(
     niche_hoptimus_only: bool = False,
     niche_hoptimus_pca_dim: int | None = None,
     niche_hoptimus_model_dir: Path | None = None,
+    niche_hoptimus_batch_size: int | None = None,
     niche_clusters: int | None = None,
     niche_leiden_res: List | None = None,
     niche_embed_dim: int = 32,

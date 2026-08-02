@@ -134,6 +134,20 @@ def _num_cpus() -> int:
     ),
 )
 @click.option(
+    "--hoptimus-batch-size",
+    "niche_hoptimus_batch_size",
+    default=None,
+    type=click.IntRange(min=1),
+    help=(
+        "Number of image patches per H-Optimus forward pass. When omitted "
+        "(recommended), the batch size is auto-calibrated from available GPU "
+        "memory at runtime and adapts via binary search if OOM occurs. Set "
+        "explicitly only to override the automatic sizing (e.g. to cap memory "
+        "use when sharing the GPU with other workloads). Ignored unless "
+        "--hoptimus is set."
+    ),
+)
+@click.option(
     "--clusters",
     "niche_clusters",
     default=None,
@@ -325,6 +339,7 @@ def niche(
     niche_hoptimus_only: bool = False,
     niche_hoptimus_pca_dim: int | None = None,
     niche_hoptimus_model_dir: Path | None = None,
+    niche_hoptimus_batch_size: int | None = None,
     niche_clusters: int | None = None,
     niche_leiden_res: list[float] | None = None,
     niche_embed_dim: int = 32,
@@ -403,6 +418,7 @@ def niche(
         use_hoptimus=niche_hoptimus,
         hoptimus_only=niche_hoptimus_only,
         hoptimus_model_dir=niche_hoptimus_model_dir,
+        hoptimus_batch_size=niche_hoptimus_batch_size,
         pca_dim=niche_hoptimus_pca_dim,
         hidden=64,
         out_dim=niche_embed_dim,

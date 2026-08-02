@@ -642,7 +642,7 @@ def infer(
     config: Path | None,
     model_path: Path | None,
     zoo_model_dir: Path | None = None,
-    batch_size: int = 32,
+    batch_size: int | None = None,
     num_workers: int = DEFAULT_INFER_WORKERS,
     stitch_workers: int = DEFAULT_STITCH_WORKERS,
     pin_memory: bool = True,

@@ -129,6 +129,77 @@ def _is_bs_converged(current: int, lo: int, hi: int) -> bool:
     return lo > 0 and hi == lo + 1 and current == lo
 
 
+def _calibrate_inference_batch_size(
+    model: torch.nn.Module,
+    transform,
+    patch_size_px: int,
+    device: torch.device,
+    safety: float = 0.95,
+    min_batch: int = 1,
+    max_batch: int = 65536,
+) -> int:
+    """Auto-calibrate an initial batch size from available GPU memory.
+
+    Uses two-point calibration (the same technique as H-optimus calibration) to
+    measure the marginal per-patch GPU memory cost, then divides available VRAM
+    by that cost.  This replaces the fixed default of 32 with a value that is
+    appropriate for the actual hardware.
+
+    The result is used as both the *starting point* and the *ceiling* for the
+    existing ``_advance_batch_search`` binary search: on OOM the search bisects
+    downward; on success it probes upward toward the ceiling.
+
+    Falls back to 32 (the previous hard-coded default) on any error.
+    """
+    if not torch.cuda.is_available():
+        return 32
+    try:
+        from PIL import Image as _Image
+        # Determine model input tensor shape from the transform.
+        dummy_pil = _Image.new("RGB", (patch_size_px, patch_size_px))
+        dummy_tensor = transform(dummy_pil)  # e.g. [3, H, W]
+        C, H, W = dummy_tensor.shape
+
+        # Available VRAM: free + allocator-reserved-but-idle cache.
+        def _available() -> int:
+            free, _ = torch.cuda.mem_get_info(torch.cuda.current_device())
+            reserved = torch.cuda.memory_reserved(torch.cuda.current_device())
+            allocated = torch.cuda.memory_allocated(torch.cuda.current_device())
+            return free + max(0, reserved - allocated)
+
+        # Two-point calibration: slope cancels fixed cuDNN workspace overhead.
+        def _measure(n: int) -> int:
+            torch.cuda.synchronize()
+            torch.cuda.reset_peak_memory_stats()
+            baseline = torch.cuda.memory_allocated()
+            dummy = torch.zeros(n, C, H, W, device=device)
+            with torch.no_grad():
+                model(dummy)
+            torch.cuda.synchronize()
+            peak = torch.cuda.max_memory_allocated()
+            del dummy
+            torch.cuda.empty_cache()
+            return peak - baseline
+
+        b1, b2 = 4, 16
+        m1 = _measure(b1)
+        m2 = _measure(b2)
+        if m2 <= m1:
+            return 32
+        marginal = (m2 - m1) // (b2 - b1)
+        if marginal <= 0:
+            return 32
+
+        n_gpu = max(1, torch.cuda.device_count())
+        usable = _available()
+        per_gpu = max(min_batch, int(usable * safety) // marginal)
+        total = per_gpu * n_gpu
+        return max(min_batch, min(max_batch, (total // n_gpu) * n_gpu))
+    except Exception:
+        torch.cuda.empty_cache()
+        return 32
+
+
 def run_inference(
     wsi_dir: URIPath | None,
     slide_paths: List[URIPath] | None,
@@ -140,7 +211,7 @@ def run_inference(
     qupath_name_as_class: bool,
     model_info: wsinfer_zoo.client.HFModelTorchScript | LocalModelTorchScript,
     halo_size_px: int = 46,
-    batch_size: int = 32,
+    batch_size: int | None = None,
     num_workers: int = 4,
     # speedup: bool = False,
     # patch_overlap_median_filter_size: int = 3,
@@ -278,12 +349,25 @@ def run_inference(
 
     failed_patching = [p.stem for p in patch_paths if not p.exists()]
     failed_inference: list[str] = []
+
+    # Determine starting batch size and binary-search ceiling (_bs_max).
+    # When batch_size is None, auto-calibrate from VRAM using two-point slope
+    # calibration (cancels fixed cuDNN workspace overhead).  When explicitly
+    # provided, use that value as both the start and the ceiling — preserving
+    # the previous behaviour for users who pin a specific batch size.
+    if batch_size is None and transform is not None and torch.cuda.is_available():
+        _bs_max = _calibrate_inference_batch_size(
+            model, transform, model_info.config.patch_size_pixels, device
+        )
+    else:
+        _bs_max = batch_size if batch_size is not None else 32
+
     # Binary-search brackets shared across slides.
     # _bs_lo: largest batch size confirmed safe (0 = not yet known).
-    # _bs_hi: smallest batch size confirmed OOM (batch_size+1 = none seen yet).
-    current_batch_size = batch_size
+    # _bs_hi: smallest batch size confirmed OOM (_bs_max+1 = none seen yet).
+    current_batch_size: int = _bs_max
     _bs_lo: int = 0
-    _bs_hi: int = batch_size + 1
+    _bs_hi: int = _bs_max + 1
 
     # Worker-death recovery state (persists across slides).
     # When DataLoader workers are killed by the OOM killer, we first disable
@@ -602,7 +686,7 @@ def run_inference(
                             qbar.close()
                         gc.collect()
                         current_batch_size, _bs_lo, _bs_hi = _advance_batch_search(
-                            current_batch_size, _bs_lo, _bs_hi, batch_size, oom=False
+                            current_batch_size, _bs_lo, _bs_hi, _bs_max, oom=False
                         )
                         break
                     except (torch.cuda.OutOfMemoryError, RuntimeError) as _oom_err:
@@ -673,7 +757,7 @@ def run_inference(
                             )
                         else:
                             current_batch_size, _bs_lo, _bs_hi = _advance_batch_search(
-                                current_batch_size, _bs_lo, _bs_hi, batch_size, oom=True
+                                current_batch_size, _bs_lo, _bs_hi, _bs_max, oom=True
                             )
                             _oom_retries_at_current = 0
                             tqdm.tqdm.write(
@@ -788,7 +872,7 @@ def run_inference(
                                 qbar.update(1)
                         raise_if_cancelled()
                         current_batch_size, _bs_lo, _bs_hi = _advance_batch_search(
-                            current_batch_size, _bs_lo, _bs_hi, batch_size, oom=False
+                            current_batch_size, _bs_lo, _bs_hi, _bs_max, oom=False
                         )
                         break
                     except (torch.cuda.OutOfMemoryError, RuntimeError) as _oom_err:
@@ -853,7 +937,7 @@ def run_inference(
                             )
                         else:
                             current_batch_size, _bs_lo, _bs_hi = _advance_batch_search(
-                                current_batch_size, _bs_lo, _bs_hi, batch_size, oom=True
+                                current_batch_size, _bs_lo, _bs_hi, _bs_max, oom=True
                             )
                             _oom_retries_at_current = 0
                             tqdm.tqdm.write(
