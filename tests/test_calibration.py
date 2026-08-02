@@ -50,6 +50,7 @@ def _load_helpers() -> dict:
         "math": math,
         "Optional": Optional,
         "_logging": logging,
+        "tqdm": __import__("tqdm").tqdm,
     }
     exec(compile(text[start:end], str(src_path), "exec"), ns)
     return ns
@@ -423,6 +424,9 @@ class _SpyBar:
     def update(self, k: int = 1) -> None:
         self.n += k
         self.history.append(self.n)
+
+    def write(self, msg: str) -> None:
+        pass  # suppress output in tests
 
     def refresh(self) -> None:
         self.history.append(self.n)

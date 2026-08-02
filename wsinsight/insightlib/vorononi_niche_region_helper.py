@@ -157,17 +157,15 @@ def build_capped_voronoi_from_df(
     if not niche_cols and "niche_id" not in df.columns:
         raise ValueError(f"No columns start with '{niche_prefix}' and no 'niche_id' column found.")
     if "niche_id" in df.columns:
-        niche_ids = df["niche_id"].to_numpy()
         valid_mask = ~pd.isna(df["niche_id"]).to_numpy()
-        labels_full = niche_ids[~pd.isna(df["niche_id"]).to_numpy()].astype(int)
+        _niche_id_filled = pd.Series(df["niche_id"].to_numpy()).fillna(0).to_numpy()
+        labels_full = _niche_id_filled.astype(int)
     else:
         niche_mat = df[niche_cols].to_numpy(float)
         valid_mask = np.asarray(niche_mat.sum(axis=1) > 0.0, dtype=bool)
         labels_full = niche_mat.argmax(axis=1)
     if not np.any(valid_mask):
         return {}, np.array([], dtype=int)
-
-    labels_full = niche_mat.argmax(axis=1)
     pts = pts_all[valid_mask]
     labels = labels_full[valid_mask]
 
@@ -471,18 +469,17 @@ def merge_same_label_by_shared_edges_iterative(
     if not niche_cols and "niche_id" not in df.columns:
         raise ValueError(f"No columns start with '{niche_prefix}' and no 'niche_id' column found.")
     if "niche_id" in df.columns:
-        niche_ids = df["niche_id"].to_numpy()
+        _niche_id_raw = df["niche_id"].to_numpy()
         valid_mask = ~pd.isna(df["niche_id"]).to_numpy()
-        labels_full = niche_ids.astype(int)
-        labels_full[pd.isna(df["niche_id"]).to_numpy()] = 0
+        # fillna with 0 before casting to avoid "invalid value in cast" warning
+        _niche_id_filled = pd.Series(_niche_id_raw).fillna(0).to_numpy()
+        labels_full = _niche_id_filled.astype(int)
     else:
         niche_mat = df[niche_cols].to_numpy(float)
         valid_mask = niche_mat.sum(axis=1) > 0.0
         labels_full = niche_mat.argmax(axis=1)
     if not np.any(valid_mask):
         return _pieces_dict_to_dataframe({}, niche_clustering_k=niche_clustering_k)
-
-    labels_full = niche_mat.argmax(axis=1)
     pts = pts_all[valid_mask]
     labels = labels_full[valid_mask]
     N = len(pts)

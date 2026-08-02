@@ -111,21 +111,45 @@ def drop_isolated(edge_index: np.ndarray, N: int) -> Tuple[np.ndarray, np.ndarra
     return edge_index_new, kept
 
 
+# Directories older than this were not created by the current run.
+_PROCESS_START_TIME: float = time.time()
+
+
 def _cleanup_tmpdir() -> None:
-    """Clean up temporary directories to prevent /tmp from filling up during long-running jobs.
-    Especially important when PyTorch/timm models create temporary files during import."""
+    """Delete temp directories created by *this process* since it started.
+
+    Long H-Optimus runs accumulate scratch directories (torch and timm both
+    create them on import), which can exhaust a small ``/tmp``.  Only entries
+    owned by this process and newer than process start are removed, so
+    unrelated jobs sharing ``$TMPDIR`` are left alone.
+    """
     tmpdir = tempfile.gettempdir()
     try:
-        for item in os.listdir(tmpdir):
-            item_path = os.path.join(tmpdir, item)
-            # Only remove directories starting with 'tmp' (standard tempfile pattern)
-            if os.path.isdir(item_path) and item.startswith("tmp"):
-                try:
-                    shutil.rmtree(item_path, ignore_errors=True)
-                except Exception:
-                    pass  # silently ignore failures for in-use directories
-    except Exception:
-        pass  # silently ignore if tmpdir listing fails
+        own_uid = os.getuid()
+    except AttributeError:      # non-POSIX
+        own_uid = None
+
+    try:
+        entries = os.listdir(tmpdir)
+    except OSError:
+        return
+
+    for item in entries:
+        if not item.startswith("tmp"):
+            continue
+        item_path = os.path.join(tmpdir, item)
+        try:
+            st = os.stat(item_path)
+            if not os.path.isdir(item_path):
+                continue
+            # Skip anything this process did not create.
+            if own_uid is not None and st.st_uid != own_uid:
+                continue
+            if st.st_mtime < _PROCESS_START_TIME:
+                continue
+            shutil.rmtree(item_path, ignore_errors=True)
+        except OSError:
+            continue    # in use, already gone, or not ours
 
 
 # =============================================================================
@@ -448,9 +472,12 @@ def khop_features(P: np.ndarray, edge_index: np.ndarray, N: int,
 # =============================================================================
 
 class DummyPatchDataset(Dataset):
-    """
-    Placeholder dataset you can replace.
-    __getitem__(cell_id) should return a PIL.Image (224x224 RGB) or a 3xHxW tensor.
+    """Blank-image placeholder. **Not suitable for real analysis.**
+
+    Every ``__getitem__`` returns the same black image regardless of index, so
+    a morphology encoder fed by this dataset produces an identical embedding
+    for every cell.  It exists only for smoke-testing the plumbing; production
+    runs must use :class:`CellPatchDataset`.
     """
     def __init__(self, num_cells: int, size: int = 224):
         self.num_cells = num_cells
@@ -458,9 +485,91 @@ class DummyPatchDataset(Dataset):
     def __len__(self):
         return self.num_cells
     def __getitem__(self, idx):
-        # A blank RGB image placeholder; replace with real crops later.
         from PIL import Image
         return Image.new("RGB", (self.size, self.size), color=(0, 0, 0))
+
+
+class CellPatchDataset(Dataset):
+    """Per-cell image crops read on demand from a whole-slide image.
+
+    ``__getitem__(i)`` returns the RGB region centred on cell *i* as a
+    ``PIL.Image`` sized ``out_size`` x ``out_size``, ready for a morphology
+    encoder such as H-Optimus.
+
+    Indices are row positions in the slide's detection table, so the dataset
+    can be indexed directly with the ``kept_idx`` / sampled-id arrays used by
+    :func:`prepare_slide_graph`.
+
+    Parameters
+    ----------
+    wsi_path:
+        Slide to read from.
+    centers_px:
+        ``(N, 2)`` array of cell centres in level-0 pixels.
+    mpp_um_per_px:
+        Slide resolution, used to convert *window_um* to pixels.
+    window_um:
+        Side length of the crop in microns.  The default of 32 um captures the
+        cell plus a ring of immediate context at typical cell sizes.
+    out_size:
+        Output edge length in pixels (224 for H-Optimus).
+
+    Notes
+    -----
+    The slide handle is opened lazily on first access and dropped when the
+    object is pickled, so instances can be sent to worker processes.
+    """
+
+    def __init__(
+        self,
+        wsi_path,
+        centers_px: np.ndarray,
+        mpp_um_per_px: float,
+        window_um: float = 32.0,
+        out_size: int = 224,
+    ):
+        self.wsi_path = wsi_path
+        self.centers_px = np.asarray(centers_px, dtype=np.int64)
+        self.mpp_um_per_px = float(mpp_um_per_px)
+        self.window_px = max(8, int(round(float(window_um) / float(mpp_um_per_px))))
+        self.out_size = int(out_size)
+        self._slide = None
+
+    def __len__(self) -> int:
+        return int(self.centers_px.shape[0])
+
+    def __getstate__(self):
+        # An open slide handle is not picklable; reopen in the child process.
+        state = self.__dict__.copy()
+        state["_slide"] = None
+        return state
+
+    def _slide_handle(self):
+        if self._slide is None:
+            from ..wsi import get_wsi_cls
+            self._slide = get_wsi_cls()(str(self.wsi_path))
+        return self._slide
+
+    def __getitem__(self, idx: int):
+        from PIL import Image
+
+        cx, cy = self.centers_px[idx]
+        half = self.window_px // 2
+        try:
+            im = self._slide_handle().read_region(
+                location=(int(cx) - half, int(cy) - half),
+                level=0,
+                size=(self.window_px, self.window_px),
+            ).convert("RGB")
+        except Exception:
+            # Crops that fall outside the slide bounds read as blank tissue
+            # rather than aborting the whole slide.
+            im = Image.new("RGB", (self.out_size, self.out_size), color=(255, 255, 255))
+
+        if im.size != (self.out_size, self.out_size):
+            im = im.resize((self.out_size, self.out_size), Image.BILINEAR)
+        return im
+
 
 def _make_short_ids(stems: List[str]) -> dict:
     """Alias kept for backward compatibility; see insight_helpers.make_short_ids."""
@@ -478,7 +587,8 @@ _CAL_B2: int = 32
 
 def _calibrate_bytes_per_image(model: nn.Module, dev: str,
                                 cal_b1: int = _CAL_B1,
-                                cal_b2: int = _CAL_B2) -> int:
+                                cal_b2: int = _CAL_B2,
+                                input_size: int = 224) -> int:
     """Two-point calibration: measure marginal GPU memory cost per image.
 
     Single-point calibration (peak / batch_size) includes a large fixed
@@ -498,7 +608,7 @@ def _calibrate_bytes_per_image(model: nn.Module, dev: str,
         torch.cuda.synchronize()
         torch.cuda.reset_peak_memory_stats()
         baseline = torch.cuda.memory_allocated()
-        dummy = torch.zeros(n, 3, 224, 224, device=dev)
+        dummy = torch.zeros(n, 3, input_size, input_size, device=dev)
         with torch.no_grad(), torch.autocast(device_type="cuda", dtype=torch.bfloat16):
             model(dummy)
         torch.cuda.synchronize()
@@ -685,8 +795,11 @@ def _run_adaptive_batches(
                 new_bs = _next_batch_size(oom=True, current=len(items))
                 if new_bs >= len(items):
                     raise   # already at the floor; nothing left to give
-                _logging.getLogger(__name__).warning(
-                    "OOM at batch_size=%d; retrying with %d", len(items), new_bs
+                # tqdm.write() (class method) clears the current line before
+                # printing, handling all nested bar positions correctly.
+                # pbar.write() on a position=1 inner bar leaves leading spaces.
+                tqdm.write(
+                    f"WARNING: OOM at batch_size={len(items)}; retrying with {new_bs}"
                 )
                 batch_size = new_bs
                 items = items[:new_bs]
@@ -771,14 +884,17 @@ def _embed_hoptimus_subset_dataset(
     finally:
         _timm_logger.setLevel(_prev_level)
 
-    pre = create_transform(**resolve_data_config(model=model), is_training=False)
+    _data_cfg = resolve_data_config(model=model)
+    pre = create_transform(**_data_cfg, is_training=False)
+    # Model's real input edge length, e.g. (3, 224, 224) -> 224.
+    _input_size = int(_data_cfg.get("input_size", (3, 224, 224))[-1])
 
     # ── 2. Calibrate per-image memory BEFORE replication ─────────────────────
     # Two-point calibration cancels the fixed cuDNN/allocator workspace overhead
     # so the estimate reflects the true marginal cost per additional image.
     if torch.cuda.is_available():
         torch.cuda.empty_cache()
-    bytes_per_image = _calibrate_bytes_per_image(model, dev)
+    bytes_per_image = _calibrate_bytes_per_image(model, dev, input_size=_input_size)
 
     # ── 3. Build one persistent replica per GPU ───────────────────────────────
     # Unlike nn.DataParallel (which replicates weights on every forward pass),
@@ -1166,8 +1282,10 @@ def prepare_slide_graph(
     graph_cache_dir: Optional[Path] = None,
     slide_id: Optional[str] = None,
     display_id: Optional[str] = None,
+    wsi_path: Optional[Path] = None,
+    cell_window_um: float = 32.0,
+    seed: int = 0,
     mode: str = "hard",
-    # seed: int = 0
 ) -> Dict[str, np.ndarray]:
     """
     Build one slide graph:
@@ -1177,8 +1295,8 @@ def prepare_slide_graph(
       - features = k-hop soft-composition (always) + optional H-Optimus (sample+KNN impute)
     Returns: {'X','edge_index','kept_idx','classes'}
     """
-    # rng = np.random.default_rng(seed)
-    rng = np.random.default_rng()
+    # Seeded so the sampled cell subset is reproducible for a given --seed.
+    rng = np.random.default_rng(seed)
 
     # centers in px (your function)
     df = compute_cell_center_points(niche_detection_df.copy())
@@ -1220,9 +1338,19 @@ def prepare_slide_graph(
         # coords in microns for KNN weighting
         coords_um = centers_px[kept_idx] * float(mpp_um_per_px)
 
-        # ensure dataset provided; if not, use dummy
+        # ensure dataset provided; if not, crop cells straight from the slide
         if patch_dataset is None:
-            patch_dataset = DummyPatchDataset(num_cells=N)
+            if wsi_path is None:
+                raise ValueError(
+                    "use_hoptimus=True requires either patch_dataset or wsi_path; "
+                    "without a slide there are no cell images to encode."
+                )
+            patch_dataset = CellPatchDataset(
+                wsi_path=wsi_path,
+                centers_px=centers_px,
+                mpp_um_per_px=mpp_um_per_px,
+                window_um=cell_window_um,
+            )
 
         # choose sample
         if sample_count is not None:
@@ -1238,8 +1366,11 @@ def prepare_slide_graph(
         # optional PCA
         if pca_dim is not None and Hs.shape[1] > pca_dim:
             from sklearn.decomposition import PCA
-            # Hs = PCA(n_components=pca_dim, random_state=seed).fit_transform(Hs).astype(np.float32)
-            Hs = PCA(n_components=pca_dim).fit_transform(Hs).astype(np.float32)
+            # n_components cannot exceed min(n_samples, n_features); slides with
+            # few cells would otherwise raise inside sklearn.
+            n_comp = min(int(pca_dim), Hs.shape[0], Hs.shape[1])
+            if n_comp >= 1:
+                Hs = PCA(n_components=n_comp, random_state=seed).fit_transform(Hs).astype(np.float32)
 
         # KNN impute to all kept nodes (micron distances)
         H_full = _impute_knn(coords_um=coords_um, sampled_idx=sampled_local_idx,
@@ -1824,6 +1955,8 @@ def niche_generation(
                 graph_cache_dir=graph_cache_dir,
                 slide_id=slide_id,
                 display_id=display_id,
+                wsi_path=wsi_path,
+                seed=seed,
                 mode="soft" if niche_soft_mode else "hard",
             )
             slides[i] = s
