@@ -272,7 +272,7 @@ def export(
                     results_dir=results_dir,
                     output_dir="export-niche-regions-geojson",
                     prefix="niche",
-                    num_workers=export_workers,
+                    label_col="niche_id",
                     object_type="annotation",
                     set_classification=True,
                     annotation_shape="polygon",

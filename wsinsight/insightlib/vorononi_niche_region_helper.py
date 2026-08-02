@@ -154,11 +154,19 @@ def build_capped_voronoi_from_df(
     pts_all = np.column_stack([cx, cy])
 
     niche_cols = [c for c in df.columns if c.startswith(niche_prefix)]
-    if not niche_cols and "niche_id" not in df.columns:
-        raise ValueError(f"No columns start with '{niche_prefix}' and no 'niche_id' column found.")
-    if "niche_id" in df.columns:
-        valid_mask = ~pd.isna(df["niche_id"]).to_numpy()
-        _niche_id_filled = pd.Series(df["niche_id"].to_numpy()).fillna(0).to_numpy()
+    # Accept both the current column name ('classification') and the legacy name
+    # ('niche_id') so that outputs from older runs can still be processed.
+    _label_col = "classification" if "classification" in df.columns else (
+        "niche_id" if "niche_id" in df.columns else None
+    )
+    if not niche_cols and _label_col is None:
+        raise ValueError(
+            f"No columns start with '{niche_prefix}' and no 'classification' "
+            "(or legacy 'niche_id') column found."
+        )
+    if _label_col is not None:
+        valid_mask = ~pd.isna(df[_label_col]).to_numpy()
+        _niche_id_filled = pd.Series(df[_label_col].to_numpy()).fillna(0).to_numpy()
         labels_full = _niche_id_filled.astype(int)
     else:
         niche_mat = df[niche_cols].to_numpy(float)
@@ -466,11 +474,19 @@ def merge_same_label_by_shared_edges_iterative(
     pts_all = np.column_stack([cx, cy])
 
     niche_cols = [c for c in df.columns if c.startswith(niche_prefix)]
-    if not niche_cols and "niche_id" not in df.columns:
-        raise ValueError(f"No columns start with '{niche_prefix}' and no 'niche_id' column found.")
-    if "niche_id" in df.columns:
-        _niche_id_raw = df["niche_id"].to_numpy()
-        valid_mask = ~pd.isna(df["niche_id"]).to_numpy()
+    # Accept both the current column name ('classification') and the legacy name
+    # ('niche_id') so that outputs from older runs can still be processed.
+    _label_col = "classification" if "classification" in df.columns else (
+        "niche_id" if "niche_id" in df.columns else None
+    )
+    if not niche_cols and _label_col is None:
+        raise ValueError(
+            f"No columns start with '{niche_prefix}' and no 'classification' "
+            "(or legacy 'niche_id') column found."
+        )
+    if _label_col is not None:
+        _niche_id_raw = df[_label_col].to_numpy()
+        valid_mask = ~pd.isna(df[_label_col]).to_numpy()
         # fillna with 0 before casting to avoid "invalid value in cast" warning
         _niche_id_filled = pd.Series(_niche_id_raw).fillna(0).to_numpy()
         labels_full = _niche_id_filled.astype(int)

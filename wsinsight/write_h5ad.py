@@ -103,14 +103,14 @@ def build_anndata_from_df(
         obs["classification"] = pd.Categorical([var_names[a] for a in arg])
 
     # Carry every column that is not part of X into obs (geometry + extras).
-    # niche_id (if present) is already an integer categorical and lands here
-    # naturally — no special handling needed.
+    # niche_id (integer niche cluster label) is kept as its own obs column
+    # so it does not collide with the argmax 'classification' obs column above.
     x_set = set(x_cols)
     for c in df.columns:
         if c in x_set or c in obs.columns:
             continue
         if c == "niche_id":
-            obs["niche_id"] = pd.Categorical(df["niche_id"].to_numpy())
+            obs["niche_id"] = pd.Categorical(df[c].to_numpy())
         else:
             obs[c] = df[c].to_numpy()
 

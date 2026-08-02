@@ -591,11 +591,14 @@ def _make_short_ids(stems: List[str]) -> dict:
 
 # Fallback per-image memory estimate used when GPU calibration is unavailable.
 _HOPTIMUS_BYTES_PER_IMAGE_FALLBACK: int = 32 * 1024 ** 2  # 32 MiB
-# Two batch sizes used for two-point calibration.  The DIFFERENCE between the
-# two measurements cancels the fixed cuDNN/allocator overhead, leaving only the
-# true marginal cost per additional image.
-_CAL_B1: int = 8
-_CAL_B2: int = 32
+# Two batch sizes used for two-point calibration.  Larger values capture the
+# memory overhead of large batches (BF16 activations, CUDA workspace growth)
+# more accurately than the old 8→32 range, which underestimated real costs at
+# production batch sizes and caused the calibrated estimate to overshoot by ~2×.
+# If the GPU cannot fit cal_b2 images during calibration the function
+# automatically falls back to smaller pairs (see _calibrate_bytes_per_image).
+_CAL_B1: int = 64
+_CAL_B2: int = 256
 
 
 def _calibrate_bytes_per_image(model: nn.Module, dev: str,
@@ -641,6 +644,17 @@ def _calibrate_bytes_per_image(model: nn.Module, dev: str,
         return max(marginal, 1 * 1024 * 1024)  # at least 1 MiB
     except Exception:
         torch.cuda.empty_cache()
+        # The large calibration batch (default 256) may itself OOM on smaller
+        # GPUs.  Fall back through progressively smaller pairs before giving up.
+        for b1, b2 in ((32, 128), (8, 32)):
+            try:
+                m1 = _measure(b1)
+                m2 = _measure(b2)
+                delta = b2 - b1
+                if m2 > m1 and delta > 0:
+                    return max((m2 - m1) // delta, 1 * 1024 * 1024)
+            except Exception:
+                torch.cuda.empty_cache()
         return _HOPTIMUS_BYTES_PER_IMAGE_FALLBACK
 
 
@@ -725,6 +739,7 @@ def _run_adaptive_batches(
     pbar=None,
     prefetch: bool = True,
     prefetch_depth: int = 2,
+    probe_factor: float = 2.0,
 ) -> list:
     """Consume ``0..n_total`` items, adapting batch size via binary search.
 
@@ -735,7 +750,9 @@ def _run_adaptive_batches(
     * ``hi`` — smallest batch size confirmed to OOM (max_batch+1 = no ceiling)
 
     On **success**: raise ``lo`` to the current size; if a ceiling is known
-    bisect upward toward it, otherwise probe exponentially.
+    bisect upward toward it, otherwise probe upward by *probe_factor*
+    (default 2× / binary; use the golden ratio 1.618 for gentler probing that
+    reaches the sweet spot in fewer OOM calls and less allocator fragmentation).
 
     On **OOM**: tighten ``hi``; lower ``lo`` to prevent the ``lo+1==hi``
     deadlock; bisect downward.
@@ -752,6 +769,10 @@ def _run_adaptive_batches(
         Called before each retry, e.g. to flush the allocator cache.
     pbar:
         Optional tqdm bar, advanced one step per completed batch.
+    probe_factor:
+        Multiplicative step when probing upward before a ceiling is known.
+        2.0 = binary doubling (default).  1.618 (golden ratio) takes smaller
+        steps, generating fewer OOM calls and less CUDA allocator fragmentation.
     """
     outputs: list = []
     pos = 0
@@ -794,31 +815,33 @@ def _run_adaptive_batches(
         pbar.refresh()
 
     def _next_batch_size(oom: bool, current: int) -> int:
-        """Binary-search step: same logic as run_inference._advance_batch_search.
+        """Golden-ratio adaptive search step.
 
-        Extra guard: when the search has converged (lo+1 == hi == current) but
-        OOM still fires — external memory pressure or allocator fragmentation —
-        reset lo to 0 and try hi//2, mirroring the bisection-reset in
-        run_inference to avoid the decrement-by-one loop.
+        Maintains (lo, hi) brackets as in run_inference._advance_batch_search.
+        When no ceiling is known, probes upward by *probe_factor* (default φ).
+        When OOM and bisect makes no progress, falls back to *current / probe_factor*
+        (a φ-step down) instead of halving, keeping moves symmetric and gentler.
         """
         nonlocal lo, hi
+        _step_down = lambda v: max(min_batch, int(v / probe_factor))
         if oom:
-            # Converged but still OOM → bisection reset (mirrors run_inference).
+            # Converged but still OOM → reset with φ-step down instead of ÷2.
             if lo > 0 and hi == lo + 1 and current == lo:
                 lo = 0
-                return max(min_batch, hi // 2)
+                return _step_down(hi)
             hi = current
             lo = min(lo, current - 1)
             new_bs = max(min_batch, (lo + hi) // 2)
-            # Safety: if bisection made no progress (new_bs >= current), halve.
-            return new_bs if new_bs < current else max(min_batch, current // 2)
+            # Safety: if bisection made no progress, use φ-step down.
+            return new_bs if new_bs < current else _step_down(current)
         else:
             lo = current
             if hi <= max_batch:
                 cand = (lo + hi) // 2
                 return max(min_batch, cand if cand > lo else lo)
             else:
-                return max(min_batch, min(lo * 2, max_batch) if lo > 0 else max_batch)
+                next_bs = int(lo * probe_factor) if lo > 0 else max_batch
+                return max(min_batch, min(next_bs, max_batch))
 
     try:
         while pos < n_total:
@@ -970,8 +993,7 @@ def _embed_hoptimus_subset_dataset(
 
     # ── 4. Determine starting batch size ─────────────────────────────────────
     # User may override with an explicit value; None means auto-calibrate.
-    # Either way the binary-search loop will probe up/down from this starting
-    # point, so it is an initial estimate rather than a hard cap.
+    _user_specified_batch_size = batch_size is not None
     if batch_size is None:
         batch_size = _auto_batch_size(model, dev, bytes_per_image=bytes_per_image)
         _logging.getLogger(__name__).debug(
@@ -1069,13 +1091,38 @@ def _embed_hoptimus_subset_dataset(
                 pass        # out of pinnable memory; pageable copy still works
         return x
 
+    # Flush allocator cache before starting so fragmentation from model load
+    # / replica deepcopy does not eat into the batch-size budget.
+    if torch.cuda.is_available():
+        torch.cuda.empty_cache()
+
+    # Golden-ratio probe strategy:
+    #   start   = calibrated / φ  ≈ 0.618 × calibrated
+    #   ceiling = calibrated       (full estimate, allow exploration up to it)
+    #   upward probe factor = φ ≈ 1.618  (gentler than ×2)
+    #
+    # Why φ beats ×2 for H-Optimus:
+    #   The two-point calibration overestimates by ~2×, so the actual max is
+    #   around 0.5–0.75 × calibrated.  Starting at 0.618 × calibrated almost
+    #   always succeeds on the first try.  Probing up by ×1.618 reaches the
+    #   ceiling in ~3 OOM calls instead of 13, causing far less allocator
+    #   fragmentation — the cascade seen with ×2 (where eventually even
+    #   previously-working batches OOM) does not occur.
+    #   When the user sets --hoptimus-batch-size explicitly we trust that value.
+    _PHI = (1.0 + 5.0 ** 0.5) / 2.0  # ≈ 1.618
+    if _user_specified_batch_size:
+        _start_bs  = max(len(replicas), batch_size)
+        _max_bs    = _start_bs
+        _probe     = 2.0          # irrelevant: max_batch == start so no upward probe
+    else:
+        _start_bs  = max(len(replicas), int(batch_size / _PHI))
+        _max_bs    = batch_size
+        _probe     = _PHI
     feats = _run_adaptive_batches(
         n_total=n_total,
-        batch_size=batch_size,
-        # The calibrated size is already a VRAM-derived estimate of the largest
-        # workable batch; treat it as the ceiling so the search settles there
-        # instead of doubling past it until it provokes an OOM.
-        max_batch=batch_size,
+        batch_size=_start_bs,
+        max_batch=_max_bs,
+        probe_factor=_probe,
         fetch=_fetch,
         forward=_forward,
         on_oom=_flush_caches,

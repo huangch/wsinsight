@@ -77,7 +77,8 @@ def _as_output_tensor(pred: object) -> torch.Tensor:
 
 
 def _advance_batch_search(
-    current: int, lo: int, hi: int, max_bs: int, *, oom: bool
+    current: int, lo: int, hi: int, max_bs: int, *, oom: bool,
+    probe_factor: float = (1.0 + 5.0 ** 0.5) / 2.0,  # φ ≈ 1.618
 ) -> tuple[int, int, int]:
     """Update the OOM binary-search state and propose the next batch size.
 
@@ -92,8 +93,8 @@ def _advance_batch_search(
     deadlock at ``(20+20)//2 == 20`` forever.
 
     On success (``oom=False``) we raise ``lo`` to ``current``, then either
-    bisect upward (if a ceiling is known) or exponentially probe up to
-    ``max_bs`` (if not).
+    bisect upward (if a ceiling is known) or probe upward by *probe_factor*
+    (golden ratio φ ≈ 1.618 by default, gentler than the previous ×2 doubling).
 
     Returns
     -------
@@ -111,7 +112,7 @@ def _advance_batch_search(
             cand = (lo + hi) // 2
             next_current = cand if cand > lo else lo
         else:
-            next_current = min(lo * 2, max_bs) if lo > 0 else max_bs
+            next_current = min(int(lo * probe_factor), max_bs) if lo > 0 else max_bs
         next_current = max(1, min(next_current, max_bs))
     return next_current, lo, hi
 
@@ -745,12 +746,13 @@ def run_inference(
                         elif _is_bs_converged(current_batch_size, _bs_lo, _bs_hi):
                             # Second OOM at the converged value: fragmentation
                             # was not the culprit. Reset the bracket so the
-                            # next attempt jumps to ~current/2 instead of
-                            # ratcheting down by 1, then re-bisect upward.
+                            # next attempt drops by 1/φ instead of 1/2, then
+                            # re-bisects upward.
                             _old_bs = current_batch_size
                             _bs_hi = current_batch_size
                             _bs_lo = 0
-                            current_batch_size = max(1, _bs_hi // 2)
+                            _PHI = (1.0 + 5.0 ** 0.5) / 2.0
+                            current_batch_size = max(1, int(_bs_hi / _PHI))
                             _oom_retries_at_current = 0
                             tqdm.tqdm.write(
                                 f"[OOM] bisection reset (lo=0 hi={_old_bs}) → bs={current_batch_size} — retrying {wsi_path.stem}"
@@ -927,10 +929,15 @@ def run_inference(
                                 f"[OOM] empty_cache retry at bs={current_batch_size} — retrying {wsi_path.stem}"
                             )
                         elif _is_bs_converged(current_batch_size, _bs_lo, _bs_hi):
+                            # Second OOM at the converged value: fragmentation
+                            # was not the culprit. Reset the bracket so the
+                            # next attempt drops by 1/φ instead of 1/2, then
+                            # re-bisects upward.
                             _old_bs = current_batch_size
                             _bs_hi = current_batch_size
                             _bs_lo = 0
-                            current_batch_size = max(1, _bs_hi // 2)
+                            _PHI = (1.0 + 5.0 ** 0.5) / 2.0
+                            current_batch_size = max(1, int(_bs_hi / _PHI))
                             _oom_retries_at_current = 0
                             tqdm.tqdm.write(
                                 f"[OOM] bisection reset (lo=0 hi={_old_bs}) → bs={current_batch_size} — retrying {wsi_path.stem}"
@@ -1004,6 +1011,12 @@ def run_inference(
             # identify columns associated with probabilities.
             prob_colnames = [f"prob_{c}" for c in model_info.config.class_names]
             slide_df.loc[:, prob_colnames] = slide_probs_arr
+
+            # Add a 'classification' column: the argmax class name for each detection.
+            # This mirrors QuPath's classification concept and makes results immediately
+            # usable without recomputing argmax from the prob_* columns.
+            _argmax_idx = slide_probs_arr.argmax(axis=1)
+            slide_df["classification"] = np.array(model_info.config.class_names)[_argmax_idx]
             
             if slide_superior_structure is not None:
                 slide_df.loc[:, "qupath_detection_parent"] = slide_superior_structure
