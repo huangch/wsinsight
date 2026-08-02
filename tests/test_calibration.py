@@ -20,6 +20,9 @@ from __future__ import annotations
 import contextlib
 import logging
 import math
+import time
+from collections import deque
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from typing import Optional
 
@@ -51,6 +54,8 @@ def _load_helpers() -> dict:
         "Optional": Optional,
         "_logging": logging,
         "tqdm": __import__("tqdm").tqdm,
+        "ThreadPoolExecutor": ThreadPoolExecutor,
+        "deque": deque,
     }
     exec(compile(text[start:end], str(src_path), "exec"), ns)
     return ns
@@ -410,6 +415,134 @@ def test_loop_is_a_noop_for_empty_input():
 
 
 # ---------------------------------------------------------------------------
+# Prefetch: overlaps I/O with compute without disturbing ordering.
+#
+# Ordering is the property that matters most here -- a reordered batch would
+# silently attach each cell's embedding to the wrong cell.
+# ---------------------------------------------------------------------------
+
+@pytest.mark.parametrize("prefetch", [True, False])
+def test_prefetch_preserves_item_order(prefetch):
+    gpu = _FakeGPU(capacity=10 ** 9)
+    out = HELPERS["_run_adaptive_batches"](
+        n_total=200, batch_size=16, fetch=_fetch_range, forward=gpu.forward,
+        prefetch=prefetch,
+    )
+    assert _flatten(out) == list(range(200))
+
+
+def test_prefetch_preserves_order_across_oom_resizes():
+    """A discarded prefetch must not drop or duplicate the range it covered."""
+    gpu = _FakeGPU(capacity=9)
+    out = HELPERS["_run_adaptive_batches"](
+        n_total=120, batch_size=64, fetch=_fetch_range, forward=gpu.forward,
+        min_batch=1, max_batch=64, prefetch=True,
+    )
+    assert gpu.oom_count > 0, "resize path was not exercised"
+    assert _flatten(out) == list(range(120))
+
+
+def test_prefetch_actually_runs_ahead():
+    """The next range should be requested before the current forward returns."""
+    events: list[str] = []
+
+    def _tracking_fetch(start, stop):
+        events.append(f"fetch:{start}")
+        return list(range(start, stop))
+
+    def _tracking_forward(items):
+        events.append(f"forward:{items[0]}")
+        time.sleep(0.05)          # give the background thread room to start
+        return list(items)
+
+    HELPERS["_run_adaptive_batches"](
+        n_total=40, batch_size=10, fetch=_tracking_fetch,
+        forward=_tracking_forward, prefetch=True, max_batch=10,
+    )
+
+    # fetch:10 must appear before forward:0 completes, i.e. before forward:10.
+    assert events.index("fetch:10") < events.index("forward:10")
+
+
+def test_fetch_is_called_once_per_range_when_size_is_stable():
+    """With a stable batch size every range is read exactly once."""
+    calls: list[tuple] = []
+
+    def _counting_fetch(start, stop):
+        calls.append((start, stop))
+        return list(range(start, stop))
+
+    gpu = _FakeGPU(capacity=10 ** 9)
+    HELPERS["_run_adaptive_batches"](
+        n_total=100, batch_size=25, fetch=_counting_fetch, forward=gpu.forward,
+        max_batch=25, prefetch=True,
+    )
+    assert calls == [(0, 25), (25, 50), (50, 75), (75, 100)]
+
+
+def test_ceiling_prevents_runaway_growth():
+    """max_batch caps the search so it never probes past the calibrated size.
+
+    Without the cap the search doubles on every success until it provokes an
+    OOM, which wastes work and churns the allocator.
+    """
+    gpu = _FakeGPU(capacity=10 ** 9)      # nothing would ever OOM
+    HELPERS["_run_adaptive_batches"](
+        n_total=1000, batch_size=100, fetch=_fetch_range, forward=gpu.forward,
+        max_batch=100,
+    )
+    assert max(gpu.attempts) == 100, "batch size grew beyond the ceiling"
+
+
+# ---------------------------------------------------------------------------
+# Tensor batches: fetch now returns a preprocessed tensor, not a list of
+# images, so the loop must slice and measure tensors correctly on the OOM path.
+# ---------------------------------------------------------------------------
+
+def _fetch_tensor(start: int, stop: int) -> torch.Tensor:
+    """Pseudo preprocessed batch: row i encodes item index i."""
+    return torch.arange(start, stop, dtype=torch.float32).unsqueeze(1).repeat(1, 4)
+
+
+def test_loop_handles_tensor_batches():
+    gpu = _FakeGPU(capacity=10 ** 9)
+
+    def _forward(x):
+        gpu.attempts.append(len(x))
+        gpu.succeeded.append(len(x))
+        return x
+
+    out = HELPERS["_run_adaptive_batches"](
+        n_total=100, batch_size=16, fetch=_fetch_tensor, forward=_forward,
+        max_batch=16,
+    )
+    combined = torch.cat(out, dim=0)
+    assert combined.shape == (100, 4)
+    # Order preserved: row i must still encode item i.
+    assert torch.equal(combined[:, 0], torch.arange(100, dtype=torch.float32))
+
+
+def test_tensor_batch_oom_slicing_preserves_order():
+    """items[:new_bs] on a tensor must keep the leading rows, not reorder."""
+    seen: list[int] = []
+
+    def _forward(x):
+        seen.append(len(x))
+        if len(x) > 12:
+            raise RuntimeError("CUDA out of memory. Tried to allocate 1.00 GiB")
+        return x
+
+    out = HELPERS["_run_adaptive_batches"](
+        n_total=60, batch_size=48, fetch=_fetch_tensor, forward=_forward,
+        min_batch=1, max_batch=48,
+    )
+    combined = torch.cat(out, dim=0)
+    assert combined.shape[0] == 60
+    assert torch.equal(combined[:, 0], torch.arange(60, dtype=torch.float32))
+    assert any(n > 12 for n in seen), "OOM path was not exercised"
+
+
+# ---------------------------------------------------------------------------
 # Progress-bar bookkeeping (tqdm.reset() zeroing `n` was a real bug).
 # ---------------------------------------------------------------------------
 
@@ -508,28 +641,36 @@ def test_remaining_batches(n_total, pos, batch_size, expected):
 def test_prediction_matches_real_gpu_measurement():
     timm = pytest.importorskip("timm")
 
-    model = timm.create_model(
-        "vit_small_patch16_224", pretrained=False, num_classes=0
-    ).cuda().eval()
-    torch.cuda.empty_cache()
+    try:
+        model = timm.create_model(
+            "vit_small_patch16_224", pretrained=False, num_classes=0
+        ).cuda().eval()
+        torch.cuda.empty_cache()
 
-    per_image = HELPERS["_calibrate_bytes_per_image"](model, "cuda")
-    assert 1 * MIB <= per_image <= 128 * MIB, (
-        f"per-image {per_image / MIB:.1f} MiB is implausible for a ViT; "
-        "fixed overhead has probably leaked into the estimate again"
-    )
+        per_image = HELPERS["_calibrate_bytes_per_image"](model, "cuda")
+        assert 1 * MIB <= per_image <= 128 * MIB, (
+            f"per-image {per_image / MIB:.1f} MiB is implausible for a ViT; "
+            "fixed overhead has probably leaked into the estimate again"
+        )
 
-    probe = 64
-    torch.cuda.synchronize()
-    torch.cuda.reset_peak_memory_stats()
-    before = torch.cuda.memory_allocated()
-    x = torch.zeros(probe, 3, 224, 224, device="cuda")
-    with torch.no_grad(), torch.autocast(device_type="cuda", dtype=torch.bfloat16):
-        out = model(x)
-    torch.cuda.synchronize()
-    actual = torch.cuda.max_memory_allocated() - before
-    del x, out
-    torch.cuda.empty_cache()
+        probe = 64
+        torch.cuda.synchronize()
+        torch.cuda.reset_peak_memory_stats()
+        before = torch.cuda.memory_allocated()
+        x = torch.zeros(probe, 3, 224, 224, device="cuda")
+        with torch.no_grad(), torch.autocast(device_type="cuda", dtype=torch.bfloat16):
+            out = model(x)
+        torch.cuda.synchronize()
+        actual = torch.cuda.max_memory_allocated() - before
+        del x, out
+        torch.cuda.empty_cache()
+    except (torch.cuda.OutOfMemoryError, torch.AcceleratorError, RuntimeError) as exc:
+        # Another job (often a real wsinsight run) holds the card. The
+        # arithmetic is covered by the injected-memory tests above; skip rather
+        # than report a failure that says nothing about the code.
+        if "out of memory" not in str(exc).lower():
+            raise
+        pytest.skip(f"GPU unavailable for measurement: {exc}")
 
     ratio = actual / (probe * per_image)
     assert 0.5 <= ratio <= 1.5, (

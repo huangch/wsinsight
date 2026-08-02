@@ -6,6 +6,7 @@
 from __future__ import annotations
 import math, os, time, shutil, tempfile, atexit
 import logging as _logging
+import threading
 import multiprocessing as mp
 from typing import Any, List, Dict, Iterable, Optional, Sequence, Tuple # , Callable
 import numpy as np
@@ -29,7 +30,7 @@ _warnings.filterwarnings(
 )
 from torch_geometric.nn.models import DeepGraphInfomax
 from collections import deque
-from concurrent.futures import ProcessPoolExecutor, as_completed
+from concurrent.futures import ProcessPoolExecutor, ThreadPoolExecutor, as_completed
 from tqdm import tqdm # , trange
 from sklearn.neighbors import kneighbors_graph
 from sklearn.metrics import silhouette_score, normalized_mutual_info_score
@@ -516,8 +517,10 @@ class CellPatchDataset(Dataset):
 
     Notes
     -----
-    The slide handle is opened lazily on first access and dropped when the
-    object is pickled, so instances can be sent to worker processes.
+    Slide handles are opened per thread, so several worker threads can read
+    crops concurrently; the underlying readers are not guaranteed to be
+    thread-safe when a single handle is shared.  Handles are dropped on pickle
+    so instances can also be sent to worker processes.
     """
 
     def __init__(
@@ -533,22 +536,32 @@ class CellPatchDataset(Dataset):
         self.mpp_um_per_px = float(mpp_um_per_px)
         self.window_px = max(8, int(round(float(window_um) / float(mpp_um_per_px))))
         self.out_size = int(out_size)
-        self._slide = None
+        self._slide = None            # explicit override (tests / single thread)
+        self._local = threading.local()
 
     def __len__(self) -> int:
         return int(self.centers_px.shape[0])
 
     def __getstate__(self):
-        # An open slide handle is not picklable; reopen in the child process.
+        # Neither an open slide handle nor threading.local is picklable.
         state = self.__dict__.copy()
         state["_slide"] = None
+        state["_local"] = None
         return state
 
+    def __setstate__(self, state):
+        self.__dict__.update(state)
+        self._local = threading.local()
+
     def _slide_handle(self):
-        if self._slide is None:
+        if self._slide is not None:
+            return self._slide
+        slide = getattr(self._local, "slide", None)
+        if slide is None:
             from ..wsi import get_wsi_cls
-            self._slide = get_wsi_cls()(str(self.wsi_path))
-        return self._slide
+            slide = get_wsi_cls()(str(self.wsi_path))
+            self._local.slide = slide
+        return slide
 
     def __getitem__(self, idx: int):
         from PIL import Image
@@ -710,6 +723,8 @@ def _run_adaptive_batches(
     min_batch: int = 1,
     max_batch: int = 65536,
     pbar=None,
+    prefetch: bool = True,
+    prefetch_depth: int = 2,
 ) -> list:
     """Consume ``0..n_total`` items, adapting batch size via binary search.
 
@@ -725,9 +740,11 @@ def _run_adaptive_batches(
     On **OOM**: tighten ``hi``; lower ``lo`` to prevent the ``lo+1==hi``
     deadlock; bisect downward.
 
-    This converges on the exact largest batch that fits rather than
-    oscillating around it, and automatically grows back when external pressure
-    subsides — with no separate "grow every N batches" probe needed.
+    When *prefetch* is set, up to *prefetch_depth* consecutive ranges are read
+    on background threads while the current batch is on the GPU, so I/O overlaps
+    compute and a single slow read does not stall the pipeline.  Queued reads
+    are speculative: if the batch size changes the queued ranges no longer line
+    up and are discarded.
 
     Parameters
     ----------
@@ -740,6 +757,35 @@ def _run_adaptive_batches(
     pos = 0
     lo = 0               # largest confirmed-safe batch size
     hi = max_batch + 1   # smallest confirmed-OOM size (unknown ceiling = max+1)
+
+    depth = max(1, int(prefetch_depth))
+    pf_pool = ThreadPoolExecutor(max_workers=depth) if prefetch else None
+    pending: deque = deque()     # of (start, stop, Future), consecutive ranges
+
+    def _drop_pending() -> None:
+        while pending:
+            pending.popleft()[2].cancel()
+
+    def _take(start: int, stop: int) -> object:
+        """Return items for [start, stop), reusing a queued read when it matches."""
+        if pending:
+            p_start, p_stop, fut = pending.popleft()
+            if (p_start, p_stop) == (start, stop):
+                return fut.result()
+            # Ranges are consecutive, so a mismatch invalidates the whole queue.
+            fut.cancel()
+            _drop_pending()
+        return fetch(start, stop)
+
+    def _fill_prefetch(next_start: int) -> None:
+        """Keep up to *depth* consecutive ranges in flight beyond *next_start*."""
+        if pf_pool is None:
+            return
+        start = pending[-1][1] if pending else next_start
+        while len(pending) < depth and start < n_total:
+            stop = start + min(batch_size, n_total - start)
+            pending.append((start, stop, pf_pool.submit(fetch, start, stop)))
+            start = stop
 
     def _retotal() -> None:
         if pbar is None:
@@ -774,36 +820,47 @@ def _run_adaptive_batches(
             else:
                 return max(min_batch, min(lo * 2, max_batch) if lo > 0 else max_batch)
 
-    while pos < n_total:
-        items = fetch(pos, pos + min(batch_size, n_total - pos))
+    try:
+        while pos < n_total:
+            stop = pos + min(batch_size, n_total - pos)
+            items = _take(pos, stop)
 
-        while True:   # retry-on-OOM loop for this chunk
-            try:
-                outputs.append(forward(items))
-                pos += len(items)
-                if pbar is not None:
-                    pbar.update(1)
-                batch_size = min(max_batch, _next_batch_size(oom=False, current=len(items)))
-                _retotal()
-                break
+            while True:   # retry-on-OOM loop for this chunk
+                # Keep reads running ahead of compute.
+                _fill_prefetch(stop)
+                try:
+                    outputs.append(forward(items))
+                    pos += len(items)
+                    if pbar is not None:
+                        pbar.update(1)
+                    batch_size = min(max_batch, _next_batch_size(oom=False, current=len(items)))
+                    _retotal()
+                    break
 
-            except Exception as exc:
-                if not _is_oom(exc):
-                    raise
-                if on_oom is not None:
-                    on_oom()
-                new_bs = _next_batch_size(oom=True, current=len(items))
-                if new_bs >= len(items):
-                    raise   # already at the floor; nothing left to give
-                # tqdm.write() (class method) clears the current line before
-                # printing, handling all nested bar positions correctly.
-                # pbar.write() on a position=1 inner bar leaves leading spaces.
-                tqdm.write(
-                    f"WARNING: OOM at batch_size={len(items)}; retrying with {new_bs}"
-                )
-                batch_size = new_bs
-                items = items[:new_bs]
-                _retotal()
+                except Exception as exc:
+                    if not _is_oom(exc):
+                        raise
+                    # The queued range assumed the old batch size.
+                    _drop_pending()
+                    if on_oom is not None:
+                        on_oom()
+                    new_bs = _next_batch_size(oom=True, current=len(items))
+                    if new_bs >= len(items):
+                        raise   # already at the floor; nothing left to give
+                    # tqdm.write() (class method) clears the current line before
+                    # printing, handling all nested bar positions correctly.
+                    # pbar.write() on a position=1 inner bar leaves leading spaces.
+                    tqdm.write(
+                        f"WARNING: OOM at batch_size={len(items)}; retrying with {new_bs}"
+                    )
+                    batch_size = new_bs
+                    items = items[:new_bs]
+                    stop = pos + len(items)
+                    _retotal()
+    finally:
+        _drop_pending()
+        if pf_pool is not None:
+            pf_pool.shutdown(wait=False)
 
     return outputs
 
@@ -922,35 +979,56 @@ def _embed_hoptimus_subset_dataset(
             batch_size, ngpu, batch_size // ngpu, bytes_per_image // (1024 * 1024),
         )
 
-    # ── 5. Preprocessing and per-replica forward helpers ─────────────────────
-    def _preprocess(items) -> torch.Tensor:
-        """Convert dataset items to a CPU float tensor."""
-        if isinstance(items, list):
-            return torch.stack([pre(im) for im in items])
-        if isinstance(items, torch.Tensor):
-            if items.dim() == 4 and items.shape[1] in (1, 3):
-                return torch.stack([pre(transforms.ToPILImage()(t)) for t in items])
-            return torch.stack([pre(b) for b in items])
-        try:
-            return torch.stack([pre(im) for im in items])
-        except Exception:
-            return items if isinstance(items, torch.Tensor) else torch.stack(list(items))
+    # ── 5. Producer / consumer helpers ───────────────────────────────────────
+    # The whole read -> preprocess -> stack stage runs on the background
+    # prefetch thread, so the main thread does nothing but drive the GPU.
+    # Slide reads and PIL resizes are C-level work that releases the GIL, so
+    # these threads genuinely overlap.
+    #
+    # Reading crops dominates the runtime (one decode per cell), so the thread
+    # count is the main throughput lever. Override with
+    # WSINSIGHT_HOPTIMUS_IO_WORKERS when tuning for a particular storage
+    # backend -- network filesystems usually want more, a busy shared host
+    # fewer.
+    try:
+        io_workers = int(os.environ.get("WSINSIGHT_HOPTIMUS_IO_WORKERS", "0"))
+    except ValueError:
+        io_workers = 0
+    if io_workers <= 0:
+        io_workers = max(4, min(32, (os.cpu_count() or 8)))
+    io_pool = ThreadPoolExecutor(max_workers=io_workers)
+
+    def _stack(crops) -> torch.Tensor:
+        """Preprocess and stack crops into one CPU tensor (order preserved)."""
+        if isinstance(crops, torch.Tensor):
+            if crops.dim() == 4 and crops.shape[1] in (1, 3):
+                return torch.stack([pre(transforms.ToPILImage()(t)) for t in crops])
+            return torch.stack([pre(b) for b in crops])
+        # executor.map keeps input order, which the embedding-to-cell mapping
+        # depends on.
+        return torch.stack(list(io_pool.map(pre, crops)))
+
+    # One pool for the whole slide. Creating it per batch (as an inline `with`
+    # block) cost a pool spin-up and shutdown barrier on every iteration.
+    gpu_pool = _TPE(max_workers=len(replicas)) if len(replicas) > 1 else None
 
     def _run_replica(idx: int, x_cpu: torch.Tensor) -> torch.Tensor:
         """BF16 forward on one GPU replica; result is FP32 on CPU."""
         with torch.no_grad(), torch.autocast(device_type="cuda", dtype=torch.bfloat16):
-            return replicas[idx](x_cpu.to(f"cuda:{idx}")).float().cpu()
+            return replicas[idx](x_cpu.to(f"cuda:{idx}", non_blocking=True)).float().cpu()
 
-    def _forward(items) -> torch.Tensor:
-        """Preprocess and dispatch across all replicas in parallel."""
-        x_cpu = _preprocess(items)
-        if len(replicas) > 1:
+    def _forward(x_cpu: torch.Tensor) -> torch.Tensor:
+        """Dispatch an already-preprocessed batch across all replicas.
+
+        Preprocessing happens in _fetch on the prefetch thread, so this is pure
+        GPU work and can overlap with the next batch being read.
+        """
+        if gpu_pool is not None:
             splits = x_cpu.chunk(len(replicas), dim=0)
-            with _TPE(max_workers=len(replicas)) as pool:
-                futs = [pool.submit(_run_replica, i, s) for i, s in enumerate(splits)]
-                return torch.cat([f.result() for f in futs], dim=0)
+            futs = [gpu_pool.submit(_run_replica, i, s) for i, s in enumerate(splits)]
+            return torch.cat([f.result() for f in futs], dim=0)
         with torch.no_grad(), torch.autocast(device_type="cuda", dtype=torch.bfloat16):
-            return replicas[0](x_cpu.to(dev)).float().cpu()
+            return replicas[0](x_cpu.to(dev, non_blocking=True)).float().cpu()
 
     def _flush_caches() -> None:
         for i in range(len(replicas)):
@@ -970,16 +1048,44 @@ def _embed_hoptimus_subset_dataset(
         position=1,
         unit="batch",
     )
+    # Page-locked staging lets the host->device copy overlap with compute
+    # (non_blocking=True silently degrades to a synchronous copy on pageable
+    # memory). Capped because pinning is a scarce, non-swappable resource.
+    _PIN_LIMIT_BYTES = 2 * 1024 ** 3
+    _can_pin = torch.cuda.is_available()
+
+    def _fetch(start: int, stop: int) -> torch.Tensor:
+        """Read and preprocess a range, returning a GPU-ready CPU tensor.
+
+        Runs on the prefetch thread so slide I/O and preprocessing overlap with
+        the previous batch's GPU work.
+        """
+        crops = list(io_pool.map(dataset.__getitem__, sampled_ids[start:stop]))
+        x = _stack(crops)
+        if _can_pin and x.numel() * x.element_size() <= _PIN_LIMIT_BYTES:
+            try:
+                x = x.pin_memory()
+            except RuntimeError:
+                pass        # out of pinnable memory; pageable copy still works
+        return x
+
     feats = _run_adaptive_batches(
         n_total=n_total,
         batch_size=batch_size,
-        fetch=lambda start, stop: [dataset[i] for i in sampled_ids[start:stop]],
+        # The calibrated size is already a VRAM-derived estimate of the largest
+        # workable batch; treat it as the ceiling so the search settles there
+        # instead of doubling past it until it provokes an OOM.
+        max_batch=batch_size,
+        fetch=_fetch,
         forward=_forward,
         on_oom=_flush_caches,
         min_batch=len(replicas),
         pbar=pbar,
     )
     pbar.close()
+    io_pool.shutdown(wait=True)
+    if gpu_pool is not None:
+        gpu_pool.shutdown(wait=True)
     return torch.cat(feats, dim=0).numpy().astype(np.float32)
 
 def _impute_knn(coords_um: np.ndarray, sampled_idx: np.ndarray, sampled_feats: np.ndarray,

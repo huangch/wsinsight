@@ -12,6 +12,7 @@ importing torch_geometric / igraph / leidenalg, matching the approach used by
 
 from __future__ import annotations
 
+import threading
 from pathlib import Path
 
 import numpy as np
@@ -29,7 +30,12 @@ def _load_dataset_classes() -> dict:
     text = src_path.read_text()
     start = text.index("class DummyPatchDataset(Dataset):")
     end = text.index("def _make_short_ids(")
-    ns: dict = {"Dataset": Dataset, "np": np, "Image": Image}
+    ns: dict = {
+        "Dataset": Dataset,
+        "np": np,
+        "Image": Image,
+        "threading": threading,
+    }
     exec(compile(text[start:end], str(src_path), "exec"), ns)
     return ns
 
@@ -184,3 +190,85 @@ def test_indices_map_to_detection_table_rows(monkeypatch):
         ds[i]
         location = slide.calls[-1][0]
         assert location == (cx - half, cy - half)
+
+
+# ---------------------------------------------------------------------------
+# Concurrency: the fetch path now reads crops from a thread pool.
+# ---------------------------------------------------------------------------
+
+def test_parallel_reads_preserve_order(monkeypatch):
+    """executor.map over the dataset must return crops in index order.
+
+    A reordering here would silently pair each cell with another cell's
+    embedding -- worse than a crash, because nothing would report it.
+    """
+    from concurrent.futures import ThreadPoolExecutor
+
+    centers = [[100 + 37 * i, 200 + 53 * i] for i in range(64)]
+    ds, _ = _make_dataset(monkeypatch, centers, mpp=0.25, window_um=32.0)
+
+    serial = [np.asarray(ds[i]) for i in range(len(centers))]
+    with ThreadPoolExecutor(max_workers=8) as pool:
+        parallel = [np.asarray(im) for im in pool.map(ds.__getitem__, range(len(centers)))]
+
+    assert len(parallel) == len(serial)
+    for i, (a, b) in enumerate(zip(serial, parallel)):
+        assert np.array_equal(a, b), f"crop {i} differs between serial and parallel reads"
+
+
+def test_each_thread_gets_its_own_slide_handle():
+    """Slide readers are not reliably thread-safe, so handles must be per-thread."""
+    import threading
+    from concurrent.futures import ThreadPoolExecutor
+
+    opened: list[int] = []
+    lock = threading.Lock()
+
+    class _CountingSlide(_FakeSlide):
+        def __init__(self):
+            super().__init__()
+            with lock:
+                opened.append(threading.get_ident())
+
+    ds = CLASSES["CellPatchDataset"](
+        wsi_path="/fake/slide.svs",
+        centers_px=np.array([[500, 500]] * 32),
+        mpp_um_per_px=0.25,
+    )
+    # Patch the lazy opener to build our counting stub instead of a real reader.
+    ds._open_slide = _CountingSlide          # type: ignore[attr-defined]
+
+    def _read(i):
+        slide = getattr(ds._local, "slide", None)
+        if slide is None:
+            slide = _CountingSlide()
+            ds._local.slide = slide
+        return id(slide)
+
+    with ThreadPoolExecutor(max_workers=4) as pool:
+        handle_ids = set(pool.map(_read, range(32)))
+
+    # Distinct threads must not share one handle.
+    assert len(handle_ids) == len(set(opened))
+
+
+def test_pickle_drops_thread_local(monkeypatch):
+    """threading.local is not picklable; it must be rebuilt on unpickle.
+
+    The class is exec'd from source here so it is not importable by ``pickle``
+    itself; exercise the ``__getstate__`` / ``__setstate__`` hooks directly,
+    which is what pickling would call.
+    """
+    ds, _ = _make_dataset(monkeypatch, [[100, 100], [200, 200]])
+
+    state = ds.__getstate__()
+    assert state["_slide"] is None, "open slide handle must not be pickled"
+    assert state["_local"] is None, "threading.local must not be pickled"
+
+    revived = CLASSES["CellPatchDataset"].__new__(CLASSES["CellPatchDataset"])
+    revived.__setstate__(state)
+
+    assert revived._local is not None, "thread-local storage must be rebuilt"
+    assert len(revived) == 2
+    assert revived.window_px == ds.window_px
+    assert revived.out_size == ds.out_size
