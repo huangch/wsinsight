@@ -78,7 +78,7 @@ def _as_output_tensor(pred: object) -> torch.Tensor:
 
 def _advance_batch_search(
     current: int, lo: int, hi: int, max_bs: int, *, oom: bool,
-    probe_factor: float = (1.0 + 5.0 ** 0.5) / 2.0,  # φ ≈ 1.618
+    probe_factor: float = 2.0,
 ) -> tuple[int, int, int]:
     """Update the OOM binary-search state and propose the next batch size.
 
@@ -94,7 +94,8 @@ def _advance_batch_search(
 
     On success (``oom=False``) we raise ``lo`` to ``current``, then either
     bisect upward (if a ceiling is known) or probe upward by *probe_factor*
-    (golden ratio φ ≈ 1.618 by default, gentler than the previous ×2 doubling).
+    (default 2.0 / doubling — calibration for tile inference is accurate so
+    doubling reaches the true ceiling in one step).
 
     Returns
     -------
@@ -138,22 +139,27 @@ def _calibrate_inference_batch_size(
     safety: float = 0.95,
     min_batch: int = 1,
     max_batch: int = 65536,
-) -> int:
+) -> tuple[int, int]:
     """Auto-calibrate an initial batch size from available GPU memory.
 
     Uses two-point calibration (the same technique as H-optimus calibration) to
     measure the marginal per-patch GPU memory cost, then divides available VRAM
-    by that cost.  This replaces the fixed default of 32 with a value that is
-    appropriate for the actual hardware.
+    by that cost.
 
-    The result is used as both the *starting point* and the *ceiling* for the
-    existing ``_advance_batch_search`` binary search: on OOM the search bisects
-    downward; on success it probes upward toward the ceiling.
+    Returns
+    -------
+    batch_size : int
+        Recommended starting batch size (also used as the binary-search ceiling).
+    bytes_per_image : int
+        Marginal GPU bytes per image from calibration.  Store this and pass to
+        ``_batch_size_for_available_vram`` to get a slide-specific batch-size
+        estimate after slide-level allocations (e.g. TileRemapStitcher) are on
+        GPU, without rerunning the expensive forward-pass calibration.
 
-    Falls back to 32 (the previous hard-coded default) on any error.
+    Falls back to (32, 0) on any error.
     """
     if not torch.cuda.is_available():
-        return 32
+        return 32, 0
     try:
         from PIL import Image as _Image
         # Determine model input tensor shape from the transform.
@@ -169,6 +175,8 @@ def _calibrate_inference_batch_size(
             return free + max(0, reserved - allocated)
 
         # Two-point calibration: slope cancels fixed cuDNN workspace overhead.
+        # Larger batch sizes (16→64) extrapolate more accurately to production
+        # batch sizes than the old 4→16 range.
         def _measure(n: int) -> int:
             torch.cuda.synchronize()
             torch.cuda.reset_peak_memory_stats()
@@ -182,23 +190,55 @@ def _calibrate_inference_batch_size(
             torch.cuda.empty_cache()
             return peak - baseline
 
-        b1, b2 = 4, 16
-        m1 = _measure(b1)
-        m2 = _measure(b2)
-        if m2 <= m1:
-            return 32
-        marginal = (m2 - m1) // (b2 - b1)
+        marginal = 0
+        for b1, b2 in ((16, 64), (4, 16)):
+            try:
+                m1 = _measure(b1)
+                m2 = _measure(b2)
+                if m2 > m1 and (b2 - b1) > 0:
+                    marginal = (m2 - m1) // (b2 - b1)
+                    break
+            except Exception:
+                torch.cuda.empty_cache()
         if marginal <= 0:
-            return 32
+            return 32, 0
 
         n_gpu = max(1, torch.cuda.device_count())
         usable = _available()
         per_gpu = max(min_batch, int(usable * safety) // marginal)
         total = per_gpu * n_gpu
-        return max(min_batch, min(max_batch, (total // n_gpu) * n_gpu))
+        batch_size = max(min_batch, min(max_batch, (total // n_gpu) * n_gpu))
+        return batch_size, int(marginal)
     except Exception:
         torch.cuda.empty_cache()
-        return 32
+        return 32, 0
+
+
+def _batch_size_for_available_vram(
+    bytes_per_image: int,
+    n_gpu: int,
+    safety: float = 0.95,
+    min_batch: int = 1,
+    max_batch: int = 65536,
+) -> int:
+    """Estimate batch size from current GPU availability and a known per-image cost.
+
+    Call this after slide-level allocations (TileRemapStitcher, etc.) are on
+    GPU to get a batch-size ceiling that reflects the actual remaining VRAM,
+    without rerunning the expensive forward-pass calibration.
+    """
+    if not torch.cuda.is_available() or bytes_per_image <= 0:
+        return min_batch
+    try:
+        free, _ = torch.cuda.mem_get_info(torch.cuda.current_device())
+        reserved = torch.cuda.memory_reserved(torch.cuda.current_device())
+        allocated = torch.cuda.memory_allocated(torch.cuda.current_device())
+        usable = free + max(0, reserved - allocated)
+        per_gpu = max(min_batch, int(usable * safety) // bytes_per_image)
+        total = per_gpu * n_gpu
+        return max(min_batch, min(max_batch, (total // n_gpu) * n_gpu))
+    except Exception:
+        return min_batch
 
 
 def run_inference(
@@ -356,12 +396,15 @@ def run_inference(
     # calibration (cancels fixed cuDNN workspace overhead).  When explicitly
     # provided, use that value as both the start and the ceiling — preserving
     # the previous behaviour for users who pin a specific batch size.
+    # _bytes_per_image is stored so per-slide recalibration (after stitcher
+    # allocation) can re-estimate the batch ceiling without extra forward passes.
     if batch_size is None and transform is not None and torch.cuda.is_available():
-        _bs_max = _calibrate_inference_batch_size(
+        _bs_max, _bytes_per_image = _calibrate_inference_batch_size(
             model, transform, model_info.config.patch_size_pixels, device
         )
     else:
         _bs_max = batch_size if batch_size is not None else 32
+        _bytes_per_image = 0
 
     # Binary-search brackets shared across slides.
     # _bs_lo: largest batch size confirmed safe (0 = not yet known).
@@ -661,6 +704,21 @@ def run_inference(
                         min_object_size=20,
                         device=device,
                     )
+                    # Re-estimate batch ceiling NOW that the stitcher is on GPU.
+                    # The initial calibration measured VRAM before stitcher
+                    # allocation; re-reading available VRAM here gives the true
+                    # remaining capacity for batch activations.  No extra forward
+                    # passes needed — reuse the stored bytes_per_image slope.
+                    if _bytes_per_image > 0:
+                        torch.cuda.empty_cache()
+                        _n_gpu = max(1, torch.cuda.device_count())
+                        _slide_bs_max = _batch_size_for_available_vram(
+                            _bytes_per_image, _n_gpu
+                        )
+                        if _slide_bs_max < current_batch_size:
+                            current_batch_size = _slide_bs_max
+                            _bs_lo = 0
+                            _bs_hi = _slide_bs_max + 1
                     try:
                         with tqdm.tqdm(total=len(loader), desc="Inference", position=1, leave=False) as qbar:
                             for batch_imgs, batch_coords in loader:
