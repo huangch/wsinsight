@@ -154,15 +154,15 @@ def build_capped_voronoi_from_df(
     pts_all = np.column_stack([cx, cy])
 
     niche_cols = [c for c in df.columns if c.startswith(niche_prefix)]
-    # Accept both the current column name ('classification') and the legacy name
-    # ('niche_id') so that outputs from older runs can still be processed.
-    _label_col = "classification" if "classification" in df.columns else (
-        "niche_id" if "niche_id" in df.columns else None
+    # Prefer 'niche_id' (integer niche cluster labels).  Fall back to
+    # 'classification' only when 'niche_id' is absent — not when both exist,
+    # because 'classification' in model-output CSVs is a string cell-type name.
+    _label_col = "niche_id" if "niche_id" in df.columns else (
+        "classification" if "classification" in df.columns else None
     )
     if not niche_cols and _label_col is None:
         raise ValueError(
-            f"No columns start with '{niche_prefix}' and no 'classification' "
-            "(or legacy 'niche_id') column found."
+            f"No columns start with '{niche_prefix}' and no 'niche_id' column found."
         )
     if _label_col is not None:
         valid_mask = ~pd.isna(df[_label_col]).to_numpy()
@@ -474,15 +474,15 @@ def merge_same_label_by_shared_edges_iterative(
     pts_all = np.column_stack([cx, cy])
 
     niche_cols = [c for c in df.columns if c.startswith(niche_prefix)]
-    # Accept both the current column name ('classification') and the legacy name
-    # ('niche_id') so that outputs from older runs can still be processed.
-    _label_col = "classification" if "classification" in df.columns else (
-        "niche_id" if "niche_id" in df.columns else None
+    # Prefer 'niche_id' (integer niche cluster labels).  Fall back to
+    # 'classification' only when 'niche_id' is absent — not when both exist,
+    # because 'classification' in model-output CSVs is a string cell-type name.
+    _label_col = "niche_id" if "niche_id" in df.columns else (
+        "classification" if "classification" in df.columns else None
     )
     if not niche_cols and _label_col is None:
         raise ValueError(
-            f"No columns start with '{niche_prefix}' and no 'classification' "
-            "(or legacy 'niche_id') column found."
+            f"No columns start with '{niche_prefix}' and no 'niche_id' column found."
         )
     if _label_col is not None:
         _niche_id_raw = df[_label_col].to_numpy()

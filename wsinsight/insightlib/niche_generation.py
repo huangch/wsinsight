@@ -589,6 +589,110 @@ def _make_short_ids(stems: List[str]) -> dict:
     return make_short_ids(stems)
 
 
+# ---------------------------------------------------------------------------
+# Pre-cut cell-patch HDF5 cache
+# ---------------------------------------------------------------------------
+
+class CellPatchHDF5Dataset(Dataset):
+    """Read pre-extracted per-cell 224×224 patches from an HDF5 cache.
+
+    Expected HDF5 layout (created by ``pre_cut_cell_patches``):
+        /patches   : float32 array of shape (N, 3, H, W) — uint8 RGB stored as float
+        /cell_ids  : int64 array of shape (N,)            — original cell row indices
+
+    Since ``sampled_ids`` passed to ``_embed_hoptimus_subset_dataset`` are
+    sorted, reads are approximately sequential and much faster than random
+    WSI decompression.
+    """
+
+    def __init__(self, h5_path: Path):
+        import h5py as _h5py
+        self.h5_path = Path(h5_path)
+        with _h5py.File(self.h5_path, "r") as f:
+            self._cell_ids: np.ndarray = np.asarray(f["/cell_ids"])
+            self._n = int(f["/patches"].shape[0])
+        # Map original cell row index → position in HDF5
+        self._id_to_pos: dict = {int(cid): i for i, cid in enumerate(self._cell_ids)}
+
+    def __len__(self) -> int:
+        return self._n
+
+    def __getitem__(self, cell_id: int):
+        import h5py as _h5py
+        from PIL import Image as _Image
+        pos = self._id_to_pos.get(int(cell_id))
+        if pos is None:
+            raise KeyError(f"cell_id {cell_id} not found in patch cache {self.h5_path}")
+        with _h5py.File(self.h5_path, "r") as f:
+            patch = f["/patches"][pos]          # (3, H, W) float32 in [0, 255]
+        img = _Image.fromarray(patch.transpose(1, 2, 0).astype(np.uint8))
+        return img
+
+
+def pre_cut_cell_patches(
+    wsi_path: Path,
+    centers_px: np.ndarray,
+    output_h5_path: Path,
+    *,
+    window_um: float = 32.0,
+    mpp_um_per_px: float = 0.5,
+    out_size: int = 224,
+    overwrite: bool = False,
+) -> None:
+    """Extract per-cell 224×224 patches from a WSI and save to HDF5.
+
+    Call this once before ``wsinsight niche`` to pre-populate the patch cache.
+    Subsequent runs read sequentially from HDF5 instead of performing random
+    WSI decompression, reducing H-Optimus I/O time by 5–10×.
+
+    Parameters
+    ----------
+    centers_px : (N, 2) int array of (x, y) cell centres in level-0 pixels.
+    output_h5_path : destination HDF5 file.
+    """
+    import h5py as _h5py
+    from PIL import Image as _Image
+
+    output_h5_path = Path(output_h5_path)
+    if output_h5_path.exists() and not overwrite:
+        return
+
+    output_h5_path.parent.mkdir(parents=True, exist_ok=True)
+
+    from .wsi import get_wsi_cls
+    slide = get_wsi_cls()(str(wsi_path))
+    window_px = max(8, int(round(float(window_um) / float(mpp_um_per_px))))
+    half = window_px // 2
+    N = len(centers_px)
+
+    patches = np.zeros((N, 3, out_size, out_size), dtype=np.float32)
+    cell_ids = np.arange(N, dtype=np.int64)
+
+    for i, (cx, cy) in enumerate(centers_px):
+        try:
+            img = slide.read_region(
+                location=(int(cx) - half, int(cy) - half),
+                level=0,
+                size=(window_px, window_px),
+            ).convert("RGB")
+        except Exception:
+            img = _Image.new("RGB", (out_size, out_size), color=(255, 255, 255))
+        if img.size != (out_size, out_size):
+            img = img.resize((out_size, out_size), _Image.BILINEAR)
+        patches[i] = np.asarray(img, dtype=np.float32).transpose(2, 0, 1)
+
+    try:
+        slide.close()
+    except Exception:
+        pass
+
+    tmp = str(output_h5_path) + ".PART"
+    with _h5py.File(tmp, "w") as f:
+        f.create_dataset("patches",  data=patches,  compression="lzf", chunks=(64, 3, out_size, out_size))
+        f.create_dataset("cell_ids", data=cell_ids)
+    Path(tmp).replace(output_h5_path)
+
+
 # Fallback per-image memory estimate used when GPU calibration is unavailable.
 _HOPTIMUS_BYTES_PER_IMAGE_FALLBACK: int = 32 * 1024 ** 2  # 32 MiB
 # Two batch sizes used for two-point calibration.  Larger values capture the
@@ -888,34 +992,21 @@ def _run_adaptive_batches(
     return outputs
 
 
-def _embed_hoptimus_subset_dataset(
-    dataset: Dataset,
-    sampled_ids: List[int],
-    batch_size: Optional[int] = None,
+def _load_hoptimus_model(
+    hoptimus_model_dir: Optional[Path],
     device: Optional[str] = None,
-    hoptimus_model_dir: Optional[Path] = None,
-    slide_id: Optional[str] = None,
-    display_id: Optional[str] = None,
-) -> np.ndarray:
-    """Embed a subset of cells through H-Optimus-0 and return FP32 features.
+) -> tuple:
+    """Load H-Optimus once and return (model, transform, input_size, bytes_per_image).
 
-    *batch_size* is the starting point for the binary-search adaptive loop.
-    When ``None``, it is auto-calibrated from available VRAM using a two-point
-    memory measurement that cancels the fixed cuDNN workspace overhead.
-
-    Returns
-    -------
-    np.ndarray of shape (len(sampled_ids), 1536), dtype float32
+    Callers can pass the returned tuple as ``_preloaded`` to
+    ``_embed_hoptimus_subset_dataset`` to skip repeated loading and calibration
+    across slides.
     """
-    import copy
     import json
     import timm
-    from concurrent.futures import ThreadPoolExecutor as _TPE
     from timm.data import create_transform, resolve_data_config
 
     dev = device or ("cuda" if torch.cuda.is_available() else "cpu")
-
-    # ── 1. Load model, silencing timm's checkpoint INFO noise ────────────────
     _timm_logger = _logging.getLogger("timm")
     _prev_level = _timm_logger.level
     _timm_logger.setLevel(_logging.WARNING)
@@ -966,15 +1057,108 @@ def _embed_hoptimus_subset_dataset(
 
     _data_cfg = resolve_data_config(model=model)
     pre = create_transform(**_data_cfg, is_training=False)
-    # Model's real input edge length, e.g. (3, 224, 224) -> 224.
     _input_size = int(_data_cfg.get("input_size", (3, 224, 224))[-1])
 
-    # ── 2. Calibrate per-image memory BEFORE replication ─────────────────────
-    # Two-point calibration cancels the fixed cuDNN/allocator workspace overhead
-    # so the estimate reflects the true marginal cost per additional image.
     if torch.cuda.is_available():
         torch.cuda.empty_cache()
     bytes_per_image = _calibrate_bytes_per_image(model, dev, input_size=_input_size)
+
+    return model, pre, _input_size, bytes_per_image
+
+
+def _embed_hoptimus_subset_dataset(
+    dataset: Dataset,
+    sampled_ids: List[int],
+    batch_size: Optional[int] = None,
+    device: Optional[str] = None,
+    hoptimus_model_dir: Optional[Path] = None,
+    slide_id: Optional[str] = None,
+    display_id: Optional[str] = None,
+    _preloaded: Optional[tuple] = None,
+) -> np.ndarray:
+    """Embed a subset of cells through H-Optimus-0 and return FP32 features.
+
+    *batch_size* is the starting point for the binary-search adaptive loop.
+    When ``None``, it is auto-calibrated from available VRAM using a two-point
+    memory measurement that cancels the fixed cuDNN workspace overhead.
+
+    Pass ``_preloaded=(model, transform, input_size, bytes_per_image)`` from
+    ``_load_hoptimus_model`` to skip repeated loading and calibration across
+    slides.  The caller owns the model lifetime.
+
+    Returns
+    -------
+    np.ndarray of shape (len(sampled_ids), 1536), dtype float32
+    """
+    import copy
+    import json
+    import timm
+    from concurrent.futures import ThreadPoolExecutor as _TPE
+    from timm.data import create_transform, resolve_data_config
+
+    dev = device or ("cuda" if torch.cuda.is_available() else "cpu")
+
+    # ── 1. Load model (or reuse pre-loaded one to avoid per-slide reload) ────
+    _timm_logger = _logging.getLogger("timm")
+    _prev_level = _timm_logger.level
+    _timm_logger.setLevel(_logging.WARNING)
+    try:
+        if _preloaded is not None:
+            model, pre, _input_size, _cached_bytes = _preloaded
+            bytes_per_image = _cached_bytes
+        else:
+            if hoptimus_model_dir is not None:
+                hoptimus_model_dir = Path(hoptimus_model_dir)
+                config_path = hoptimus_model_dir / "config.json"
+                if not config_path.exists():
+                    raise FileNotFoundError(
+                        f"--hoptimus-model-dir does not contain config.json: {hoptimus_model_dir}"
+                    )
+                with open(config_path) as _f:
+                    cfg = json.load(_f)
+                architecture = cfg.get("architecture")
+                if not architecture:
+                    raise ValueError(
+                        f"config.json in --hoptimus-model-dir does not contain "
+                        f"'architecture' key: {config_path}"
+                    )
+                checkpoint_candidates = [
+                    hoptimus_model_dir / "pytorch_model.bin",
+                    hoptimus_model_dir / "model.safetensors",
+                    hoptimus_model_dir / "pytorch_model.safetensors",
+                ]
+                checkpoint_path = next(
+                    (p for p in checkpoint_candidates if p.exists()), None
+                )
+                if checkpoint_path is None:
+                    raise FileNotFoundError(
+                        f"--hoptimus-model-dir does not contain a recognised checkpoint "
+                        f"(pytorch_model.bin or model.safetensors): {hoptimus_model_dir}"
+                    )
+                model = timm.create_model(
+                    architecture,
+                    pretrained=False,
+                    num_classes=cfg.get("num_classes", 0),
+                    global_pool=cfg.get("global_pool", "token"),
+                    pretrained_cfg_overlay=cfg.get("pretrained_cfg", {}),
+                )
+                timm.models.load_checkpoint(model, str(checkpoint_path))
+            else:
+                model = timm.create_model(
+                    "hf-hub:bioptimus/H-optimus-0", pretrained=True, num_classes=0
+                )
+            model = model.to(dev).eval()
+
+            _data_cfg = resolve_data_config(model=model)
+            pre = create_transform(**_data_cfg, is_training=False)
+            _input_size = int(_data_cfg.get("input_size", (3, 224, 224))[-1])
+
+            # ── 2. Calibrate per-image memory BEFORE replication ─────────────
+            if torch.cuda.is_available():
+                torch.cuda.empty_cache()
+            bytes_per_image = _calibrate_bytes_per_image(model, dev, input_size=_input_size)
+    finally:
+        _timm_logger.setLevel(_prev_level)
 
     # ── 3. Build one persistent replica per GPU ───────────────────────────────
     # Unlike nn.DataParallel (which replicates weights on every forward pass),
@@ -1429,6 +1613,7 @@ def prepare_slide_graph(
     hoptimus_only: bool = False,
     hoptimus_model_dir: Optional[Path] = None,
     hoptimus_batch_size: Optional[int] = None,  # None = auto-calibrate from VRAM
+    hoptimus_preloaded: Optional[tuple] = None,  # pre-loaded (model, transform, input_size, bytes_per_image)
     patch_dataset: Optional[Dataset] = None,  # your dataset: __getitem__(cell_id)-> PIL.Image / Tensor
     sample_frac: Optional[float] = 0.2,
     sample_count: Optional[int] = None,
@@ -1519,7 +1704,7 @@ def prepare_slide_graph(
         sampled_global_ids = kept_idx[sampled_local_idx].tolist()                      # map to original IDs for dataset
 
         # embed sampled
-        Hs = _embed_hoptimus_subset_dataset(patch_dataset, sampled_global_ids, device=device, hoptimus_model_dir=hoptimus_model_dir, batch_size=hoptimus_batch_size, slide_id=slide_id, display_id=display_id)  # [m,1536]
+        Hs = _embed_hoptimus_subset_dataset(patch_dataset, sampled_global_ids, device=device, hoptimus_model_dir=hoptimus_model_dir, batch_size=hoptimus_batch_size, slide_id=slide_id, display_id=display_id, _preloaded=hoptimus_preloaded)  # [m,1536]
         # optional PCA
         if pca_dim is not None and Hs.shape[1] > pca_dim:
             from sklearn.decomposition import PCA
@@ -2084,16 +2269,26 @@ def niche_generation(
         graph_cache_dir = Path(str(results_dir)) / "graphs"
         graph_cache_dir.mkdir(parents=True, exist_ok=True)
 
-        # Per-slide checkpoint directory: each slide's graph is saved as soon
-        # as it completes so that an interrupted run can resume without
-        # recomputing already-finished slides.
         slide_graph_cache_dir = Path(str(results_dir)) / "slide-graphs-cache"
         slide_graph_cache_dir.mkdir(parents=True, exist_ok=True)
 
-        # Process slides sequentially so DataParallel can use all GPUs for each
-        # slide's H-optimus embedding, with a clean nested progress display.
         slide_stems = [Path(str(p)).stem for p in slide_paths]
         short_ids = _make_short_ids(slide_stems)
+
+        # Load H-Optimus once for all slides — avoids per-slide model reload
+        # (~10–30 s overhead × N slides) and runs calibration a single time.
+        _hoptimus_preloaded = None
+        if use_hoptimus and not niche_slide_graph_file.exists():
+            _hoptimus_preloaded = _load_hoptimus_model(hoptimus_model_dir, device)
+            if hoptimus_batch_size is None:
+                _, _, _, _cal_bytes = _hoptimus_preloaded
+                _PHI = (1.0 + 5.0 ** 0.5) / 2.0
+                _auto_bs = _auto_batch_size(
+                    _hoptimus_preloaded[0],
+                    device or ("cuda" if torch.cuda.is_available() else "cpu"),
+                    bytes_per_image=_cal_bytes,
+                )
+                hoptimus_batch_size = max(1, int(_auto_bs / _PHI))
 
         slide_bar = tqdm(total=len(slide_paths), desc="  slides", unit="slide", position=0)
         for i, (wsi_path, csv_path) in enumerate(zip(slide_paths, model_output_paths)):
@@ -2123,6 +2318,7 @@ def niche_generation(
                 hoptimus_only=hoptimus_only,
                 hoptimus_model_dir=hoptimus_model_dir,
                 hoptimus_batch_size=hoptimus_batch_size,
+                hoptimus_preloaded=_hoptimus_preloaded,
                 use_hoptimus=use_hoptimus, patch_dataset=ds,
                 sample_frac=sample_frac, sample_count=sample_count,
                 pca_dim=pca_dim, knn_k=knn_k, knn_sigma_um=knn_sigma_um,
@@ -2208,6 +2404,15 @@ def niche_generation(
         _w = estimate_niches_from_Z_list_res['winner']
         niche_clustering_k = _w['n_clusters']
         labels_list  = estimate_niches_from_Z_list_res["labels_list"]     # per-slide niche labels
+
+        if niche_clustering_k < 2:
+            _tried = ", ".join(str(r) for r in _res_list)
+            raise click.UsageError(
+                f"Leiden produced only 1 cluster at resolution(s) {_tried}. "
+                "Use a higher --leiden-res (e.g. 0.5,1.0,2.0) or fix the number of "
+                "clusters directly with --kmeans-clusters N (N >= 2)."
+            )
+
         click.secho(
             f"  selected Leiden resolution={_w['resolution']:g} -> k={niche_clustering_k} "
             f"clusters (modularity={_w['modularity']:.3f}, "

@@ -345,7 +345,7 @@ _NICHE_PARAM_NAMES: tuple[str, ...] = (
     "niche_hoptimus_pca_dim",
     "niche_hoptimus_model_dir",
     "niche_hoptimus_batch_size",
-    "niche_clusters",
+    "niche_clusters",  # param name kept for backward compat with niche_generation()
     "niche_leiden_res",
     "niche_embed_dim",
     "niche_k_hops",
@@ -868,12 +868,13 @@ def _select_kwargs(values: dict[str, Any], keys: tuple[str, ...]) -> dict[str, A
     ),
 )
 @click.option(
-    "--niche-clusters",
+    "--niche-kmeans-clusters",
+    "niche_clusters",
     default=None,
     type=click.IntRange(min=2),
     help=(
-        "Number of niche clusters (KMeans).  When omitted, determined "
-        "automatically via Leiden community detection.  Ignored unless --niche is set."
+        "Number of KMeans clusters (forces KMeans clustering).  When omitted, determined "
+        "automatically via Leiden community detection (see --niche-leiden-res).  Ignored unless --niche is set."
     ),
 )
 @click.option(
@@ -884,7 +885,7 @@ def _select_kwargs(values: dict[str, Any], keys: tuple[str, ...]) -> dict[str, A
     help=(
         "Comma-separated Leiden resolutions to sweep when choosing the number of "
         "niches automatically (e.g. '0.2,0.5,1.0,2.0').  Ignored when "
-        "--niche-clusters is set or --niche is not set."
+        "--niche-kmeans-clusters is set or --niche is not set."
     ),
 )
 @click.option(

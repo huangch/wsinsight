@@ -148,14 +148,14 @@ def _num_cpus() -> int:
     ),
 )
 @click.option(
-    "--clusters",
+    "--kmeans-clusters",
     "niche_clusters",
     default=None,
     type=click.IntRange(min=2),
     help=(
-        "Number of microenvironment clusters (KMeans).  When omitted, the "
+        "Number of KMeans clusters (forces KMeans clustering).  When omitted, the "
         "optimal number is determined automatically via a Leiden "
-        "community-detection sweep."
+        "community-detection sweep (see --leiden-res)."
     ),
 )
 @click.option(
@@ -167,7 +167,7 @@ def _num_cpus() -> int:
     help=(
         "Comma-separated Leiden resolutions to sweep when choosing the number "
         "of niches automatically (e.g. '0.2,0.5,1.0,2.0').  Higher resolutions "
-        "yield more, smaller clusters.  Ignored when --clusters is set."
+        "yield more, smaller clusters.  Ignored when --kmeans-clusters is set."
     ),
 )
 @click.option(
@@ -454,10 +454,22 @@ def niche(
                     output_dir=Path("niche-outputs-geojson") / "cells",
                     prefix="niche",
                     label_col="niche_id",
+                    num_workers=num_workers,
+                    object_type="detection",
                     set_classification=True,
                     annotation_shape="box",
                     overwrite=overwrite,
                 )
+            else:
+                click.secho(
+                    "  [warn] niche-outputs-csv/cells/ exists but contains no CSVs — "
+                    "skipping cell GeoJSON export.", fg="yellow"
+                )
+        else:
+            click.secho(
+                "  [warn] niche-outputs-csv/cells/ not found — "
+                "skipping cell GeoJSON export.", fg="yellow"
+            )
 
         # --- GeoJSON: annotation-level niche regions ---------------------------
         niche_niches_dir = Path(str(results_dir)) / "niche-outputs-csv" / "niches"
@@ -474,10 +486,22 @@ def niche(
                     output_dir=Path("niche-outputs-geojson") / "niches",
                     prefix="niche",
                     label_col="niche_id",
+                    num_workers=num_workers,
+                    object_type="annotation",
                     set_classification=True,
                     annotation_shape="polygon",
                     overwrite=overwrite,
                 )
+            else:
+                click.secho(
+                    "  [warn] niche-outputs-csv/niches/ exists but contains no CSVs — "
+                    "skipping niche region GeoJSON export.", fg="yellow"
+                )
+        else:
+            click.secho(
+                "  [warn] niche-outputs-csv/niches/ not found — "
+                "skipping niche region GeoJSON export.", fg="yellow"
+            )
 
     write_runtime_metadata(
         results_dir,
