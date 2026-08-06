@@ -103,7 +103,7 @@ RUN set -eu; \
 # Pre-install large-image from girder wheel index
 # MUST honour constraints.txt: without it large-image pulls zarr>=3 / dask 2026.x,
 # which then makes the constrained `pip install -e .` below unsatisfiable
-# (anndata<0.11 requires zarr<3).
+# (the pinned scanpy/squidpy/spatialdata line requires zarr<3).
 # ------------------------------------
 RUN set -eu; \
     CONSTR=/app/wsinsight/constraints.txt; \
