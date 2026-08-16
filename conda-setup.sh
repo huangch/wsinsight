@@ -1,13 +1,13 @@
 #!/usr/bin/env bash
 # conda-setup.sh — create and populate the wsinsight conda environment.
 #
-# Usage:  bash ./conda-setup.sh [-n ENV_NAME] [-r|--reset] [--mcp]
+# Usage:  bash ./conda-setup.sh [-n ENV_NAME] [-r|--reset] [-m|--mcp]
 #
 #   -n | --name  ENV_NAME   Conda environment to use (default: current active env).
 #   -r | --reset            Deactivate, remove, recreate, and activate the env.
 #                           Without this flag the script skips env creation and
 #                           only (re-)installs packages into the existing env.
-#   --mcp                   Also install fastmcp (MCP server support).
+#   -m | --mcp              Also install fastmcp (MCP server support).
 #                           Not installed by default to avoid jaraco.* version scanning.
 #
 # Key workarounds:
@@ -39,13 +39,13 @@ while [[ $# -gt 0 ]]; do
             DO_RESET=1
             shift
             ;;
-        --mcp)
+        -m|--mcp)
             DO_MCP=1
             shift
             ;;
         *)
             echo "Unknown option: $1" >&2
-            echo "Usage: bash ./conda-setup.sh [-n ENV_NAME] [-r|--reset] [--mcp]" >&2
+            echo "Usage: bash ./conda-setup.sh [-n ENV_NAME] [-r|--reset] [-m|--mcp]" >&2
             exit 1
             ;;
     esac

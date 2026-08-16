@@ -32,7 +32,8 @@ classifiers = [
 ]
 # Version is dynamic via setuptools-scm (use tags). Keep only the hard compatibility rule here.
 dependencies = [
-  "anndata>=0.11,<0.12",  # 0.11 works with zarr 2.x; squidpy/spatialdata-io need anndata.io
+  # "anndata>=0.11,<0.12",  # 0.11 works with zarr 2.x; squidpy/spatialdata-io need anndata.io
+  "anndata>=0.11,<0.13",  # 0.11 works with zarr 2.x; squidpy/spatialdata-io need anndata.io
   "click>=8.0,<9,!=8.1.4,!=8.1.5",
   "h5py",
   "numpy<2.0.0",
