@@ -1,7 +1,7 @@
 #!/bin/sh
 
 # IMAGE_ID=lj-docker-reg.pfizer.com/huangc78/wsinsight:latest
-IMAGE_ID=wsinsight:latest
+IMAGE_ID=huangchtw/wsinsight:latest
 docker pull ${IMAGE_ID}
 
 # The container's uid/gid is set at run time by the image entrypoint: by default

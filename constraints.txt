@@ -129,8 +129,8 @@ protobuf==6.32.1
 google-auth-oauthlib==1.4.0
 oauthlib==3.3.1
 requests-oauthlib==2.0.0
-fastmcp==3.4.5
-fastmcp-slim==3.4.5
+fastmcp>=3.4.5
+fastmcp-slim>=3.4.5
 jaraco.classes==3.4.0
 jaraco.context==6.1.2
 jaraco.functools==4.6.0
