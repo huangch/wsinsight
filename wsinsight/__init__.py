@@ -33,7 +33,10 @@ def _harden_tqdm_against_resize() -> None:
         return
 
     # 1. Default every bar to dynamic_ncols so width is recomputed each refresh.
-    if not getattr(_tqdm_std.tqdm, "_wsinsight_dynamic_ncols", False):
+    # Sentinels are deliberately NOT package-prefixed: these packages share one
+    # env and land in one process, so a per-package sentinel would let each of
+    # them wrap __init__ and chain another SIGWINCH handler.
+    if not getattr(_tqdm_std.tqdm, "_tqdm_resize_hardened", False):
         _orig_init = _tqdm_std.tqdm.__init__
 
         def _init(self, *args, **kwargs):  # noqa: ANN001
@@ -41,7 +44,7 @@ def _harden_tqdm_against_resize() -> None:
             _orig_init(self, *args, **kwargs)
 
         _tqdm_std.tqdm.__init__ = _init
-        _tqdm_std.tqdm._wsinsight_dynamic_ncols = True
+        _tqdm_std.tqdm._tqdm_resize_hardened = True
 
     # 2. Redraw all active bars on terminal resize (SIGWINCH).
     try:
@@ -49,7 +52,7 @@ def _harden_tqdm_against_resize() -> None:
 
         if not hasattr(signal, "SIGWINCH"):
             return  # not POSIX (e.g. Windows); nothing to do
-        if getattr(_tqdm_std.tqdm, "_wsinsight_winch_installed", False):
+        if getattr(_tqdm_std.tqdm, "_tqdm_winch_installed", False):
             return
 
         _prev_handler = signal.getsignal(signal.SIGWINCH)
@@ -66,7 +69,7 @@ def _harden_tqdm_against_resize() -> None:
                 _prev_handler(signum, frame)
 
         signal.signal(signal.SIGWINCH, _on_winch)
-        _tqdm_std.tqdm._wsinsight_winch_installed = True
+        _tqdm_std.tqdm._tqdm_winch_installed = True
     except (ValueError, OSError):
         # signal.signal raises ValueError off the main thread; ignore.
         pass

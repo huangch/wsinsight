@@ -4,10 +4,10 @@
 
 absl-py==2.3.1
 affine==2.4.0
-# 2.26.0 is the first release that tracks botocore 1.41.x. Held back at 2.25.0
-# it demands botocore<1.40.50, which cannot coexist with the boto3>=1.41 that
-# sptxinsight requires in the shared env.
-aiobotocore==2.26.0
+# The 1.40.x generation is the locked set for this env: aiobotocore 2.25.0
+# requires botocore<1.40.50, which boto3 1.40.49 and s3transfer 0.14.0 match.
+# Siblings widen their own floors to accept this rather than moving it.
+aiobotocore==2.25.0
 aiohappyeyeballs==2.6.1
 aiohttp==3.13.0
 aioitertools==0.12.0
@@ -16,8 +16,8 @@ annotated-types==0.7.0
 asciitree==0.3.3
 astunparse==1.6.3
 attrs==25.4.0
-boto3==1.41.5
-botocore==1.41.5
+boto3==1.40.49
+botocore==1.40.49
 cachetools==6.2.1
 certifi==2025.10.5
 cffi==2.0.0
@@ -200,8 +200,8 @@ retrying==1.4.2
 rich==14.2.0
 rpds-py==0.27.1
 s3fs==2025.9.0
-# boto3 1.41.5 requires s3transfer>=0.15.0,<0.16.0.
-s3transfer==0.15.0
+# boto3 1.40.49 requires s3transfer>=0.14.0,<0.15.0.
+s3transfer==0.14.0
 safetensors==0.6.2
 setuptools<67.0.0
 scikit-image==0.25.2
