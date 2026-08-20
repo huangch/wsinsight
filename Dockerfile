@@ -42,8 +42,8 @@ ENV PATH="$CONDA_DIR/bin:$PATH"
 # (Required since Sept 2024 for pkgs/main and pkgs/r)
 # ------------------------------------
 RUN conda --version && \
-    (conda tacs accept --override-channels --channel https://repo.anaconda.com/pkgs/main -y || true) && \
-    (conda tacs accept --override-channels --channel https://repo.anaconda.com/pkgs/r -y || true)
+    (conda tos accept --override-channels --channel https://repo.anaconda.com/pkgs/main -y || true) && \
+    (conda tos accept --override-channels --channel https://repo.anaconda.com/pkgs/r -y || true)
 
 # ------------------------------------
 # Create environment (conda-forge to avoid TOS re-prompts)
@@ -126,7 +126,7 @@ RUN pip install --retries 10 -c /app/wsinsight/constraints.txt fastmcp
 # ------------------------------------
 # histomicstk --no-deps (girder-client==3.2.11 hardpin bypass)
 # ------------------------------------
-RUN pip install --no-deps \
+RUN pip install --no-deps --retries 5 \
     --trusted-host github.com --trusted-host raw.githubusercontent.com \
     --trusted-host girder.github.io \
     --find-links https://girder.github.io/large_image_wheels \

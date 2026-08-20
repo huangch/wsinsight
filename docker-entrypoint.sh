@@ -10,6 +10,9 @@
 # then executed as the target user via setpriv (util-linux; no extra package).
 # If the container was started with `--user` (already non-root), remapping is
 # neither possible nor needed, so we just exec the command as-is.
+#
+# Kept byte-for-byte in sync across wsinsight, sptxinsight, hplot and
+# wsinsight-train so every image behaves identically at run time.
 set -euo pipefail
 
 if [ "$(id -u)" -ne 0 ]; then

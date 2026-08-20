@@ -88,8 +88,11 @@ pip install --upgrade pip
 # ── Pip cache fix (NAS inode quota) ───────────────────────────────────────────
 # PIP_CACHE_DIR redirects ALL cache writes (including temp wheel builds) to /tmp.
 # This is more reliable than PIP_NO_CACHE_DIR=1 which doesn't prevent temp writes.
-pip cache purge || true
-export PIP_CACHE_DIR=/tmp/pip-cache-wsinsight
+# Exported BEFORE any purge: `pip cache purge` obeys this variable, so running it
+# first wiped the user's global ~/.cache/pip (4.3 GB observed). The redirect on
+# its own solves the quota problem, so nothing is purged here. One shared dir
+# lets the sibling repos reuse the multi-hundred-MB torch/TF/cuDNN wheels.
+export PIP_CACHE_DIR="${PIP_CACHE_DIR:-/tmp/pip-cache-wsinsight-stack}"
 
 # torch, tensorflow, and other ML deps are declared in pyproject.toml;
 # they are installed by `pip install -e .` below together with all other deps.
@@ -177,13 +180,42 @@ pip install -c "${SCRIPT_DIR}/constraints.txt" "numpy<2" \
     wandb "albumentations<1.4.0" colorama einops schema torchstain natsort \
     geojson ujson ray torchmetrics "evalutils==0.5.0" torchinfo
 
-# ── Safety check ──────────────────────────────────────────────────────────────
-python -c 'import numpy; v=numpy.__version__; assert int(v.split(".")[0])<2, "ERROR: numpy "+v+" >= 2.0; stardist will break"; print("numpy "+v+"  OK")'
-
 # ── Smoke test ────────────────────────────────────────────────────────────────
-S3_STORAGE_OPTIONS='{"profile":"saml"}' \
-WSINSIGHT_ZOO_REGISTRY_PATH='/workspace/wsinsight/devel/zoo/wsinsight-zoo-registry.json' \
-WSINSIGHT_REMOTE_CACHE_DIR='/tmp' \
-KERAS_HOME='/workspace/wsinsight/devel/keras' \
-wsinsight
+# Hard checks are fatal: a half-installed env must not look like a success.
+# The test suite is reported but does not fail the setup.
+echo "---- smoke test ----"
+SMOKE_FAIL=0
+smoke() {                       # smoke <label> <command...>
+    label="$1"; shift
+    if "$@" >/dev/null 2>&1; then
+        printf '  PASS  %s\n' "$label"
+    else
+        printf '  FAIL  %s\n' "$label"
+        SMOKE_FAIL=$((SMOKE_FAIL + 1))
+    fi
+}
+
+python -c 'import numpy, sys; print("  numpy", numpy.__version__, "| python", sys.version.split()[0])' || true
+
+smoke "wsinsight on PATH"    command -v wsinsight
+smoke "wsinsight --help"     wsinsight --help
+smoke "import wsinsight"     python -c 'import wsinsight'
+# numpy 2.x breaks stardist and the zarr<3 / anndata generation.
+smoke "numpy < 2"            python -c 'import numpy, sys; sys.exit(int(numpy.__version__.split(".")[0]) >= 2)'
+if [[ "${DO_MCP}" -eq 1 ]]; then
+    smoke "wsinsight-mcp on PATH" command -v wsinsight-mcp
+    smoke "wsinsight-mcp --help"  wsinsight-mcp --help
+fi
+
+if [[ -d "${SCRIPT_DIR}/tests" ]]; then
+    python -m pytest "${SCRIPT_DIR}/tests" -q \
+        && echo "  PASS  test suite" \
+        || echo "  WARN  test suite did not pass (non-fatal)"
+fi
+
+if [[ "${SMOKE_FAIL}" -ne 0 ]]; then
+    echo "smoke test: ${SMOKE_FAIL} check(s) FAILED" >&2
+    exit 1
+fi
+echo "smoke test: all checks passed"
 
