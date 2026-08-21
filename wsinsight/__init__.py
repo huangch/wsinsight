@@ -32,7 +32,8 @@ def _harden_tqdm_against_resize() -> None:
     except Exception:
         return
 
-    # 1. Default every bar to dynamic_ncols so width is recomputed each refresh.
+    # 1. Default every bar to dynamic_ncols so width is recomputed each refresh,
+    #    and to ascii=" =" so third-party bars match the rest of the ecosystem.
     # Sentinels are deliberately NOT package-prefixed: these packages share one
     # env and land in one process, so a per-package sentinel would let each of
     # them wrap __init__ and chain another SIGWINCH handler.
@@ -41,6 +42,7 @@ def _harden_tqdm_against_resize() -> None:
 
         def _init(self, *args, **kwargs):  # noqa: ANN001
             kwargs.setdefault("dynamic_ncols", True)
+            kwargs.setdefault("ascii", " =")
             _orig_init(self, *args, **kwargs)
 
         _tqdm_std.tqdm.__init__ = _init
@@ -48,6 +50,7 @@ def _harden_tqdm_against_resize() -> None:
 
     # 2. Redraw all active bars on terminal resize (SIGWINCH).
     try:
+        import os
         import signal
 
         if not hasattr(signal, "SIGWINCH"):
@@ -58,12 +61,29 @@ def _harden_tqdm_against_resize() -> None:
         _prev_handler = signal.getsignal(signal.SIGWINCH)
 
         def _on_winch(signum, frame):  # noqa: ANN001
-            try:
-                for inst in list(getattr(_tqdm_std.tqdm, "_instances", [])):
-                    inst.clear(nolock=True)
+            # tqdm falls back to COLUMNS/LINES when the ioctl fails (redirected
+            # fp); a stale pair exported by the shell would pin the old width.
+            os.environ.pop("COLUMNS", None)
+            os.environ.pop("LINES", None)
+            for inst in list(getattr(_tqdm_std.tqdm, "_instances", [])):
+                # One bar that cannot be redrawn must not cost the others their
+                # repaint, so each is isolated rather than the loop as a whole.
+                try:
+                    if inst.disable:
+                        continue
+                    pos = abs(inst.pos)
+                    inst.moveto(pos)
+                    # tqdm's own clear() blanks the line by writing as many
+                    # spaces as the *old* width; once the terminal has shrunk
+                    # that padding wraps and walks the bar down a row per
+                    # resize. Erase to end of line, then drop the status
+                    # printer so it stops padding to the pre-resize length.
+                    inst.fp.write("\r\x1b[K")
+                    inst.moveto(-pos)
+                    inst.sp = inst.status_printer(inst.fp)
                     inst.refresh(nolock=True)
-            except Exception:
-                pass
+                except Exception:
+                    continue
             # Chain to whatever handler was installed before us.
             if callable(_prev_handler):
                 _prev_handler(signum, frame)
