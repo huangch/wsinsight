@@ -157,8 +157,16 @@ def draw_contours_on_thumbnail(
     assert len(contours) == hierarchy.shape[1]
 
     contour_is_external = (hierarchy[0, :, 3] < 0).tolist()
-    external = [c for c, external in zip(contours, contour_is_external) if external]
-    hole = [c for c, external in zip(contours, contour_is_external) if not external]
+    external = [
+        c
+        for c, external in zip(contours, contour_is_external, strict=False)
+        if external
+    ]
+    hole = [
+        c
+        for c, external in zip(contours, contour_is_external, strict=False)
+        if not external
+    ]
 
     img = np.array(thumb)
     cv.drawContours(img, external, -1, (0, 255, 255), 7)

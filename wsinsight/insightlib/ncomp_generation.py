@@ -39,6 +39,7 @@ from .graph_cache import get_or_build_delaunay
 from .insight_helpers import compute_cell_center_points
 from .insight_helpers import delaunay_triangulation
 from .insight_helpers import k_hop_neighbors
+from .insight_helpers import make_short_ids
 
 _logger = logging.getLogger(__name__)
 

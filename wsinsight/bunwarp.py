@@ -142,14 +142,14 @@ def _bspline(
         v = bv * intervals / denom_h + 1.0
         iu, iv = int(np.floor(u)), int(np.floor(v))
         sx = sy = 0.0
-        for l in range(iv - 1, iv + 3):
-            if 0 <= l < n3:
-                wv = _b3(v - l)
+        for iy in range(iv - 1, iv + 3):
+            if 0 <= iy < n3:
+                wv = _b3(v - iy)
                 for k in range(iu - 1, iu + 3):
                     if 0 <= k < n3:
                         b = _b3(u - k) * wv
-                        sx += cx[l, k] * b
-                        sy += cy[l, k] * b
+                        sx += cx[iy, k] * b
+                        sy += cy[iy, k] * b
         out[i] = (sx, sy)
     return out
 

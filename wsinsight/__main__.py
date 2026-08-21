@@ -32,7 +32,7 @@ def main() -> None:
         cli()
     except (click.Abort, KeyboardInterrupt):
         click.secho("\nWSInsight: aborted by user.", fg="yellow", err=True)
-        raise SystemExit(130)
+        raise SystemExit(130) from None
     except Exception as e:
         click.secho(f"WSInsight failed. Error message:\n{e}", fg="yellow")
 

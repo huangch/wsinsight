@@ -117,7 +117,6 @@ def _dataframe_to_omecsv(
         ]
         poly_str = '"POLYGON ((' + ",".join(coords) + '))"'
 
-        probs = prob_arr[i]
         mvals = ",".join(all_meas_rows[i])
         cls = cls_arr[i]
 

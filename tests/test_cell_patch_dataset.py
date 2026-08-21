@@ -218,7 +218,7 @@ def test_parallel_reads_preserve_order(monkeypatch):
         ]
 
     assert len(parallel) == len(serial)
-    for i, (a, b) in enumerate(zip(serial, parallel)):
+    for i, (a, b) in enumerate(zip(serial, parallel, strict=False)):
         assert np.array_equal(
             a, b
         ), f"crop {i} differs between serial and parallel reads"

@@ -40,7 +40,7 @@ def _strtree_query_pairs(tree: STRtree, items):
             np.asarray(pairs[0]).tolist(),
             np.asarray(pairs[1]).tolist(),
         )
-        for i, j in zip(ia, ib):
+        for i, j in zip(ia, ib, strict=False):
             if j > i:
                 out.add((int(i), int(j)))
         return sorted(out)
@@ -109,7 +109,7 @@ def _finite_voronoi_regions_no_bbox(
     R = np.linalg.norm(vor.points - center, axis=1).max() * float(far_mult)
 
     ridges: Dict[int, List[Tuple[int, int, int]]] = {}
-    for (p, q), (v1, v2) in zip(vor.ridge_points, vor.ridge_vertices):
+    for (p, q), (v1, v2) in zip(vor.ridge_points, vor.ridge_vertices, strict=False):
         ridges.setdefault(p, []).append((q, v1, v2))
         ridges.setdefault(q, []).append((p, v1, v2))
 
@@ -633,7 +633,7 @@ def merge_same_label_by_shared_edges_iterative(
         & _capped_mask[_tgt]
         & (labels[_src] == labels[_tgt])
     )
-    for i, j in zip(_src[_sel].tolist(), _tgt[_sel].tolist()):
+    for i, j in zip(_src[_sel].tolist(), _tgt[_sel].tolist(), strict=False):
         shared = _shared_boundary_len(
             capped[i], capped[j], tol_len_px, boundary_buffer_px
         )
@@ -780,7 +780,9 @@ def _pieces_dict_to_dataframe(
             if isinstance(poly, MultiPolygon):
                 poly = max(poly.geoms, key=lambda p: p.area)
             xs, ys = poly.exterior.xy
-            return json.dumps([[float(x), float(y)] for x, y in zip(xs, ys)])
+            return json.dumps(
+                [[float(x), float(y)] for x, y in zip(xs, ys, strict=False)]
+            )
         else:
             raise ValueError("geom_format must be 'wkt', 'wkb_hex', or 'coords_json'")
 

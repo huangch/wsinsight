@@ -1059,7 +1059,7 @@ def infer(
         )
 
     if patch_overlap_ratio != 0.0:
-        overlap = patch_overlap_ratio
+        _overlap = patch_overlap_ratio
 
     elif patch_size_um != 0.0:
         if patch_size_um > (
@@ -1069,7 +1069,7 @@ def infer(
                 "--patch-size-um has to be smaller than patch size"
             )
 
-        overlap = 1.0 - patch_size_um / (
+        _overlap = 1.0 - patch_size_um / (
             model_obj.config.patch_size_pixels * model_obj.config.spacing_um_px
         )
 
@@ -1079,10 +1079,12 @@ def infer(
                 "--patch-size-px must not be larger than patch size"
             )
 
-        overlap = 1.0 - float(patch_size_px) / float(model_obj.config.patch_size_pixels)
+        _overlap = 1.0 - float(patch_size_px) / float(
+            model_obj.config.patch_size_pixels
+        )
 
     else:
-        overlap = 0.0
+        _overlap = 0.0
 
     # --- Validate dependent artifacts --------------------------------------
     if not (results_dir / "patches").exists():

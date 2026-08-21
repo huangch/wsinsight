@@ -173,8 +173,8 @@ def test_calibration_is_independent_of_fixed_overhead_size(monkeypatch):
             seen = _stub_cuda_for_calibration(mp, fixed, marginal)
 
             class _FakeModel:
-                def __call__(self, x):
-                    seen["n"] = x.shape[0]
+                def __call__(self, x, _seen=seen):
+                    _seen["n"] = x.shape[0]
                     return x
 
             results.append(HELPERS["_calibrate_bytes_per_image"](_FakeModel(), "cpu"))

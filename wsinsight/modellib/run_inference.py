@@ -25,8 +25,6 @@ import torch
 import tqdm
 import wsinfer_zoo.client
 
-logger = logging.getLogger(__name__)
-
 from wsinsight.modellib.tilefuse import TileRemapStitcher
 
 from .. import errors
@@ -43,6 +41,8 @@ from .data import WholeSlideImagePatches
 from .models import LocalModelTorchScript
 from .models import get_pretrained_torch_module
 from .transforms import make_compose_from_transform_config
+
+logger = logging.getLogger(__name__)
 
 EPSILON = 1e-8
 I_0 = 255

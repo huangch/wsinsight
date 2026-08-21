@@ -225,12 +225,12 @@ def create_adjacency_list_fast(
     adj: Dict[int, List[int]] = {}
     if not (dedup_neighbors or sort_neighbors):
         # fast path: just tolist() without extra work
-        for key, grp in zip(src_keys, dst_groups):
+        for key, grp in zip(src_keys, dst_groups, strict=False):
             adj[int(key)] = grp.tolist()
         return adj
 
     # optional: unique / sort per node
-    for key, grp in zip(src_keys, dst_groups):
+    for key, grp in zip(src_keys, dst_groups, strict=False):
         arr = grp
         if dedup_neighbors:
             arr = np.unique(arr)
@@ -300,8 +300,8 @@ def k_hop_neighbors(nodes_df_or_N, edges_df_or_adj, k):
             A = csr_matrix((N, N), dtype=np.uint8)
 
     # Build M = A + I (self-loops), then compute M^k
-    I = speye(N, dtype=np.uint8, format="csr")
-    M = (A + I).tocsr()
+    eye = speye(N, dtype=np.uint8, format="csr")
+    M = (A + eye).tocsr()
     M.data[:] = 1
 
     Mk = M

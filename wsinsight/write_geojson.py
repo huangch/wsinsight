@@ -18,6 +18,7 @@ from typing import Union
 
 import geopandas as gpd
 import numpy as np
+import orjson
 import pandas as pd
 from shapely import from_wkt  # shapely >= 2.0
 from tqdm.auto import tqdm
@@ -43,7 +44,6 @@ _GEOM_COLS = frozenset(
 # from .num_worker_optimizer import pick_workers_safe, throttle_when_busy
 
 # ---- fast JSON encoder ----
-import orjson
 
 
 def _dumps(obj: dict) -> bytes:
@@ -165,7 +165,7 @@ def _dataframe_to_geojson_box_fast(
     for i in range(len(df)):
         measurements = {
             c: (None if np.isnan(v) else float(v))
-            for c, v in zip(measure_cols, meas_arr[i])
+            for c, v in zip(measure_cols, meas_arr[i], strict=False)
         }
         feat = {
             "type": "Feature",
@@ -243,7 +243,10 @@ def _dataframe_to_geojson_polygon_fast(
             {"name": class_names[i], "color": list(color_list[i]["rgb"])} for i in idx
         ]
     props["measurements"] = [
-        {c: (None if np.isnan(v) else float(v)) for c, v in zip(measure_cols, row)}
+        {
+            c: (None if np.isnan(v) else float(v))
+            for c, v in zip(measure_cols, row, strict=False)
+        }
         for row in meas_arr
     ]
     props["isLocked"] = True  # match box path
@@ -309,7 +312,6 @@ def _build_geojson_dict_from_csv(
         if not unique_labels:
             raise KeyError(f"No valid labels found in '{label_col}' column of {csv}")
 
-        label_to_idx = {lab: i for i, lab in enumerate(unique_labels)}
         class_names = [f"{prefix}_{lab}" for lab in unique_labels]
         color_list = _make_distinct_colors(len(unique_labels))
 

@@ -167,7 +167,7 @@ def export(
             include_sources, results_dir
         )
     except ValueError as e:
-        raise click.ClickException(str(e))
+        raise click.ClickException(str(e)) from e
 
     if cell_sources or simplex_sources:
         all_sources = sorted(cell_sources) + sorted(simplex_sources)

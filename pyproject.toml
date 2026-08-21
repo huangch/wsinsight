@@ -177,11 +177,20 @@ module = [
 ignore_missing_imports = true
 
 [tool.ruff]
-extend-exclude = ["_version.py", "scripts/"]
+# Notebooks are exploratory: mid-cell imports and placeholder-free f-strings are
+# normal there and say nothing about the library.
+extend-exclude = ["_version.py", "scripts/", "*.ipynb"]
 
 [tool.ruff.lint]
 select = ["E4", "E7", "E9", "F", "B", "I"]
 unfixable = ["B"]
+
+[tool.ruff.lint.per-file-ignores]
+# Imports here sit below a warnings.filterwarnings call that has to run before
+# torch_geometric's DataParallel is imported, so their position is load-bearing.
+"wsinsight/insightlib/niche_generation.py" = ["E402"]
+# `import cv2` sits next to the cv2.setNumThreads(1) call it exists for.
+"wsinsight/modellib/tilefuse.py" = ["E402"]
 
 [tool.ruff.lint.isort]
 force-single-line = true

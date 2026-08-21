@@ -214,7 +214,7 @@ def segment_and_patch_one_slide(
                         [x + half_patch_size, y - half_patch_size],
                         [x - half_patch_size, y - half_patch_size],
                     ]
-                    for x, y in zip(xs, ys)
+                    for x, y in zip(xs, ys, strict=False)
                 ]
             )
 

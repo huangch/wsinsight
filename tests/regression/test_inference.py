@@ -14,7 +14,7 @@ import pytest
 
 pd = pytest.importorskip("pandas")
 
-from tests.regression.conftest import RegressionCase
+from tests.regression.conftest import RegressionCase  # noqa: E402
 
 pytestmark = [pytest.mark.regression, pytest.mark.slow]
 

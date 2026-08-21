@@ -82,8 +82,8 @@ def k_hop_adjacency_matrix_gpu(adj, k: int):
     if N == 0:
         return cpsp.csr_matrix((0, 0), dtype=cp.float32)
 
-    I = cpsp.eye(N, dtype=cp.float32, format="csr")
-    M = (adj + I).tocsr()
+    eye = cpsp.eye(N, dtype=cp.float32, format="csr")
+    M = (adj + eye).tocsr()
     M.data[:] = 1
 
     Mk = M

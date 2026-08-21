@@ -995,7 +995,10 @@ def _run_adaptive_batches(
         (a φ-step down) instead of halving, keeping moves symmetric and gentler.
         """
         nonlocal lo, hi
-        _step_down = lambda v: max(min_batch, int(v / probe_factor))
+
+        def _step_down(v):
+            return max(min_batch, int(v / probe_factor))
+
         if oom:
             # Converged but still OOM → reset with φ-step down instead of ÷2.
             if lo > 0 and hi == lo + 1 and current == lo:
@@ -1956,7 +1959,9 @@ def _igraph_from_sparse(A) -> ig.Graph:
     """Convert a scipy sparse adjacency matrix to an undirected igraph graph."""
     A = A.tocoo()
     g = ig.Graph(
-        n=A.shape[0], edges=list(zip(A.row.tolist(), A.col.tolist())), directed=False
+        n=A.shape[0],
+        edges=list(zip(A.row.tolist(), A.col.tolist(), strict=False)),
+        directed=False,
     )
     g.simplify(combine_edges="ignore")
     return g
@@ -2094,7 +2099,7 @@ def estimate_niches_from_Z_list(
     Z_list: List[np.ndarray],
     mode: str = "global",  # "global" (recommended) or "per_slide"
     k_nn: int = 15,
-    niche_clustering_resolutions=np.arange(0.2, 2.05, 0.1),
+    niche_clustering_resolutions=None,
     n_repeats: int = 5,
     seed: int = 0,
 ) -> Dict[str, Any]:
@@ -2107,6 +2112,9 @@ def estimate_niches_from_Z_list(
         "all_results": List[dict] or List[List[dict]]   # sweep logs
       }
     """
+    if niche_clustering_resolutions is None:
+        niche_clustering_resolutions = np.arange(0.2, 2.05, 0.1)
+
     if mode == "global":
         # concat for a single clustering (consistent niche IDs across slides)
         offsets = np.cumsum([0] + [Z.shape[0] for Z in Z_list[:-1]])
@@ -2124,7 +2132,7 @@ def estimate_niches_from_Z_list(
         labels_all = w["labels"]
         # split back to per slide
         labels_list = []
-        for off, Z in zip(offsets, Z_list):
+        for off, Z in zip(offsets, Z_list, strict=False):
             labels_list.append(labels_all[off : off + len(Z)])
         return {
             "clusters_k": w["n_clusters"],
@@ -2345,7 +2353,7 @@ def niche_generation(
     niche_cellular: bool = False,
     niche_annotation: bool = False,
     niche_clustering_k: int | None = 10,
-    niche_clustering_resolutions: List[float] = [0.5, 1.0, 2.0],
+    niche_clustering_resolutions: List[float] | None = None,
     # # device
     # device: Optional[str] = None,
     niche_soft_mode: bool = False,
@@ -2362,6 +2370,9 @@ def niche_generation(
     Prepare graphs for multiple slides, train one DGI on the raw k-hop
     composition features, and cluster per slide.
     """
+    if niche_clustering_resolutions is None:
+        niche_clustering_resolutions = [0.5, 1.0, 2.0]
+
     if hoptimus_only and not use_hoptimus:
         raise ValueError("hoptimus_only=True requires use_hoptimus=True")
 
@@ -2527,7 +2538,9 @@ def niche_generation(
         slide_bar = tqdm(
             total=len(slide_paths), desc="  slides", unit="slide", position=0
         )
-        for i, (wsi_path, csv_path) in enumerate(zip(slide_paths, model_output_paths)):
+        for i, (wsi_path, csv_path) in enumerate(
+            zip(slide_paths, model_output_paths, strict=False)
+        ):
             slide_id = Path(str(wsi_path)).stem
             display_id = short_ids.get(slide_id, slide_id)
             per_slide_cache = slide_graph_cache_dir / f"{slide_id}.joblib"
@@ -2706,7 +2719,8 @@ def niche_generation(
             .astype(np.int32)
         )
         labels_list = [
-            labels_all[off : off + Z.shape[0]] for off, Z in zip(offsets, Z_list)
+            labels_all[off : off + Z.shape[0]]
+            for off, Z in zip(offsets, Z_list, strict=False)
         ]
 
     # Cache the per-slide labels so repeated Phase 4/5 runs skip re-clustering.

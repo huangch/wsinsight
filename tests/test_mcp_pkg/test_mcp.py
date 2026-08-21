@@ -133,8 +133,6 @@ def test_job_manager_smoke(tmp_path, monkeypatch):
     fake_argv_tail = [str(script)]
 
     # Patch JobManager.submit internals: build argv = [python, fake_script]
-    real_submit = jobs.JobManager.submit
-
     def fake_submit(self, command, argv_tail):  # noqa: ARG001
         # bypass the wsinsight prefix; run our shim directly
         import uuid
