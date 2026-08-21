@@ -938,20 +938,9 @@
         },
         {
           "choices": [
-            "10xGenomics-BRCA-CellViT-SAM-H-x40",
-            "10xGenomics-CRC-CellViT-SAM-H-x40",
-            "CellViT-256-x20",
-            "CellViT-256-x40",
-            "CellViT-256-x40-AMP",
-            "CellViT-SAM-H-x20",
-            "CellViT-SAM-H-x40",
-            "CellViT-SAM-H-x40-AMP",
-            "CellViT-Virchow-x40-AMP",
             "breast-tumor-resnet34.tcga-brca",
             "colorectal-resnet34.penn",
             "colorectal-tiatoolbox-resnet50.kather100k",
-            "hne_cell_classification",
-            "hovernet_fast_pannuke",
             "lung-tumor-resnet34.tcga-luad",
             "lymphnodes-tiatoolbox-resnet50.patchcamelyon",
             "pancancer-lymphocytes-inceptionv4.tcga",
@@ -1299,14 +1288,30 @@
           "multiple": false,
           "name": "niche_hoptimus_model_dir",
           "param_type": "option",
+          "path_dir_okay": true,
+          "path_exists": true,
+          "path_file_okay": false,
           "required": false
         },
         {
           "default": null,
           "flags": [
-            "--clusters"
+            "--hoptimus-batch-size"
           ],
-          "help": "Number of microenvironment clusters (KMeans).  When omitted, the optimal number is determined automatically via a Leiden community-detection sweep.",
+          "help": "Number of image patches per H-Optimus forward pass. When omitted (recommended), the batch size is auto-calibrated from available GPU memory at runtime and adapts via binary search if OOM occurs. Set explicitly only to override the automatic sizing (e.g. to cap memory use when sharing the GPU with other workloads). Ignored unless --hoptimus is set.",
+          "is_flag": false,
+          "kind": "int",
+          "multiple": false,
+          "name": "niche_hoptimus_batch_size",
+          "param_type": "option",
+          "required": false
+        },
+        {
+          "default": null,
+          "flags": [
+            "--kmeans-clusters"
+          ],
+          "help": "Number of KMeans clusters (forces KMeans clustering).  When omitted, the optimal number is determined automatically via a Leiden community-detection sweep (see --leiden-res).",
           "is_flag": false,
           "kind": "int",
           "multiple": false,
@@ -1319,7 +1324,7 @@
           "flags": [
             "--leiden-res"
           ],
-          "help": "Comma-separated Leiden resolutions to sweep when choosing the number of niches automatically (e.g. '0.2,0.5,1.0,2.0').  Higher resolutions yield more, smaller clusters.  Ignored when --clusters is set.",
+          "help": "Comma-separated Leiden resolutions to sweep when choosing the number of niches automatically (e.g. '0.2,0.5,1.0,2.0').  Higher resolutions yield more, smaller clusters.  Ignored when --kmeans-clusters is set.",
           "is_flag": false,
           "kind": "string",
           "multiple": false,
@@ -1722,20 +1727,9 @@
         },
         {
           "choices": [
-            "10xGenomics-BRCA-CellViT-SAM-H-x40",
-            "10xGenomics-CRC-CellViT-SAM-H-x40",
-            "CellViT-256-x20",
-            "CellViT-256-x40",
-            "CellViT-256-x40-AMP",
-            "CellViT-SAM-H-x20",
-            "CellViT-SAM-H-x40",
-            "CellViT-SAM-H-x40-AMP",
-            "CellViT-Virchow-x40-AMP",
             "breast-tumor-resnet34.tcga-brca",
             "colorectal-resnet34.penn",
             "colorectal-tiatoolbox-resnet50.kather100k",
-            "hne_cell_classification",
-            "hovernet_fast_pannuke",
             "lung-tumor-resnet34.tcga-luad",
             "lymphnodes-tiatoolbox-resnet50.patchcamelyon",
             "pancancer-lymphocytes-inceptionv4.tcga",
@@ -2272,20 +2266,9 @@
         },
         {
           "choices": [
-            "10xGenomics-BRCA-CellViT-SAM-H-x40",
-            "10xGenomics-CRC-CellViT-SAM-H-x40",
-            "CellViT-256-x20",
-            "CellViT-256-x40",
-            "CellViT-256-x40-AMP",
-            "CellViT-SAM-H-x20",
-            "CellViT-SAM-H-x40",
-            "CellViT-SAM-H-x40-AMP",
-            "CellViT-Virchow-x40-AMP",
             "breast-tumor-resnet34.tcga-brca",
             "colorectal-resnet34.penn",
             "colorectal-tiatoolbox-resnet50.kather100k",
-            "hne_cell_classification",
-            "hovernet_fast_pannuke",
             "lung-tumor-resnet34.tcga-luad",
             "lymphnodes-tiatoolbox-resnet50.patchcamelyon",
             "pancancer-lymphocytes-inceptionv4.tcga",
@@ -2357,12 +2340,12 @@
           "required": false
         },
         {
-          "default": 32,
+          "default": null,
           "flags": [
             "-b",
             "--batch-size"
           ],
-          "help": "Batch size during model inference. If using multiple GPUs, increase the batch size.",
+          "help": "Batch size during model inference. When omitted (recommended), the batch size is auto-calibrated from available GPU memory at runtime.",
           "is_flag": false,
           "kind": "int",
           "multiple": false,
@@ -2955,14 +2938,30 @@
           "multiple": false,
           "name": "niche_hoptimus_model_dir",
           "param_type": "option",
+          "path_dir_okay": true,
+          "path_exists": true,
+          "path_file_okay": false,
           "required": false
         },
         {
           "default": null,
           "flags": [
-            "--niche-clusters"
+            "--niche-hoptimus-batch-size"
           ],
-          "help": "Number of niche clusters (KMeans).  When omitted, determined automatically via Leiden community detection.  Ignored unless --niche is set.",
+          "help": "Number of image patches per H-Optimus forward pass. When omitted (recommended), the batch size is auto-calibrated from available GPU memory at runtime and adapts via binary search if OOM occurs. Set explicitly only to override the automatic sizing. Ignored unless --niche-hoptimus and --niche are both set.",
+          "is_flag": false,
+          "kind": "int",
+          "multiple": false,
+          "name": "niche_hoptimus_batch_size",
+          "param_type": "option",
+          "required": false
+        },
+        {
+          "default": null,
+          "flags": [
+            "--niche-kmeans-clusters"
+          ],
+          "help": "Number of KMeans clusters (forces KMeans clustering).  When omitted, determined automatically via Leiden community detection (see --niche-leiden-res).  Ignored unless --niche is set.",
           "is_flag": false,
           "kind": "int",
           "multiple": false,
@@ -2975,7 +2974,7 @@
           "flags": [
             "--niche-leiden-res"
           ],
-          "help": "Comma-separated Leiden resolutions to sweep when choosing the number of niches automatically (e.g. '0.2,0.5,1.0,2.0').  Ignored when --niche-clusters is set or --niche is not set.",
+          "help": "Comma-separated Leiden resolutions to sweep when choosing the number of niches automatically (e.g. '0.2,0.5,1.0,2.0').  Ignored when --niche-kmeans-clusters is set or --niche is not set.",
           "is_flag": false,
           "kind": "string",
           "multiple": false,
