@@ -194,6 +194,16 @@ def _describe_command(name: str, cmd: click.Command) -> dict[str, Any]:
     }
 
 
+def _package_version() -> str:
+    """Version of the installed wsinsight, so consumers can spot schema/image skew."""
+    try:
+        from importlib.metadata import version
+
+        return version("wsinsight")
+    except Exception:
+        return "unknown"
+
+
 @cli.command(name="describe")
 @click.option(
     "--output",
@@ -207,9 +217,17 @@ def describe_cmd(output_path: str | None) -> None:
 
     Intended for downstream tools (e.g. the QuPath extension) that want to
     auto-generate forms without hard-coding the CLI surface. The output is a
-    JSON object with a ``commands`` dict keyed by subcommand name.
+    JSON object with a ``commands`` dict keyed by subcommand name, plus a
+    ``models`` list describing the zoo entries this installation can resolve.
     """
-    schema: dict[str, Any] = {"schema_version": 1, "commands": {}}
+    from ..modellib.models import list_registered_models
+
+    schema: dict[str, Any] = {
+        "schema_version": 1,
+        "wsinsight_version": _package_version(),
+        "commands": {},
+        "models": list_registered_models(),
+    }
     for name, cmd in cli.commands.items():
         if name == "describe":
             continue

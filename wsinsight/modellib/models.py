@@ -57,6 +57,34 @@ def resolve_zoo_registry_path() -> Path | None:
     return None
 
 
+def list_registered_models() -> list[dict[str, str | None]]:
+    """Return the zoo registry entries visible in this environment.
+
+    Used by ``wsinsight describe`` so downstream GUIs (the QuPath extension)
+    can populate a ``--model`` picker with the models this installation can
+    actually resolve, rather than guessing from a directory listing.
+    Returns an empty list when no registry is reachable.
+    """
+
+    registry_file = resolve_zoo_registry_path()
+    try:
+        registry = wsinfer_zoo.client.load_registry(registry_file=registry_file)
+    except Exception:  # unreadable/invalid registry must not break `describe`
+        return []
+
+    out: list[dict[str, str | None]] = []
+    for name, model in sorted(getattr(registry, "models", {}).items()):
+        out.append(
+            {
+                "name": name,
+                "description": getattr(model, "description", "") or "",
+                "hf_repo_id": getattr(model, "hf_repo_id", None),
+                "hf_revision": getattr(model, "hf_revision", None),
+            }
+        )
+    return out
+
+
 def get_registered_model(name: str) -> HFModelTorchScript:
     """Resolve a model name to the corresponding TorchScript handle."""
 
