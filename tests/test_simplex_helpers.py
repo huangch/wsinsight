@@ -5,16 +5,12 @@ from __future__ import annotations
 import math
 
 import numpy as np
-import pytest
 
-from wsinsight.insightlib.simplex_helpers import (
-    build_dual_graph,
-    build_line_graph,
-    enumerate_edges_from_simplices,
-    k_hop_on_adjacency,
-    triad_geometry,
-)
-
+from wsinsight.insightlib.simplex_helpers import build_dual_graph
+from wsinsight.insightlib.simplex_helpers import build_line_graph
+from wsinsight.insightlib.simplex_helpers import enumerate_edges_from_simplices
+from wsinsight.insightlib.simplex_helpers import k_hop_on_adjacency
+from wsinsight.insightlib.simplex_helpers import triad_geometry
 
 # ---------------------------------------------------------------------------
 # Fixture: square with one diagonal splitting into two triangles.
@@ -88,9 +84,7 @@ def test_triad_geometry_square_halves():
     # Both triangles are right isoceles with legs 10 → area 50.
     np.testing.assert_allclose(geom["area_px2"], [50.0, 50.0])
     # max edge is the hypotenuse 10√2 for each.
-    np.testing.assert_allclose(
-        geom["max_edge_px"], [10 * math.sqrt(2)] * 2, rtol=1e-6
-    )
+    np.testing.assert_allclose(geom["max_edge_px"], [10 * math.sqrt(2)] * 2, rtol=1e-6)
     # regularity in [0, 1]; not equilateral so strictly < 1.
     assert ((geom["regularity"] >= 0) & (geom["regularity"] <= 1)).all()
     assert (geom["regularity"] < 1.0).all()

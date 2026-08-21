@@ -11,7 +11,8 @@ CSVs for downstream GeoJSON / OME-CSV export.
 from __future__ import annotations
 
 import re
-from typing import Iterable, Sequence
+from typing import Iterable
+from typing import Sequence
 
 import pandas as pd
 

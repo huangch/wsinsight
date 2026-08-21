@@ -4,61 +4,88 @@
 # pip install torch torch_geometric scikit-learn numpy scipy pandas timm pillow
 
 from __future__ import annotations
-import math, os, time, shutil, tempfile, atexit
+
 import logging as _logging
-import threading
+import math
 import multiprocessing as mp
-from typing import Any, List, Dict, Iterable, Optional, Sequence, Tuple # , Callable
-import numpy as np
-import pandas as pd
-from pathlib import Path
-import torch
-import torch.nn as nn
-from torch.utils.data import Dataset, DataLoader, Subset
-from sklearn.cluster import KMeans
-from torch_geometric.data import Data # , DataLoader as GeoDataLoader
-from torch_geometric.loader import DataLoader as GeoDataLoader, DataListLoader
-from torch_geometric.nn import GCNConv, DataParallel as GeoDataParallel
+import os
+import shutil
+import tempfile
+import threading
+import time
 
 # PyG's DataParallel emits a UserWarning recommending DistributedDataParallel.
 # DP is used here intentionally (bounded DGI embedding pass; a DDP port would be
 # a scoped refactor with no correctness gain), so silence just that message.
 import warnings as _warnings
+from pathlib import Path
+from typing import Any  # , Callable
+from typing import Dict  # , Callable
+from typing import Iterable  # , Callable
+from typing import List  # , Callable
+from typing import Optional  # , Callable
+from typing import Sequence  # , Callable
+from typing import Tuple  # , Callable
+
+import numpy as np
+import pandas as pd
+import torch
+import torch.nn as nn
+from sklearn.cluster import KMeans
+from torch.utils.data import Dataset
+from torch_geometric.data import Data  # , DataLoader as GeoDataLoader
+from torch_geometric.loader import DataListLoader
+from torch_geometric.loader import DataLoader as GeoDataLoader
+from torch_geometric.nn import DataParallel as GeoDataParallel
+from torch_geometric.nn import GCNConv
+
 _warnings.filterwarnings(
     "ignore",
     message=r".*'DataParallel' is usually much slower than 'DistributedDataParallel'.*",
 )
-from torch_geometric.nn.models import DeepGraphInfomax
 from collections import deque
-from concurrent.futures import ProcessPoolExecutor, ThreadPoolExecutor, as_completed
-from tqdm import tqdm # , trange
-from sklearn.neighbors import kneighbors_graph
-from sklearn.metrics import silhouette_score, normalized_mutual_info_score
-import igraph as ig
-import leidenalg as la
-from torchvision import transforms
+from concurrent.futures import ProcessPoolExecutor
+from concurrent.futures import ThreadPoolExecutor
+from concurrent.futures import as_completed
+
 import click
+import igraph as ig
+
 # import pickle, gzip
 import joblib
+import leidenalg as la
+from sklearn.metrics import normalized_mutual_info_score
+from sklearn.metrics import silhouette_score
+from sklearn.neighbors import kneighbors_graph
+from torch_geometric.nn.models import DeepGraphInfomax
+from torchvision import transforms
+from tqdm import tqdm  # , trange
 
 from .. import errors
-from .insight_helpers import compute_cell_center_points
-from .insight_helpers import delaunay_triangulation
-from .insight_helpers import create_adjacency_list_fast  # adjacency builder
-from .insight_helpers import make_short_ids
-from .graph_cache import get_or_build_delaunay
+from ..cancel import raise_if_cancelled
+from ..insightlib.vorononi_niche_region_helper import (
+    merge_same_label_by_shared_edges_iterative,
+)
+from ..insightlib.vorononi_niche_region_helper import remap_edges_to_valid_indices
+from ..num_worker_optimizer import pick_workers_safe
+from ..num_worker_optimizer import throttle_when_busy
 from ..uri_path import URIPath
-from ..wsi import _validate_wsi_directory, get_avg_mpp
-from ..cancel import critical_section, raise_if_cancelled
-from ..insightlib.vorononi_niche_region_helper import merge_same_label_by_shared_edges_iterative, remap_edges_to_valid_indices
-from ..num_worker_optimizer import pick_workers_safe, throttle_when_busy
-           
+from ..wsi import _validate_wsi_directory
+from ..wsi import get_avg_mpp
+from .graph_cache import get_or_build_delaunay
+from .insight_helpers import compute_cell_center_points
+from .insight_helpers import create_adjacency_list_fast  # adjacency builder
+from .insight_helpers import delaunay_triangulation
+from .insight_helpers import make_short_ids
+
 # =============================================================================
 # Utilities: probabilities, edges, isolation
 # =============================================================================
 
-def probs_from_df(df: pd.DataFrame,
-                  class_order: Optional[List[str]] = None) -> Tuple[np.ndarray, List[str]]:
+
+def probs_from_df(
+    df: pd.DataFrame, class_order: Optional[List[str]] = None
+) -> Tuple[np.ndarray, List[str]]:
     """Extract [N,C] soft probabilities from columns like 'prob_*'."""
     cols = [c for c in df.columns if c.startswith("prob_")]
     if class_order is not None:
@@ -69,7 +96,7 @@ def probs_from_df(df: pd.DataFrame,
         cols = want
         classes = class_order
     else:
-        classes = [c[len("prob_"):] for c in cols]
+        classes = [c[len("prob_") :] for c in cols]
 
     P = df[cols].to_numpy(dtype=np.float32)  # [N,C]
     s = P.sum(axis=1, keepdims=True) + 1e-8
@@ -77,17 +104,22 @@ def probs_from_df(df: pd.DataFrame,
     return P, classes
 
 
-def to_edge_index(edges_df: pd.DataFrame,
-                  src_col: str = "source", dst_col: str = "target",
-                  undirected: bool = True, drop_self_loops: bool = True) -> np.ndarray:
+def to_edge_index(
+    edges_df: pd.DataFrame,
+    src_col: str = "source",
+    dst_col: str = "target",
+    undirected: bool = True,
+    drop_self_loops: bool = True,
+) -> np.ndarray:
     """DataFrame -> edge_index [2,E]. Assumes 0-based indices and length already capped by your function."""
     u = edges_df[src_col].to_numpy()
     v = edges_df[dst_col].to_numpy()
     if drop_self_loops:
-        keep = (u != v)
+        keep = u != v
         u, v = u[keep], v[keep]
     if undirected:
-        ei = np.r_[u, v]; ej = np.r_[v, u]
+        ei = np.r_[u, v]
+        ej = np.r_[v, u]
     else:
         ei, ej = u, v
     return np.vstack([ei, ej]).astype(np.int64)
@@ -106,7 +138,8 @@ def drop_isolated(edge_index: np.ndarray, N: int) -> Tuple[np.ndarray, np.ndarra
     # remap
     map_old2new = -np.ones(N, dtype=np.int64)
     map_old2new[kept] = np.arange(len(kept), dtype=np.int64)
-    ei_m = map_old2new[ei]; ej_m = map_old2new[ej]
+    ei_m = map_old2new[ei]
+    ej_m = map_old2new[ej]
     mask = (ei_m >= 0) & (ej_m >= 0)
     edge_index_new = np.vstack([ei_m[mask], ej_m[mask]]).astype(np.int64)
     return edge_index_new, kept
@@ -127,7 +160,7 @@ def _cleanup_tmpdir() -> None:
     tmpdir = tempfile.gettempdir()
     try:
         own_uid = os.getuid()
-    except AttributeError:      # non-POSIX
+    except AttributeError:  # non-POSIX
         own_uid = None
 
     try:
@@ -150,12 +183,13 @@ def _cleanup_tmpdir() -> None:
                 continue
             shutil.rmtree(item_path, ignore_errors=True)
         except OSError:
-            continue    # in use, already gone, or not ours
+            continue  # in use, already gone, or not ours
 
 
 # =============================================================================
 # k-hop soft-composition (EXACT hop bins) using your adjacency
 # =============================================================================
+
 
 def _exact_hop_bins(adj: Dict[int, List[int]], src: int, k: int) -> List[List[int]]:
     """Return nodes at EXACT hop distances 1..k from src using BFS."""
@@ -176,6 +210,7 @@ def _exact_hop_bins(adj: Dict[int, List[int]], src: int, k: int) -> List[List[in
             bins[nh].append(v)
             q.append((v, nh))
     return bins
+
 
 # def khop_soft_features(P: np.ndarray, edge_index: np.ndarray, N: int,
 #                        k: int = 2, alpha: float = 1.0) -> np.ndarray:
@@ -215,9 +250,6 @@ def _exact_hop_bins(adj: Dict[int, List[int]], src: int, k: int) -> List[List[in
 #                 # light Laplace smoothing to avoid zeros
 #                 X[i, off:off + C] = (mean_prob + (alpha / C)) / (1.0 + alpha)
 #     return X
-
-
-
 
 
 # def _khop_rows_worker(start: int, end: int, k: int, alpha: float,
@@ -317,17 +349,21 @@ def _exact_hop_bins(adj: Dict[int, List[int]], src: int, k: int) -> List[List[in
 #     return X
 
 
-
-
-def _khop_rows_worker(start: int, end: int, k: int, alpha: float,
-                      P: np.ndarray, adj: dict,
-                      mode: str = "soft",
-                      labels: np.ndarray | None = None) -> np.ndarray:
+def _khop_rows_worker(
+    start: int,
+    end: int,
+    k: int,
+    alpha: float,
+    P: np.ndarray,
+    adj: dict,
+    mode: str = "soft",
+    labels: np.ndarray | None = None,
+) -> np.ndarray:
     """
     Compute X rows [start:end) using EXACT-hop BFS on 'adj'.
     Returns X_block with shape [(end-start), (k+1)*C].
 
-    mode="soft": 
+    mode="soft":
       - 0-hop: P[i]
       - h>=1 : Laplace-smoothed mean of neighbors' P at EXACT hop h
                out = (mean + alpha/C) / (1+alpha)
@@ -378,24 +414,29 @@ def _khop_rows_worker(start: int, end: int, k: int, alpha: float,
             off = h * C
             if not idx:
                 # no nodes at this hop: fall back to uniform
-                Xblk[row, off:off + C] = 1.0 / C
+                Xblk[row, off : off + C] = 1.0 / C
                 continue
 
             if mode == "soft":
                 mean_prob = P[idx].mean(axis=0)
-                Xblk[row, off:off + C] = (mean_prob + (alpha / C)) / (1.0 + alpha)
+                Xblk[row, off : off + C] = (mean_prob + (alpha / C)) / (1.0 + alpha)
             else:
                 # hard: histogram proportions of predicted classes
                 counts = np.bincount(labels[idx], minlength=C).astype(np.float32)
-                props  = counts / counts.sum()
-                Xblk[row, off:off + C] = (props + (alpha / C)) / (1.0 + alpha)
+                props = counts / counts.sum()
+                Xblk[row, off : off + C] = (props + (alpha / C)) / (1.0 + alpha)
 
     return Xblk
 
 
-def khop_features(P: np.ndarray, edge_index: np.ndarray, N: int,
-                  k: int = 2, alpha: float = 1.0,
-                  mode: str = "soft") -> np.ndarray:
+def khop_features(
+    P: np.ndarray,
+    edge_index: np.ndarray,
+    N: int,
+    k: int = 2,
+    alpha: float = 1.0,
+    mode: str = "soft",
+) -> np.ndarray:
     """
     Build k-hop feature blocks X of shape [N, (k+1)*C].
 
@@ -424,15 +465,18 @@ def khop_features(P: np.ndarray, edge_index: np.ndarray, N: int,
             labels = P.argmax(axis=1)
             X[np.arange(N), labels] = 1.0  # 0-hop one-hot
         for h in range(1, k + 1):
-            X[:, h*C:(h+1)*C] = 1.0 / C
+            X[:, h * C : (h + 1) * C] = 1.0 / C
         return X
 
     # Build undirected unique edge list → adjacency
     ei, ej = edge_index
-    a = np.minimum(ei, ej); b = np.maximum(ei, ej)
+    a = np.minimum(ei, ej)
+    b = np.maximum(ei, ej)
     pairs = np.unique(np.stack([a, b], axis=1), axis=0)
     edges_df = pd.DataFrame({"source": pairs[:, 0], "target": pairs[:, 1]})
-    adj = create_adjacency_list_fast(edges_df, dedup_neighbors=True, sort_neighbors=False)
+    adj = create_adjacency_list_fast(
+        edges_df, dedup_neighbors=True, sort_neighbors=False
+    )
 
     # Output buffer and 0-hop block
     X = np.zeros((N, (k + 1) * C), dtype=np.float32)
@@ -446,7 +490,9 @@ def khop_features(P: np.ndarray, edge_index: np.ndarray, N: int,
         X[:, :C] = oh
 
     # Decide workers and chunking
-    max_workers = pick_workers_safe(max_workers=(os.cpu_count()-8 or 1), min_workers=8)
+    max_workers = pick_workers_safe(
+        max_workers=(os.cpu_count() - 8 or 1), min_workers=8
+    )
     chunk_size = max(1, math.ceil(N / max_workers))
     ranges = [(s, min(s + chunk_size, N)) for s in range(0, N, chunk_size)]
 
@@ -472,6 +518,7 @@ def khop_features(P: np.ndarray, edge_index: np.ndarray, N: int,
 # H-Optimus-0 via torch DataLoader (switchable)
 # =============================================================================
 
+
 class DummyPatchDataset(Dataset):
     """Blank-image placeholder. **Not suitable for real analysis.**
 
@@ -480,13 +527,17 @@ class DummyPatchDataset(Dataset):
     for every cell.  It exists only for smoke-testing the plumbing; production
     runs must use :class:`CellPatchDataset`.
     """
+
     def __init__(self, num_cells: int, size: int = 224):
         self.num_cells = num_cells
         self.size = size
+
     def __len__(self):
         return self.num_cells
+
     def __getitem__(self, idx):
         from PIL import Image
+
         return Image.new("RGB", (self.size, self.size), color=(0, 0, 0))
 
 
@@ -536,7 +587,7 @@ class CellPatchDataset(Dataset):
         self.mpp_um_per_px = float(mpp_um_per_px)
         self.window_px = max(8, int(round(float(window_um) / float(mpp_um_per_px))))
         self.out_size = int(out_size)
-        self._slide = None            # explicit override (tests / single thread)
+        self._slide = None  # explicit override (tests / single thread)
         self._local = threading.local()
 
     def __len__(self) -> int:
@@ -559,6 +610,7 @@ class CellPatchDataset(Dataset):
         slide = getattr(self._local, "slide", None)
         if slide is None:
             from ..wsi import get_wsi_cls
+
             slide = get_wsi_cls()(str(self.wsi_path))
             self._local.slide = slide
         return slide
@@ -569,11 +621,15 @@ class CellPatchDataset(Dataset):
         cx, cy = self.centers_px[idx]
         half = self.window_px // 2
         try:
-            im = self._slide_handle().read_region(
-                location=(int(cx) - half, int(cy) - half),
-                level=0,
-                size=(self.window_px, self.window_px),
-            ).convert("RGB")
+            im = (
+                self._slide_handle()
+                .read_region(
+                    location=(int(cx) - half, int(cy) - half),
+                    level=0,
+                    size=(self.window_px, self.window_px),
+                )
+                .convert("RGB")
+            )
         except Exception:
             # Crops that fall outside the slide bounds read as blank tissue
             # rather than aborting the whole slide.
@@ -593,6 +649,7 @@ def _make_short_ids(stems: List[str]) -> dict:
 # Pre-cut cell-patch HDF5 cache
 # ---------------------------------------------------------------------------
 
+
 class CellPatchHDF5Dataset(Dataset):
     """Read pre-extracted per-cell 224×224 patches from an HDF5 cache.
 
@@ -607,6 +664,7 @@ class CellPatchHDF5Dataset(Dataset):
 
     def __init__(self, h5_path: Path):
         import h5py as _h5py
+
         self.h5_path = Path(h5_path)
         with _h5py.File(self.h5_path, "r") as f:
             self._cell_ids: np.ndarray = np.asarray(f["/cell_ids"])
@@ -620,11 +678,12 @@ class CellPatchHDF5Dataset(Dataset):
     def __getitem__(self, cell_id: int):
         import h5py as _h5py
         from PIL import Image as _Image
+
         pos = self._id_to_pos.get(int(cell_id))
         if pos is None:
             raise KeyError(f"cell_id {cell_id} not found in patch cache {self.h5_path}")
         with _h5py.File(self.h5_path, "r") as f:
-            patch = f["/patches"][pos]          # (3, H, W) float32 in [0, 255]
+            patch = f["/patches"][pos]  # (3, H, W) float32 in [0, 255]
         img = _Image.fromarray(patch.transpose(1, 2, 0).astype(np.uint8))
         return img
 
@@ -660,6 +719,7 @@ def pre_cut_cell_patches(
     output_h5_path.parent.mkdir(parents=True, exist_ok=True)
 
     from .wsi import get_wsi_cls
+
     slide = get_wsi_cls()(str(wsi_path))
     window_px = max(8, int(round(float(window_um) / float(mpp_um_per_px))))
     half = window_px // 2
@@ -688,13 +748,18 @@ def pre_cut_cell_patches(
 
     tmp = str(output_h5_path) + ".PART"
     with _h5py.File(tmp, "w") as f:
-        f.create_dataset("patches",  data=patches,  compression="lzf", chunks=(64, 3, out_size, out_size))
+        f.create_dataset(
+            "patches",
+            data=patches,
+            compression="lzf",
+            chunks=(64, 3, out_size, out_size),
+        )
         f.create_dataset("cell_ids", data=cell_ids)
     Path(tmp).replace(output_h5_path)
 
 
 # Fallback per-image memory estimate used when GPU calibration is unavailable.
-_HOPTIMUS_BYTES_PER_IMAGE_FALLBACK: int = 32 * 1024 ** 2  # 32 MiB
+_HOPTIMUS_BYTES_PER_IMAGE_FALLBACK: int = 32 * 1024**2  # 32 MiB
 # Two batch sizes used for two-point calibration.  Larger values capture the
 # memory overhead of large batches (BF16 activations, CUDA workspace growth)
 # more accurately than the old 8→32 range, which underestimated real costs at
@@ -705,10 +770,13 @@ _CAL_B1: int = 64
 _CAL_B2: int = 256
 
 
-def _calibrate_bytes_per_image(model: nn.Module, dev: str,
-                                cal_b1: int = _CAL_B1,
-                                cal_b2: int = _CAL_B2,
-                                input_size: int = 224) -> int:
+def _calibrate_bytes_per_image(
+    model: nn.Module,
+    dev: str,
+    cal_b1: int = _CAL_B1,
+    cal_b2: int = _CAL_B2,
+    input_size: int = 224,
+) -> int:
     """Two-point calibration: measure marginal GPU memory cost per image.
 
     Single-point calibration (peak / batch_size) includes a large fixed
@@ -880,12 +948,12 @@ def _run_adaptive_batches(
     """
     outputs: list = []
     pos = 0
-    lo = 0               # largest confirmed-safe batch size
-    hi = max_batch + 1   # smallest confirmed-OOM size (unknown ceiling = max+1)
+    lo = 0  # largest confirmed-safe batch size
+    hi = max_batch + 1  # smallest confirmed-OOM size (unknown ceiling = max+1)
 
     depth = max(1, int(prefetch_depth))
     pf_pool = ThreadPoolExecutor(max_workers=depth) if prefetch else None
-    pending: deque = deque()     # of (start, stop, Future), consecutive ranges
+    pending: deque = deque()  # of (start, stop, Future), consecutive ranges
 
     def _drop_pending() -> None:
         while pending:
@@ -952,7 +1020,7 @@ def _run_adaptive_batches(
             stop = pos + min(batch_size, n_total - pos)
             items = _take(pos, stop)
 
-            while True:   # retry-on-OOM loop for this chunk
+            while True:  # retry-on-OOM loop for this chunk
                 # Keep reads running ahead of compute.
                 _fill_prefetch(stop)
                 try:
@@ -960,7 +1028,9 @@ def _run_adaptive_batches(
                     pos += len(items)
                     if pbar is not None:
                         pbar.update(1)
-                    batch_size = min(max_batch, _next_batch_size(oom=False, current=len(items)))
+                    batch_size = min(
+                        max_batch, _next_batch_size(oom=False, current=len(items))
+                    )
                     _retotal()
                     break
 
@@ -973,7 +1043,7 @@ def _run_adaptive_batches(
                         on_oom()
                     new_bs = _next_batch_size(oom=True, current=len(items))
                     if new_bs >= len(items):
-                        raise   # already at the floor; nothing left to give
+                        raise  # already at the floor; nothing left to give
                     # tqdm.write() (class method) clears the current line before
                     # printing, handling all nested bar positions correctly.
                     # pbar.write() on a position=1 inner bar leaves leading spaces.
@@ -1003,8 +1073,10 @@ def _load_hoptimus_model(
     across slides.
     """
     import json
+
     import timm
-    from timm.data import create_transform, resolve_data_config
+    from timm.data import create_transform
+    from timm.data import resolve_data_config
 
     dev = device or ("cuda" if torch.cuda.is_available() else "cpu")
     _timm_logger = _logging.getLogger("timm")
@@ -1092,9 +1164,11 @@ def _embed_hoptimus_subset_dataset(
     """
     import copy
     import json
-    import timm
     from concurrent.futures import ThreadPoolExecutor as _TPE
-    from timm.data import create_transform, resolve_data_config
+
+    import timm
+    from timm.data import create_transform
+    from timm.data import resolve_data_config
 
     dev = device or ("cuda" if torch.cuda.is_available() else "cpu")
 
@@ -1156,7 +1230,9 @@ def _embed_hoptimus_subset_dataset(
             # ── 2. Calibrate per-image memory BEFORE replication ─────────────
             if torch.cuda.is_available():
                 torch.cuda.empty_cache()
-            bytes_per_image = _calibrate_bytes_per_image(model, dev, input_size=_input_size)
+            bytes_per_image = _calibrate_bytes_per_image(
+                model, dev, input_size=_input_size
+            )
     finally:
         _timm_logger.setLevel(_prev_level)
 
@@ -1182,7 +1258,10 @@ def _embed_hoptimus_subset_dataset(
         batch_size = _auto_batch_size(model, dev, bytes_per_image=bytes_per_image)
         _logging.getLogger(__name__).debug(
             "H-optimus auto batch_size=%d (ngpu=%d, per-GPU≈%d, bytes_per_image=%dMiB)",
-            batch_size, ngpu, batch_size // ngpu, bytes_per_image // (1024 * 1024),
+            batch_size,
+            ngpu,
+            batch_size // ngpu,
+            bytes_per_image // (1024 * 1024),
         )
 
     # ── 5. Producer / consumer helpers ───────────────────────────────────────
@@ -1221,7 +1300,9 @@ def _embed_hoptimus_subset_dataset(
     def _run_replica(idx: int, x_cpu: torch.Tensor) -> torch.Tensor:
         """BF16 forward on one GPU replica; result is FP32 on CPU."""
         with torch.no_grad(), torch.autocast(device_type="cuda", dtype=torch.bfloat16):
-            return replicas[idx](x_cpu.to(f"cuda:{idx}", non_blocking=True)).float().cpu()
+            return (
+                replicas[idx](x_cpu.to(f"cuda:{idx}", non_blocking=True)).float().cpu()
+            )
 
     def _forward(x_cpu: torch.Tensor) -> torch.Tensor:
         """Dispatch an already-preprocessed batch across all replicas.
@@ -1257,7 +1338,7 @@ def _embed_hoptimus_subset_dataset(
     # Page-locked staging lets the host->device copy overlap with compute
     # (non_blocking=True silently degrades to a synchronous copy on pageable
     # memory). Capped because pinning is a scarce, non-swappable resource.
-    _PIN_LIMIT_BYTES = 2 * 1024 ** 3
+    _PIN_LIMIT_BYTES = 2 * 1024**3
     _can_pin = torch.cuda.is_available()
 
     def _fetch(start: int, stop: int) -> torch.Tensor:
@@ -1272,7 +1353,7 @@ def _embed_hoptimus_subset_dataset(
             try:
                 x = x.pin_memory()
             except RuntimeError:
-                pass        # out of pinnable memory; pageable copy still works
+                pass  # out of pinnable memory; pageable copy still works
         return x
 
     # Flush allocator cache before starting so fragmentation from model load
@@ -1298,12 +1379,12 @@ def _embed_hoptimus_subset_dataset(
     # If the start itself OOMs (e.g. another process grabbed VRAM), the
     # downward golden-ratio bisect finds a stable smaller value cleanly with
     # at most log_φ(start) ≈ 20 steps.
-    _PHI = (1.0 + 5.0 ** 0.5) / 2.0  # ≈ 1.618
+    _PHI = (1.0 + 5.0**0.5) / 2.0  # ≈ 1.618
     if _user_specified_batch_size:
         _start_bs = max(len(replicas), batch_size)
     else:
         _start_bs = max(len(replicas), int(batch_size / _PHI))
-    _max_bs = _start_bs   # cap = start: never probe upward
+    _max_bs = _start_bs  # cap = start: never probe upward
     feats = _run_adaptive_batches(
         n_total=n_total,
         batch_size=_start_bs,
@@ -1323,25 +1404,34 @@ def _embed_hoptimus_subset_dataset(
         gpu_pool.shutdown(wait=True)
     return torch.cat(feats, dim=0).numpy().astype(np.float32)
 
-def _impute_knn(coords_um: np.ndarray, sampled_idx: np.ndarray, sampled_feats: np.ndarray,
-                k: int = 3, sigma_um: float = 60.0) -> np.ndarray:
+
+def _impute_knn(
+    coords_um: np.ndarray,
+    sampled_idx: np.ndarray,
+    sampled_feats: np.ndarray,
+    k: int = 3,
+    sigma_um: float = 60.0,
+) -> np.ndarray:
     """Distance-weighted KNN imputation in microns: w = exp(-(d/sigma)^2)."""
     from scipy.spatial import cKDTree
+
     # N = coords_um.shape[0]
     tree = cKDTree(coords_um[sampled_idx])
     d, nn = tree.query(coords_um, k=min(k, len(sampled_idx)))
     if k == 1 or np.ndim(nn) == 1:
-        d = d[:, None]; nn = nn[:, None]
+        d = d[:, None]
+        nn = nn[:, None]
     eps = 1e-8
-    W = np.exp(- (d / max(sigma_um, eps)) ** 2).astype(np.float32) + eps
+    W = np.exp(-((d / max(sigma_um, eps)) ** 2)).astype(np.float32) + eps
     W /= W.sum(axis=1, keepdims=True)
-    H = sampled_feats[nn]                      # [N,k,D]
+    H = sampled_feats[nn]  # [N,k,D]
     return (W[..., None] * H).sum(axis=1).astype(np.float32)
 
 
 # =============================================================================
 # PyG: GCN + DGI (shared across slides)
 # =============================================================================
+
 
 # --- unchanged encoder ---
 class GCLEncoder(nn.Module):
@@ -1352,7 +1442,7 @@ class GCLEncoder(nn.Module):
         self.act = nn.ReLU()
         self.drop = nn.Dropout(dropout)
 
-    def forward(self, x, edge_index):   # exactly as you had
+    def forward(self, x, edge_index):  # exactly as you had
         h = self.drop(self.act(self.conv1(x, edge_index)))
         z = self.conv2(h, edge_index)
         return z
@@ -1361,6 +1451,7 @@ class GCLEncoder(nn.Module):
 # --- DGI wrapper: DO NOT change your encoder; just read its output dim ---
 class DGIModule(nn.Module):
     """Wrap DGI so it can accept a PyG Data object; does NOT change encoder behavior."""
+
     def __init__(self, encoder: nn.Module):
         super().__init__()
 
@@ -1394,15 +1485,25 @@ class DGIModule(nn.Module):
         # Ensure summary vector is 1D [hidden], regardless of DataParallel gather
         hd = self.dgi.hidden_channels
         if s.ndim != 1 or s.numel() != hd:
-            s = s.reshape(-1, hd).mean(dim=0)   # collapse [num_replicas*hidden] or [R, hidden] -> [hidden]
+            s = s.reshape(-1, hd).mean(
+                dim=0
+            )  # collapse [num_replicas*hidden] or [R, hidden] -> [hidden]
         return self.dgi.loss(pos_z, neg_z, s)
 
 
-
-def train_dgi_multi(slides, hidden=64, out_dim=32, epochs=300, lr=1e-3, wd=1e-4, seed=0,
-                    amp=False,
-                    early_stop_patience=20, early_stop_min_delta=1e-4,
-                    early_stop_min_epochs=50):
+def train_dgi_multi(
+    slides,
+    hidden=64,
+    out_dim=32,
+    epochs=300,
+    lr=1e-3,
+    wd=1e-4,
+    seed=0,
+    amp=False,
+    early_stop_patience=20,
+    early_stop_min_delta=1e-4,
+    early_stop_min_epochs=50,
+):
     """Train a shared DGI encoder across slide graphs and return embeddings.
 
     The encoder consumes the raw k-hop composition ``s["X"]`` directly: the
@@ -1419,6 +1520,7 @@ def train_dgi_multi(slides, hidden=64, out_dim=32, epochs=300, lr=1e-3, wd=1e-4,
     # Seed all RNGs so the encoder init, mini-batch shuffling and DGI corruption
     # are reproducible across runs for a given seed.
     import random as _random
+
     _random.seed(seed)
     np.random.seed(seed)
     torch.manual_seed(seed)
@@ -1428,7 +1530,7 @@ def train_dgi_multi(slides, hidden=64, out_dim=32, epochs=300, lr=1e-3, wd=1e-4,
     _loader_gen.manual_seed(seed)
 
     ngpu = torch.cuda.device_count() if torch.cuda.is_available() else 0
-    primary = torch.device('cuda:0' if ngpu > 0 else 'cpu')
+    primary = torch.device("cuda:0" if ngpu > 0 else "cpu")
 
     in_dim = slides[0]["X"].shape[1]
     enc = GCLEncoder(in_dim, hidden, out_dim).to(primary)
@@ -1437,24 +1539,31 @@ def train_dgi_multi(slides, hidden=64, out_dim=32, epochs=300, lr=1e-3, wd=1e-4,
     model = DGIModule(enc)
 
     # graphs
-    data_list = [Data(x=torch.from_numpy(s["X"]).float(),
-                      edge_index=torch.from_numpy(s["edge_index"]).long())
-                 for s in slides]
+    data_list = [
+        Data(
+            x=torch.from_numpy(s["X"]).float(),
+            edge_index=torch.from_numpy(s["edge_index"]).long(),
+        )
+        for s in slides
+    ]
 
     if ngpu > 1:
         # per_gpu_graphs = 2
         # batch_size = per_gpu_graphs * ngpu
-        
-        
+
         # ngpu = torch.cuda.device_count()
         # max_per = 8  # don’t go crazy; DP overhead grows
         per_gpu_graphs = 1
-        
+
         # simple ramp-up to find what fits
         for cand in range(4, 0, -1):  # try 4,3,2,1
             try:
                 test_bs = cand * max(1, ngpu)
-                _ = DataListLoader(data_list[:test_bs], batch_size=test_bs).__iter__().__next__()
+                _ = (
+                    DataListLoader(data_list[:test_bs], batch_size=test_bs)
+                    .__iter__()
+                    .__next__()
+                )
                 per_gpu_graphs = cand
                 break
             except RuntimeError as e:
@@ -1465,22 +1574,27 @@ def train_dgi_multi(slides, hidden=64, out_dim=32, epochs=300, lr=1e-3, wd=1e-4,
                     raise
         batch_size = per_gpu_graphs * max(1, ngpu)
 
-        
-        
-        
-        loader = DataListLoader(data_list, batch_size=batch_size, shuffle=True, generator=_loader_gen)
+        loader = DataListLoader(
+            data_list, batch_size=batch_size, shuffle=True, generator=_loader_gen
+        )
         model = GeoDataParallel(model, device_ids=list(range(ngpu))).to(primary)
     else:
-        loader = GeoDataLoader(data_list, batch_size=1, shuffle=True, generator=_loader_gen)
+        loader = GeoDataLoader(
+            data_list, batch_size=1, shuffle=True, generator=_loader_gen
+        )
         model = model.to(primary)
 
     # sanity print once; should be equal (e.g., 32)
     enc_out = enc.conv2.out_channels
     if ngpu > 1:
-        print(f"[DGI check] encoder_out_dim={enc_out}, dgi_hidden={model.module.dgi.hidden_channels}")
+        print(
+            f"[DGI check] encoder_out_dim={enc_out}, dgi_hidden={model.module.dgi.hidden_channels}"
+        )
         assert model.module.dgi.hidden_channels == enc_out
     else:
-        print(f"[DGI check] encoder_out_dim={enc_out}, dgi_hidden={model.dgi.hidden_channels}")
+        print(
+            f"[DGI check] encoder_out_dim={enc_out}, dgi_hidden={model.dgi.hidden_channels}"
+        )
         assert model.dgi.hidden_channels == enc_out
 
     opt = torch.optim.Adam(model.parameters(), lr=lr, weight_decay=wd)
@@ -1524,18 +1638,24 @@ def train_dgi_multi(slides, hidden=64, out_dim=32, epochs=300, lr=1e-3, wd=1e-4,
             # Relative improvement threshold so it adapts to the loss scale.
             # First finite epoch always seeds best_loss (comparing against inf
             # yields NaN, so guard it explicitly).
-            if not math.isfinite(best_loss) or epoch_loss < best_loss - early_stop_min_delta * max(abs(best_loss), 1.0):
+            if not math.isfinite(
+                best_loss
+            ) or epoch_loss < best_loss - early_stop_min_delta * max(
+                abs(best_loss), 1.0
+            ):
                 best_loss = epoch_loss
                 epochs_no_improve = 0
             else:
                 epochs_no_improve += 1
-            if (epoch + 1) >= early_stop_min_epochs and epochs_no_improve >= early_stop_patience:
-                print(f"[DGI early-stop] no improvement > {early_stop_min_delta} (relative) for "
-                      f"{early_stop_patience} epochs; stopping at epoch {epoch + 1}/{epochs} "
-                      f"(best mean loss={best_loss:.4f}).")
+            if (
+                epoch + 1
+            ) >= early_stop_min_epochs and epochs_no_improve >= early_stop_patience:
+                print(
+                    f"[DGI early-stop] no improvement > {early_stop_min_delta} (relative) for "
+                    f"{early_stop_patience} epochs; stopping at epoch {epoch + 1}/{epochs} "
+                    f"(best mean loss={best_loss:.4f})."
+                )
                 break
-
-
 
     # inference (unchanged)
     enc_eval = (model.module.dgi.encoder if ngpu > 1 else model.dgi.encoder).to(primary)
@@ -1547,6 +1667,7 @@ def train_dgi_multi(slides, hidden=64, out_dim=32, epochs=300, lr=1e-3, wd=1e-4,
             ei = torch.from_numpy(s["edge_index"]).long().to(primary)
             Z_list.append(enc_eval(x, ei).cpu().numpy().astype(np.float32))
     return enc_eval, Z_list
+
 
 # def train_dgi_multi(slides: List[Dict[str, np.ndarray]],
 #                     hidden: int = 64, out_dim: int = 32,
@@ -1593,13 +1714,10 @@ def train_dgi_multi(slides, hidden=64, out_dim=32, epochs=300, lr=1e-3, wd=1e-4,
 #     return enc, Z_list
 
 
-
-
-
-
 # =============================================================================
 # Slide building (reusing YOUR functions) + optional H-Optimus
 # =============================================================================
+
 
 def prepare_slide_graph(
     niche_detection_df: pd.DataFrame,
@@ -1613,8 +1731,12 @@ def prepare_slide_graph(
     hoptimus_only: bool = False,
     hoptimus_model_dir: Optional[Path] = None,
     hoptimus_batch_size: Optional[int] = None,  # None = auto-calibrate from VRAM
-    hoptimus_preloaded: Optional[tuple] = None,  # pre-loaded (model, transform, input_size, bytes_per_image)
-    patch_dataset: Optional[Dataset] = None,  # your dataset: __getitem__(cell_id)-> PIL.Image / Tensor
+    hoptimus_preloaded: Optional[
+        tuple
+    ] = None,  # pre-loaded (model, transform, input_size, bytes_per_image)
+    patch_dataset: Optional[
+        Dataset
+    ] = None,  # your dataset: __getitem__(cell_id)-> PIL.Image / Tensor
     sample_frac: Optional[float] = 0.2,
     sample_count: Optional[int] = None,
     pca_dim: Optional[int] = 32,
@@ -1656,7 +1778,13 @@ def prepare_slide_graph(
         edges_df = delaunay_triangulation(centers_px, max_edge_len_px)
 
     # edge_index (undirected), drop isolated
-    edge_index = to_edge_index(edges_df, src_col="source", dst_col="target", undirected=True, drop_self_loops=True)
+    edge_index = to_edge_index(
+        edges_df,
+        src_col="source",
+        dst_col="target",
+        undirected=True,
+        drop_self_loops=True,
+    )
     edge_index, kept_idx = drop_isolated(edge_index, N)
     if kept_idx.size == 0:
         raise ValueError("All nodes are isolated after distance cap; nothing to train.")
@@ -1671,7 +1799,9 @@ def prepare_slide_graph(
         raise ValueError("hoptimus_only=True requires use_hoptimus=True")
 
     # k-hop features (default path unless H-Optimus-only mode is requested).
-    X_khop = khop_features(P=P, edge_index=edge_index, N=N_kept, k=k_hops, alpha=alpha, mode=mode)  # [N_kept,(k+1)C]
+    X_khop = khop_features(
+        P=P, edge_index=edge_index, N=N_kept, k=k_hops, alpha=alpha, mode=mode
+    )  # [N_kept,(k+1)C]
     blocks = [] if hoptimus_only else [X_khop.astype(np.float32)]
     hoptimus_dim = 0
 
@@ -1700,23 +1830,46 @@ def prepare_slide_graph(
         else:
             frac = float(sample_frac or 0.2)
             m = max(1, min(int(round(frac * N_kept)), N_kept))
-        sampled_local_idx = np.sort(rng.choice(N_kept, size=m, replace=False))        # indices in kept space
-        sampled_global_ids = kept_idx[sampled_local_idx].tolist()                      # map to original IDs for dataset
+        sampled_local_idx = np.sort(
+            rng.choice(N_kept, size=m, replace=False)
+        )  # indices in kept space
+        sampled_global_ids = kept_idx[
+            sampled_local_idx
+        ].tolist()  # map to original IDs for dataset
 
         # embed sampled
-        Hs = _embed_hoptimus_subset_dataset(patch_dataset, sampled_global_ids, device=device, hoptimus_model_dir=hoptimus_model_dir, batch_size=hoptimus_batch_size, slide_id=slide_id, display_id=display_id, _preloaded=hoptimus_preloaded)  # [m,1536]
+        Hs = _embed_hoptimus_subset_dataset(
+            patch_dataset,
+            sampled_global_ids,
+            device=device,
+            hoptimus_model_dir=hoptimus_model_dir,
+            batch_size=hoptimus_batch_size,
+            slide_id=slide_id,
+            display_id=display_id,
+            _preloaded=hoptimus_preloaded,
+        )  # [m,1536]
         # optional PCA
         if pca_dim is not None and Hs.shape[1] > pca_dim:
             from sklearn.decomposition import PCA
+
             # n_components cannot exceed min(n_samples, n_features); slides with
             # few cells would otherwise raise inside sklearn.
             n_comp = min(int(pca_dim), Hs.shape[0], Hs.shape[1])
             if n_comp >= 1:
-                Hs = PCA(n_components=n_comp, random_state=seed).fit_transform(Hs).astype(np.float32)
+                Hs = (
+                    PCA(n_components=n_comp, random_state=seed)
+                    .fit_transform(Hs)
+                    .astype(np.float32)
+                )
 
         # KNN impute to all kept nodes (micron distances)
-        H_full = _impute_knn(coords_um=coords_um, sampled_idx=sampled_local_idx,
-                             sampled_feats=Hs, k=knn_k, sigma_um=knn_sigma_um)  # [N_kept,D]
+        H_full = _impute_knn(
+            coords_um=coords_um,
+            sampled_idx=sampled_local_idx,
+            sampled_feats=Hs,
+            k=knn_k,
+            sigma_um=knn_sigma_um,
+        )  # [N_kept,D]
         hoptimus_dim = int(H_full.shape[1])
         blocks.append(H_full.astype(np.float32))
 
@@ -1733,10 +1886,12 @@ def prepare_slide_graph(
         "hoptimus_dim": int(hoptimus_dim),
         "hoptimus_only": bool(hoptimus_only),
     }
-    
+
+
 # =============================================================================
 # End-to-end multi-image training + clustering
 # =============================================================================
+
 
 def _approx_knn_connectivity(Z: np.ndarray, k_nn: int = 15, seed: int = 0):
     """Approximate symmetric kNN connectivity via pynndescent (then faiss).
@@ -1746,30 +1901,34 @@ def _approx_knn_connectivity(Z: np.ndarray, k_nn: int = 15, seed: int = 0):
     ``None`` if no approximate-NN backend is importable.
     """
     import scipy.sparse as sp
+
     n = Z.shape[0]
     Zf = np.ascontiguousarray(Z, dtype=np.float32)
     idx = None
     try:
         from pynndescent import NNDescent
-        index = NNDescent(Zf, n_neighbors=k_nn + 1, metric="euclidean",
-                          random_state=seed)
-        idx, _ = index.neighbor_graph            # idx: [n, k_nn+1] incl. self
+
+        index = NNDescent(
+            Zf, n_neighbors=k_nn + 1, metric="euclidean", random_state=seed
+        )
+        idx, _ = index.neighbor_graph  # idx: [n, k_nn+1] incl. self
     except Exception:
         try:
             import faiss
+
             fi = faiss.IndexFlatL2(Zf.shape[1])
             fi.add(Zf)
-            _, idx = fi.search(Zf, k_nn + 1)     # idx: [n, k_nn+1] incl. self
+            _, idx = fi.search(Zf, k_nn + 1)  # idx: [n, k_nn+1] incl. self
         except Exception:
             return None
     idx = np.asarray(idx)
     rows = np.repeat(np.arange(n, dtype=np.int64), idx.shape[1])
     cols = idx.reshape(-1).astype(np.int64)
-    keep = rows != cols                          # drop self-matches
+    keep = rows != cols  # drop self-matches
     rows, cols = rows[keep], cols[keep]
     data = np.ones(rows.shape[0], dtype=np.float32)
     A = sp.coo_matrix((data, (rows, cols)), shape=(n, n)).tocsr()
-    A = A.maximum(A.T).tocsr()                   # symmetrize
+    A = A.maximum(A.T).tocsr()  # symmetrize
     return A
 
 
@@ -1785,34 +1944,43 @@ def _knn_graph_connectivity(Z: np.ndarray, k_nn: int = 15, seed: int = 0):
         return A
     click.secho(
         "  no approximate-kNN backend (pynndescent/faiss) is available; "
-        "falling back to exact sklearn kNN.", fg="yellow")
-    A = kneighbors_graph(Z, n_neighbors=k_nn, mode='connectivity', include_self=False)
+        "falling back to exact sklearn kNN.",
+        fg="yellow",
+    )
+    A = kneighbors_graph(Z, n_neighbors=k_nn, mode="connectivity", include_self=False)
     A = A.maximum(A.T).tocsr()  # symmetrize
     return A
+
 
 def _igraph_from_sparse(A) -> ig.Graph:
     """Convert a scipy sparse adjacency matrix to an undirected igraph graph."""
     A = A.tocoo()
-    g = ig.Graph(n=A.shape[0], edges=list(zip(A.row.tolist(), A.col.tolist())), directed=False)
+    g = ig.Graph(
+        n=A.shape[0], edges=list(zip(A.row.tolist(), A.col.tolist())), directed=False
+    )
     g.simplify(combine_edges="ignore")
     return g
 
+
 # ---------------- worker ----------------
-def _leiden_worker(n_nodes: int, 
-                   edges: np.ndarray, 
-                   resolution: float, 
-                   seed: int,
-                   ) -> Tuple[np.ndarray, float, float]:
+def _leiden_worker(
+    n_nodes: int,
+    edges: np.ndarray,
+    resolution: float,
+    seed: int,
+) -> Tuple[np.ndarray, float, float]:
     """Run a single Leiden clustering pass and return labels plus modularity."""
     g_local = ig.Graph(n=n_nodes, edges=edges.tolist(), directed=False)
     g_local.simplify(combine_edges="ignore")
     part = la.find_partition(
-        g_local, la.RBConfigurationVertexPartition,
+        g_local,
+        la.RBConfigurationVertexPartition,
         resolution_parameter=float(resolution),
         seed=int(seed),
     )
     labels = np.asarray(part.membership, dtype=int)
     return labels, float(part.modularity), float(resolution)
+
 
 def _reduce_resolution_worker(args):
     """Summarize repeated Leiden runs for one resolution value."""
@@ -1830,7 +1998,11 @@ def _reduce_resolution_worker(args):
 
     # Silhouette on Z if ≥2 clusters
     if len(np.unique(best_labels)) > 1:
-        sil = float(silhouette_score(Z, best_labels, sample_size=np.min([len(Z), 10000]), metric='euclidean'))
+        sil = float(
+            silhouette_score(
+                Z, best_labels, sample_size=np.min([len(Z), 10000]), metric="euclidean"
+            )
+        )
     else:
         sil = -1.0
 
@@ -1847,6 +2019,7 @@ def _reduce_resolution_worker(args):
         "labels": best_labels,
     }
     return log
+
 
 def _leiden_sweep_on_graph(
     Z: np.ndarray,
@@ -1868,8 +2041,12 @@ def _leiden_sweep_on_graph(
         labels = np.zeros(n_nodes, dtype=int)
         out = {
             "resolution": float(next(iter(niche_clustering_resolutions), 1.0)),
-            "n_clusters": 1, "modularity": 0.0, "stability": 1.0,
-            "silhouette": -1.0, "min_frac": 1.0, "labels": labels,
+            "n_clusters": 1,
+            "modularity": 0.0,
+            "stability": 1.0,
+            "silhouette": -1.0,
+            "min_frac": 1.0,
+            "labels": labels,
         }
         return {"winner": out, "all": [out]}
 
@@ -1879,7 +2056,7 @@ def _leiden_sweep_on_graph(
         for _ in range(n_repeats):
             tasks.append((n_nodes, el, float(r), int(rng.integers(1_000_000_000))))
 
-    n_jobs = pick_workers_safe(max_workers=os.cpu_count()-2, min_workers=2)
+    n_jobs = pick_workers_safe(max_workers=os.cpu_count() - 2, min_workers=2)
     results_by_r: Dict[float, list] = {}
     with ProcessPoolExecutor(max_workers=n_jobs) as ex:
         futs = [ex.submit(_leiden_worker, *t) for t in tasks]
@@ -1891,7 +2068,10 @@ def _leiden_sweep_on_graph(
     # ---- Phase B: parallel reduction per resolution ----
     logs = []
     with ProcessPoolExecutor(max_workers=n_jobs) as ex:
-        futs = [ex.submit(_reduce_resolution_worker, (r, results_by_r[r], Z)) for r in results_by_r.keys()]
+        futs = [
+            ex.submit(_reduce_resolution_worker, (r, results_by_r[r], Z))
+            for r in results_by_r.keys()
+        ]
         for fut in as_completed(futs):
             throttle_when_busy()
             logs.append(fut.result())
@@ -1901,16 +2081,20 @@ def _leiden_sweep_on_graph(
 
     # Pick winner (stable + high modularity; avoid tiny clusters)
     filtered = [d for d in logs if d["min_frac"] >= 0.005] or logs
-    winner = sorted(filtered, key=lambda d: (d["stability"], d["modularity"], d["silhouette"]), reverse=True)[0]
+    winner = sorted(
+        filtered,
+        key=lambda d: (d["stability"], d["modularity"], d["silhouette"]),
+        reverse=True,
+    )[0]
 
     return {"winner": winner, "all": logs}
 
 
 def estimate_niches_from_Z_list(
     Z_list: List[np.ndarray],
-    mode: str = "global",           # "global" (recommended) or "per_slide"
+    mode: str = "global",  # "global" (recommended) or "per_slide"
     k_nn: int = 15,
-    niche_clustering_resolutions = np.arange(0.2, 2.05, 0.1),
+    niche_clustering_resolutions=np.arange(0.2, 2.05, 0.1),
     n_repeats: int = 5,
     seed: int = 0,
 ) -> Dict[str, Any]:
@@ -1929,18 +2113,19 @@ def estimate_niches_from_Z_list(
         Z_all = np.vstack(Z_list)
         A = _knn_graph_connectivity(Z_all, k_nn=k_nn, seed=seed)
         g = _igraph_from_sparse(A)
-        sweep = _leiden_sweep_on_graph(Z_all, 
-                                       g, 
-                                       niche_clustering_resolutions=niche_clustering_resolutions, 
-                                       n_repeats=n_repeats, 
-                                       seed=seed,
-                                       )
+        sweep = _leiden_sweep_on_graph(
+            Z_all,
+            g,
+            niche_clustering_resolutions=niche_clustering_resolutions,
+            n_repeats=n_repeats,
+            seed=seed,
+        )
         w = sweep["winner"]
         labels_all = w["labels"]
         # split back to per slide
         labels_list = []
         for off, Z in zip(offsets, Z_list):
-            labels_list.append(labels_all[off:off+len(Z)])
+            labels_list.append(labels_all[off : off + len(Z)])
         return {
             "clusters_k": w["n_clusters"],
             "labels_list": labels_list,
@@ -1956,12 +2141,13 @@ def estimate_niches_from_Z_list(
         for Z in Z_list:
             A = _knn_graph_connectivity(Z, k_nn=k_nn, seed=seed)
             g = _igraph_from_sparse(A)
-            sweep = _leiden_sweep_on_graph(Z, 
-                                           g, 
-                                           niche_clustering_resolutions=niche_clustering_resolutions, 
-                                           n_repeats=n_repeats, 
-                                           seed=seed,
-                                           )
+            sweep = _leiden_sweep_on_graph(
+                Z,
+                g,
+                niche_clustering_resolutions=niche_clustering_resolutions,
+                n_repeats=n_repeats,
+                seed=seed,
+            )
             w = sweep["winner"]
             labels_list.append(w["labels"])
             winners.append(w)
@@ -1971,17 +2157,34 @@ def estimate_niches_from_Z_list(
         return {
             "clusters_k": int(np.median(n_clusters_list)),
             "labels_list": labels_list,
-            "winner": winners,        # list of winners per slide
+            "winner": winners,  # list of winners per slide
             "all_results": all_logs,  # list per slide
         }
     else:
         raise ValueError("mode must be 'global' or 'per_slide'")
 
 
-def _prepare_slide_graph_worker(i, wsi_path, csv_path, ds,
-        max_edge_len_um, class_order, k_hops, alpha,
-        sample_frac, sample_count, pca_dim, knn_k, knn_sigma_um,
-    device, niche_soft_mode, use_hoptimus, hoptimus_only, hoptimus_model_dir, graph_cache_dir):
+def _prepare_slide_graph_worker(
+    i,
+    wsi_path,
+    csv_path,
+    ds,
+    max_edge_len_um,
+    class_order,
+    k_hops,
+    alpha,
+    sample_frac,
+    sample_count,
+    pca_dim,
+    knn_k,
+    knn_sigma_um,
+    device,
+    niche_soft_mode,
+    use_hoptimus,
+    hoptimus_only,
+    hoptimus_model_dir,
+    graph_cache_dir,
+):
     """Background worker to build one slide graph and return it with index."""
     df = pd.read_csv(csv_path)
     mpp = get_avg_mpp(wsi_path)
@@ -1991,12 +2194,17 @@ def _prepare_slide_graph_worker(i, wsi_path, csv_path, ds,
         mpp_um_per_px=mpp,
         max_edge_len_um=max_edge_len_um,
         class_order=class_order,
-        k_hops=k_hops, alpha=alpha,
+        k_hops=k_hops,
+        alpha=alpha,
         hoptimus_only=hoptimus_only,
         hoptimus_model_dir=hoptimus_model_dir,
-        use_hoptimus=use_hoptimus, patch_dataset=ds,
-        sample_frac=sample_frac, sample_count=sample_count,
-        pca_dim=pca_dim, knn_k=knn_k, knn_sigma_um=knn_sigma_um,
+        use_hoptimus=use_hoptimus,
+        patch_dataset=ds,
+        sample_frac=sample_frac,
+        sample_count=sample_count,
+        pca_dim=pca_dim,
+        knn_k=knn_k,
+        knn_sigma_um=knn_sigma_um,
         device=device,
         graph_cache_dir=graph_cache_dir,
         slide_id=slide_id,
@@ -2012,9 +2220,20 @@ def _niche_cellular_worker(args):
     is written to a temp file and atomically renamed to protect against partial
     writes on interruption (the parent handles cancellation between futures).
     """
-    (wsi_path, model_output_csv, kept_idx, X_raw, classes,
-     labels, k_hops, niche_clustering_k, cell_csv, overwrite,
-     hoptimus_only, khop_dim) = args
+    (
+        wsi_path,
+        model_output_csv,
+        kept_idx,
+        X_raw,
+        classes,
+        labels,
+        k_hops,
+        niche_clustering_k,
+        cell_csv,
+        overwrite,
+        hoptimus_only,
+        khop_dim,
+    ) = args
     cell_csv = Path(cell_csv)
     if not overwrite and cell_csv.exists():
         return str(cell_csv), "skip"
@@ -2025,11 +2244,14 @@ def _niche_cellular_worker(args):
         feature_cols = [f"hoptimus_feature_{j}" for j in range(X_raw.shape[1])]
         feature_block = X_raw
     else:
-        feature_cols = [f"feature_k{k}_{c.replace('prob_', '')}"
-                        for k in range(k_hops + 1) for c in classes]
+        feature_cols = [
+            f"feature_k{k}_{c.replace('prob_', '')}"
+            for k in range(k_hops + 1)
+            for c in classes
+        ]
         # Keep the CSV contract stable: export only the k-hop feature block even
         # when niche training used concatenated k-hop + H-Optimus features.
-        feature_block = X_raw[:, :int(khop_dim)]
+        feature_block = X_raw[:, : int(khop_dim)]
 
     # Assemble every new column in one array and concat once. Assigning them
     # individually via .loc inserts hundreds of columns one at a time, which
@@ -2046,8 +2268,7 @@ def _niche_cellular_worker(args):
     niche_id = np.full(n_rows, np.nan, dtype=np.float64)
     niche_id[kept] = np.asarray(labels, dtype=int)
 
-    new_cols = pd.DataFrame(block, columns=feature_cols,
-                            index=niche_detection_df.index)
+    new_cols = pd.DataFrame(block, columns=feature_cols, index=niche_detection_df.index)
     new_cols["niche_id"] = niche_id
 
     niche_detection_df = pd.concat([niche_detection_df, new_cols], axis=1)
@@ -2060,8 +2281,16 @@ def _niche_cellular_worker(args):
 
 def _niche_annotation_worker(args):
     """Background worker: write one slide's annotation-level niche CSV (Phase 5)."""
-    (wsi_path, cell_csv, niche_csv, kept_idx, edges_df,
-     niche_clustering_k, max_cell_radius_um, overwrite) = args
+    (
+        wsi_path,
+        cell_csv,
+        niche_csv,
+        kept_idx,
+        edges_df,
+        niche_clustering_k,
+        max_cell_radius_um,
+        overwrite,
+    ) = args
     niche_csv = Path(niche_csv)
     if not overwrite and niche_csv.exists():
         return str(niche_csv), "skip"
@@ -2100,7 +2329,9 @@ def niche_generation(
     hoptimus_only: bool = False,
     hoptimus_model_dir: Optional[Path] = None,
     hoptimus_batch_size: Optional[int] = None,  # None = auto-calibrate from VRAM
-    patch_datasets: Optional[List[Dataset]] = None,  # list aligned with slides_inputs; if None, Dummy is used
+    patch_datasets: Optional[
+        List[Dataset]
+    ] = None,  # list aligned with slides_inputs; if None, Dummy is used
     sample_frac: Optional[float] = 0.2,
     sample_count: Optional[int] = None,
     pca_dim: Optional[int] = 32,
@@ -2114,7 +2345,7 @@ def niche_generation(
     niche_cellular: bool = False,
     niche_annotation: bool = False,
     niche_clustering_k: int | None = 10,
-    niche_clustering_resolutions: List[float]=[0.5,1.0,2.0],
+    niche_clustering_resolutions: List[float] = [0.5, 1.0, 2.0],
     # # device
     # device: Optional[str] = None,
     niche_soft_mode: bool = False,
@@ -2133,7 +2364,7 @@ def niche_generation(
     """
     if hoptimus_only and not use_hoptimus:
         raise ValueError("hoptimus_only=True requires use_hoptimus=True")
-    
+
     if os.getenv("WSINFER_FORCE_CPU", "0").lower() not in {"0", "f", "false"}:
         device = torch.device("cpu")
     elif torch.cuda.is_available():
@@ -2143,11 +2374,13 @@ def niche_generation(
     else:
         device = torch.device("cpu")
     print(f'Using device "{device}"')
-    
+
     # Make sure required directories exist.
     wsi_dir_path = URIPath(wsi_dir) if wsi_dir is not None else None
     if wsi_dir_path is not None and not wsi_dir_path.exists():
-        raise errors.WholeSlideImageDirectoryNotFound(f"directory not found: {wsi_dir_path}")
+        raise errors.WholeSlideImageDirectoryNotFound(
+            f"directory not found: {wsi_dir_path}"
+        )
 
     if wsi_paths is not None:
         slide_paths = [p if isinstance(p, URIPath) else URIPath(p) for p in wsi_paths]
@@ -2181,8 +2414,10 @@ def niche_generation(
         )
     # Create the patch paths based on the whole slide image paths. In effect, only
     # create patch paths if the whole slide image patch exists.
-    model_output_paths = [model_output_dir / p.with_suffix(".csv").name for p in slide_paths]
-    
+    model_output_paths = [
+        model_output_dir / p.with_suffix(".csv").name for p in slide_paths
+    ]
+
     if len(model_output_paths) != len(slide_paths):
         raise errors.ResultsDirectoryNotFound(
             "The 'model-outputs-csv' and image directory were mismatched."
@@ -2199,29 +2434,36 @@ def niche_generation(
 
     # If overwrite requested, remove cached checkpoints so all phases re-run.
     if overwrite:
-        for _ckpt in (niche_slide_graph_file, niche_dgi_embeddings_file, niche_labels_file):
+        for _ckpt in (
+            niche_slide_graph_file,
+            niche_dgi_embeddings_file,
+            niche_labels_file,
+        ):
             if _ckpt.exists():
                 _ckpt.unlink()
         # Also wipe the per-slide graph cache so Phase 1 recomputes every slide.
         _per_slide_cache_dir = Path(str(results_dir)) / "slide-graphs-cache"
         if _per_slide_cache_dir.exists():
             shutil.rmtree(_per_slide_cache_dir, ignore_errors=True)
-    
+
     # 1) Build slides (reusing your funcs)
     slides = []
     classes = None
-    
+
     if niche_slide_graph_file.exists():
-        click.secho("\nPhase 1/5: Build slide graphs for NicheGCN.\n"
-                    f"Load existing slide graph file: {niche_slide_graph_file}\n", fg="green")
+        click.secho(
+            "\nPhase 1/5: Build slide graphs for NicheGCN.\n"
+            f"Load existing slide graph file: {niche_slide_graph_file}\n",
+            fg="green",
+        )
         # with gzip.open(niche_slide_graph_file, "rb") as f:
         #     slides = pickle.load(f)
-        
+
         slides = joblib.load(niche_slide_graph_file)
-            
+
     else:
         click.secho("\nPhase 1/5: build slide graphs for NicheGCN.\n", fg="green")
-    
+
         # for i, (wsi_path, model_output_csv) in tqdm(enumerate(zip(slide_paths, model_output_paths)), total=len(slide_paths)):
         #     # print(f"Slide {i+1} of {len(slide_paths)}")
         #     # print(f" Slide path: {wsi_path}")
@@ -2238,15 +2480,15 @@ def niche_generation(
         #             ds = None  # will default to Dummy inside prepare_slide_graph
         #
         #     s = prepare_slide_graph(
-        #         df, 
-        #         mpp_um_per_px=mpp, 
+        #         df,
+        #         mpp_um_per_px=mpp,
         #         max_edge_len_um=max_edge_len_um,
         #         class_order=class_order,
         #         k_hops=k_hops, alpha=alpha,
         #         use_hoptimus=use_hoptimus, patch_dataset=ds,
         #         sample_frac=sample_frac, sample_count=sample_count,
         #         pca_dim=pca_dim, knn_k=knn_k, knn_sigma_um=knn_sigma_um,
-        #         device=device, 
+        #         device=device,
         #         mode = "soft" if niche_soft_mode else "hard"
         #         # seed=seed
         #     )
@@ -2254,15 +2496,7 @@ def niche_generation(
         #
         #     if classes is None:
         #         classes = s["classes"]
-            
-            
-            
-        
-        
 
-        
-        
-        
         slides = [None] * len(slide_paths)
         classes = None
 
@@ -2282,7 +2516,7 @@ def niche_generation(
             _hoptimus_preloaded = _load_hoptimus_model(hoptimus_model_dir, device)
             if hoptimus_batch_size is None:
                 _, _, _, _cal_bytes = _hoptimus_preloaded
-                _PHI = (1.0 + 5.0 ** 0.5) / 2.0
+                _PHI = (1.0 + 5.0**0.5) / 2.0
                 _auto_bs = _auto_batch_size(
                     _hoptimus_preloaded[0],
                     device or ("cuda" if torch.cuda.is_available() else "cpu"),
@@ -2290,7 +2524,9 @@ def niche_generation(
                 )
                 hoptimus_batch_size = max(1, int(_auto_bs / _PHI))
 
-        slide_bar = tqdm(total=len(slide_paths), desc="  slides", unit="slide", position=0)
+        slide_bar = tqdm(
+            total=len(slide_paths), desc="  slides", unit="slide", position=0
+        )
         for i, (wsi_path, csv_path) in enumerate(zip(slide_paths, model_output_paths)):
             slide_id = Path(str(wsi_path)).stem
             display_id = short_ids.get(slide_id, slide_id)
@@ -2314,14 +2550,19 @@ def niche_generation(
                 mpp_um_per_px=mpp,
                 max_edge_len_um=max_edge_len_um,
                 class_order=class_order,
-                k_hops=k_hops, alpha=alpha,
+                k_hops=k_hops,
+                alpha=alpha,
                 hoptimus_only=hoptimus_only,
                 hoptimus_model_dir=hoptimus_model_dir,
                 hoptimus_batch_size=hoptimus_batch_size,
                 hoptimus_preloaded=_hoptimus_preloaded,
-                use_hoptimus=use_hoptimus, patch_dataset=ds,
-                sample_frac=sample_frac, sample_count=sample_count,
-                pca_dim=pca_dim, knn_k=knn_k, knn_sigma_um=knn_sigma_um,
+                use_hoptimus=use_hoptimus,
+                patch_dataset=ds,
+                sample_frac=sample_frac,
+                sample_count=sample_count,
+                pca_dim=pca_dim,
+                knn_k=knn_k,
+                knn_sigma_um=knn_sigma_um,
                 device=device,
                 graph_cache_dir=graph_cache_dir,
                 slide_id=slide_id,
@@ -2340,40 +2581,54 @@ def niche_generation(
             _cleanup_tmpdir()
             slide_bar.update(1)
         slide_bar.close()
-        
+
         # with gzip.open(niche_slide_graph_file, "wb") as f:
         #     pickle.dump(slides, f, protocol=pickle.HIGHEST_PROTOCOL)
 
         joblib.dump(slides, niche_slide_graph_file, compress=("lz4", 3))
-        
 
     if niche_dgi_embeddings_file.exists():
-        click.secho("\nPhase 2/5: Train shared DGI encoder and get DGI embeddings per slide.\n"
-                    f"Load existing DGI embeddings file: {niche_dgi_embeddings_file}\n", fg="green")
+        click.secho(
+            "\nPhase 2/5: Train shared DGI encoder and get DGI embeddings per slide.\n"
+            f"Load existing DGI embeddings file: {niche_dgi_embeddings_file}\n",
+            fg="green",
+        )
         # with gzip.open(niche_dgi_embeddings_file, "rb") as f:
         #     Z_list = pickle.load(f)
-        
+
         Z_list = joblib.load(niche_dgi_embeddings_file)
-            
+
     else:
-        click.secho("\nPhase 2/5: Train shared DGI encoder and get DGI embeddings per slide.\n", fg="green")
-        
+        click.secho(
+            "\nPhase 2/5: Train shared DGI encoder and get DGI embeddings per slide.\n",
+            fg="green",
+        )
+
         # 3) Train shared DGI encoder and get embeddings per slide
-        _, Z_list = train_dgi_multi(slides, hidden=hidden, out_dim=out_dim, epochs=epochs, seed=seed,
-                                    early_stop_patience=early_stop_patience,
-                                    early_stop_min_delta=early_stop_min_delta,
-                                    early_stop_min_epochs=early_stop_min_epochs,
-                                    amp=amp)
-        
+        _, Z_list = train_dgi_multi(
+            slides,
+            hidden=hidden,
+            out_dim=out_dim,
+            epochs=epochs,
+            seed=seed,
+            early_stop_patience=early_stop_patience,
+            early_stop_min_delta=early_stop_min_delta,
+            early_stop_min_epochs=early_stop_min_epochs,
+            amp=amp,
+        )
+
         # with gzip.open(niche_dgi_embeddings_file, "wb") as f:
         #     pickle.dump(Z_list, f, protocol=pickle.HIGHEST_PROTOCOL)
 
         joblib.dump(Z_list, niche_dgi_embeddings_file, compress=("lz4", 3))
-        
+
     _labels_cached = niche_labels_file.exists() and not overwrite
     if _labels_cached:
-        click.secho("\nPhase 3/5: Load cached niche labels.\n"
-                    f"Load existing niche labels file: {niche_labels_file}\n", fg="green")
+        click.secho(
+            "\nPhase 3/5: Load cached niche labels.\n"
+            f"Load existing niche labels file: {niche_labels_file}\n",
+            fg="green",
+        )
         _cached = joblib.load(niche_labels_file)
         labels_list = _cached["labels_list"]
         niche_clustering_k = _cached["niche_clustering_k"]
@@ -2388,22 +2643,30 @@ def niche_generation(
         if _single:
             click.secho(
                 f"\nPhase 3/5: Direct Leiden clustering at resolution="
-                f"{_res_list[0]:g} (single resolution, no sweep).\n", fg="green")
+                f"{_res_list[0]:g} (single resolution, no sweep).\n",
+                fg="green",
+            )
         else:
             click.secho(
                 f"\nPhase 3/5: Estimate niche clustering number via Leiden sweep "
-                f"over resolutions {[float(r) for r in _res_list]}.\n", fg="green")
+                f"over resolutions {[float(r) for r in _res_list]}.\n",
+                fg="green",
+            )
 
-        estimate_niches_from_Z_list_res = estimate_niches_from_Z_list(Z_list,
-                                                                      mode="global",
-                                                                      niche_clustering_resolutions=_res_list,
-                                                                      n_repeats=_n_repeats,
-                                                                      k_nn=15,
-                                                                      seed=seed)
+        estimate_niches_from_Z_list_res = estimate_niches_from_Z_list(
+            Z_list,
+            mode="global",
+            niche_clustering_resolutions=_res_list,
+            n_repeats=_n_repeats,
+            k_nn=15,
+            seed=seed,
+        )
 
-        _w = estimate_niches_from_Z_list_res['winner']
-        niche_clustering_k = _w['n_clusters']
-        labels_list  = estimate_niches_from_Z_list_res["labels_list"]     # per-slide niche labels
+        _w = estimate_niches_from_Z_list_res["winner"]
+        niche_clustering_k = _w["n_clusters"]
+        labels_list = estimate_niches_from_Z_list_res[
+            "labels_list"
+        ]  # per-slide niche labels
 
         if niche_clustering_k < 2:
             _tried = ", ".join(str(r) for r in _res_list)
@@ -2416,10 +2679,15 @@ def niche_generation(
         click.secho(
             f"  selected Leiden resolution={_w['resolution']:g} -> k={niche_clustering_k} "
             f"clusters (modularity={_w['modularity']:.3f}, "
-            f"silhouette={_w['silhouette']:.3f})\n", fg="cyan")
+            f"silhouette={_w['silhouette']:.3f})\n",
+            fg="cyan",
+        )
 
     else:
-        click.secho(f"\nPhase 3/5: Use predefined niche clustering number: niche_clustering_k={niche_clustering_k}.\n", fg="green")
+        click.secho(
+            f"\nPhase 3/5: Use predefined niche clustering number: niche_clustering_k={niche_clustering_k}.\n",
+            fg="green",
+        )
 
         # Cluster ONCE over all slides pooled together so the integer niche_N ids
         # are consistent (and deterministic) across slides, then split the
@@ -2428,20 +2696,30 @@ def niche_generation(
         # correspond to niche_0 in another.
         offsets = np.cumsum([0] + [Z.shape[0] for Z in Z_list[:-1]])
         Z_all = np.vstack(Z_list)
-        labels_all = KMeans(n_clusters=niche_clustering_k,
-                            n_init='auto',
-                            random_state=seed,
-                            ).fit_predict(Z_all).astype(np.int32)
-        labels_list = [labels_all[off:off + Z.shape[0]]
-                       for off, Z in zip(offsets, Z_list)]
+        labels_all = (
+            KMeans(
+                n_clusters=niche_clustering_k,
+                n_init="auto",
+                random_state=seed,
+            )
+            .fit_predict(Z_all)
+            .astype(np.int32)
+        )
+        labels_list = [
+            labels_all[off : off + Z.shape[0]] for off, Z in zip(offsets, Z_list)
+        ]
 
     # Cache the per-slide labels so repeated Phase 4/5 runs skip re-clustering.
     if not _labels_cached:
-        joblib.dump({"labels_list": labels_list,
-                     "niche_clustering_k": int(niche_clustering_k)},
-                    niche_labels_file, compress=("lz4", 3))
+        joblib.dump(
+            {"labels_list": labels_list, "niche_clustering_k": int(niche_clustering_k)},
+            niche_labels_file,
+            compress=("lz4", 3),
+        )
 
-    click.secho("\nPhase 4/5: Perform cellular-level niche analysis per slide.\n", fg="green")
+    click.secho(
+        "\nPhase 4/5: Perform cellular-level niche analysis per slide.\n", fg="green"
+    )
 
     if niche_cellular:
         # Each slide's per-cell CSV is independent -> build in a process pool.
@@ -2449,20 +2727,34 @@ def niche_generation(
         for i, wsi_path in enumerate(slide_paths):
             niche_csv_name = Path(wsi_path).with_suffix(".csv").name
             cell_csv = niche_cells_output_dir / niche_csv_name
-            _p4_tasks.append((wsi_path, model_output_paths[i], slides[i]["kept_idx"],
-                              slides[i]["X"], slides[i]["classes"],
-                              labels_list[i], k_hops, niche_clustering_k, cell_csv, overwrite,
-                              bool(slides[i].get("hoptimus_only", False)), int(slides[i].get("khop_dim", 0))))
+            _p4_tasks.append(
+                (
+                    wsi_path,
+                    model_output_paths[i],
+                    slides[i]["kept_idx"],
+                    slides[i]["X"],
+                    slides[i]["classes"],
+                    labels_list[i],
+                    k_hops,
+                    niche_clustering_k,
+                    cell_csv,
+                    overwrite,
+                    bool(slides[i].get("hoptimus_only", False)),
+                    int(slides[i].get("khop_dim", 0)),
+                )
+            )
         _p4_workers = pick_workers_safe(max_workers=os.cpu_count() - 2, min_workers=2)
         _p4_ctx = mp.get_context("spawn")
         with ProcessPoolExecutor(max_workers=_p4_workers, mp_context=_p4_ctx) as _ex:
             _futs = [_ex.submit(_niche_cellular_worker, t) for t in _p4_tasks]
             for _f in tqdm(as_completed(_futs), total=len(_futs)):
                 raise_if_cancelled()
-                _f.result()          # surfaces worker exceptions
+                _f.result()  # surfaces worker exceptions
 
-    click.secho("\nPhase 5/5: Perform annotation-level niche analysis per slide.\n", fg="green")
-   
+    click.secho(
+        "\nPhase 5/5: Perform annotation-level niche analysis per slide.\n", fg="green"
+    )
+
     if niche_annotation:
         # Annotation-level region merge is per-slide independent -> process pool.
         _p5_tasks = []
@@ -2470,16 +2762,24 @@ def niche_generation(
             niche_csv_name = Path(wsi_path).with_suffix(".csv").name
             cell_csv = niche_cells_output_dir / niche_csv_name
             niche_csv = niche_niches_output_dir / niche_csv_name
-            _p5_tasks.append((wsi_path, cell_csv, niche_csv, slides[i]["kept_idx"],
-                              slides[i]["edges_df"], niche_clustering_k,
-                              max_cell_radius_um, overwrite))
+            _p5_tasks.append(
+                (
+                    wsi_path,
+                    cell_csv,
+                    niche_csv,
+                    slides[i]["kept_idx"],
+                    slides[i]["edges_df"],
+                    niche_clustering_k,
+                    max_cell_radius_um,
+                    overwrite,
+                )
+            )
         _p5_workers = pick_workers_safe(max_workers=os.cpu_count() - 2, min_workers=2)
         _p5_ctx = mp.get_context("spawn")
         with ProcessPoolExecutor(max_workers=_p5_workers, mp_context=_p5_ctx) as _ex:
             _futs = [_ex.submit(_niche_annotation_worker, t) for t in _p5_tasks]
             for _f in tqdm(as_completed(_futs), total=len(_futs)):
                 raise_if_cancelled()
-                _f.result()          # surfaces worker exceptions
+                _f.result()  # surfaces worker exceptions
 
         # print("-" * 40)
-            

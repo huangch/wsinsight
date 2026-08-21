@@ -20,25 +20,25 @@ Per slide
 from __future__ import annotations
 
 import logging
-from concurrent.futures import ThreadPoolExecutor, as_completed
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
-from typing import List, Mapping
+from typing import List
+from typing import Mapping
 
 import numpy as np
 import pandas as pd
 from tqdm import tqdm
 
 from .. import errors
-from ..cancel import cancellable_as_completed, critical_section, is_cancelled
-from ..wsi import _validate_wsi_directory, get_avg_mpp
+from ..cancel import cancellable_as_completed
+from ..cancel import critical_section
 from ..uri_path import URIPath
-
-from .insight_helpers import (
-    compute_cell_center_points,
-    delaunay_triangulation,
-    k_hop_neighbors,
-)
+from ..wsi import _validate_wsi_directory
+from ..wsi import get_avg_mpp
 from .graph_cache import get_or_build_delaunay
+from .insight_helpers import compute_cell_center_points
+from .insight_helpers import delaunay_triangulation
+from .insight_helpers import k_hop_neighbors
 
 _logger = logging.getLogger(__name__)
 
@@ -124,7 +124,9 @@ def _worker(
 
     centers = nodes_df[["center_x", "center_y"]].values
     if graph_cache_dir is not None:
-        edges_df = get_or_build_delaunay(graph_cache_dir, slide_id, centers, mpp, max_neighbor_distance_px)
+        edges_df = get_or_build_delaunay(
+            graph_cache_dir, slide_id, centers, mpp, max_neighbor_distance_px
+        )
     else:
         edges_df = delaunay_triangulation(centers, max_neighbor_distance_px)
     _step("triangulate")
@@ -250,7 +252,9 @@ def ncomp_generation(
         )
 
     if slide_paths is not None:
-        normalized = [p if isinstance(p, URIPath) else URIPath(str(p)) for p in slide_paths]
+        normalized = [
+            p if isinstance(p, URIPath) else URIPath(str(p)) for p in slide_paths
+        ]
     elif wsi_dir_path is not None:
         normalized = [p for p in wsi_dir_path.iterdir() if p.is_file()]
     else:

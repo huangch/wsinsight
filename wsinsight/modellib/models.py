@@ -2,10 +2,10 @@
 
 from __future__ import annotations
 
-import os
-from pathlib import Path
 import dataclasses
+import os
 import warnings
+from pathlib import Path
 from typing import Callable
 
 import torch
@@ -91,6 +91,7 @@ def read_registered_model_config_dict(
             return data
     return {}
 
+
 # class ScriptWrapper(torch.nn.Module):
 #     def __init__(self, path):
 #         super().__init__()
@@ -100,15 +101,16 @@ def read_registered_model_config_dict(
 #         dev = x.device
 #         if dev not in self.models:
 #             self.models[dev] = torch.jit.load(self.path, map_location=dev).eval()
-        # return self.models[dev](x)
-
+# return self.models[dev](x)
 
 
 class TSPerDevice(torch.nn.Module):
     """Lazy TorchScript loader that preserves constants per target device."""
 
-    def __init__(self, ts_path: str, #, device: torch.Device
-                 ):
+    def __init__(
+        self,
+        ts_path: str,  # , device: torch.Device
+    ):
         super().__init__()
         self.ts_path = ts_path
         self._per_device = {}  # device_str -> ScriptModule
@@ -126,16 +128,20 @@ class TSPerDevice(torch.nn.Module):
 
         # infer device from first tensor-like input
         def pick_device(obj):
-            if torch.is_tensor(obj): return obj.device
+            if torch.is_tensor(obj):
+                return obj.device
             if isinstance(obj, (list, tuple)):
                 for z in obj:
                     d = pick_device(z)
-                    if d is not None: return d
+                    if d is not None:
+                        return d
             if isinstance(obj, dict):
                 for z in obj.values():
                     d = pick_device(z)
-                    if d is not None: return d
+                    if d is not None:
+                        return d
             return None
+
         dev = pick_device(args[0] if args else next(iter(kwargs.values())))
 
         if dev is not None and dev.type == "cuda":
@@ -152,9 +158,9 @@ def get_pretrained_torch_module(
     """Get a PyTorch Module with weights loaded."""
     # mod: torch.nn.Module = torch.jit.load(model.model_path, map_location="cpu")
     # mod: torch.nn.Module = torch.jit.load(model.model_path, map_location=device)
-    
+
     mod: torch.nn.Module = TSPerDevice(model.model_path)
-    
+
     if not isinstance(mod, torch.nn.Module):
         raise TypeError(
             "expected the loaded object to be a subclass of torch.nn.Module but got"

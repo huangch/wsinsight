@@ -145,7 +145,7 @@ def get_object_coordinates_within_polygon(
         Half of the length of a patch in pixels.
     polygon : Polygon
         A shapely Polygon representing the presence of tissue.
-    
+
     Returns
     -------
     coordinates
@@ -167,7 +167,7 @@ def get_object_coordinates_within_polygon(
 
     # Transform the centroids to the upper-left point (x, y).
     object_minx_miny_in_polygon = object_centroids_in_polygon - half_patch_size
-    
+
     return object_minx_miny_in_polygon
 
 

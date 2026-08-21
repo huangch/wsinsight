@@ -14,31 +14,37 @@ import subprocess
 import sys
 from datetime import datetime
 from pathlib import Path
-from typing import Any, List
+from typing import Any
+from typing import List
 
 import click
 import geopandas as gpd
 import h5py
 import pandas as pd
 import tqdm
-
 import wsinfer_zoo.client
-from wsinfer_zoo.client import HFModel, Model, ModelConfiguration
+from wsinfer_zoo.client import HFModel
+from wsinfer_zoo.client import Model
+from wsinfer_zoo.client import ModelConfiguration
 
 from .. import errors
+
 # from ..insightlib.niche_generation import niche_generation
 from ..modellib import models
 from ..modellib.models import resolve_zoo_registry_path
 from ..modellib.run_inference import run_inference
+
 # QuPath project export relies on optional dependencies; import remains disabled until re-enabled.
-from ..uri_path import URIPath, URIPathType
-from ._paths import default_storage_kwargs
+from ..uri_path import URIPath
+from ..uri_path import URIPathType
 from ._meta import write_runtime_metadata
+from ._paths import default_storage_kwargs
 
 _STORAGE_KWARGS = default_storage_kwargs()
 
 
 # --- System inspection helpers -------------------------------------------------
+
 
 def _num_cpus() -> int:
     """Get number of CPUs on the system."""
@@ -156,7 +162,10 @@ def _print_system_info() -> None:
     cuda_visible_devices = os.environ.get("CUDA_VISIBLE_DEVICES", "NOT SET")
     print(f"CUDA_VISIBLE_DEVICES: {cuda_visible_devices}")
     from .. import wsi as _wsi
-    print(f"WSI backend: {_wsi._BACKEND} (openslide={_wsi.HAS_OPENSLIDE}, tiffslide={_wsi.HAS_TIFFSLIDE})")
+
+    print(
+        f"WSI backend: {_wsi._BACKEND} (openslide={_wsi.HAS_OPENSLIDE}, tiffslide={_wsi.HAS_TIFFSLIDE})"
+    )
     if torch.version.cuda is None:
         click.secho("\n*******************************************", fg="yellow")
         click.secho("GPU WILL NOT BE USED", fg="yellow")
@@ -250,7 +259,7 @@ def _coerce_number(token: str):
     """Convert CLI tokens to ints/floats when possible, otherwise lowercase text."""
     t = token.strip()
     # Try parsing integers before falling back to floats/strings.
-    if re.fullmatch(r'[+-]?\d+', t):
+    if re.fullmatch(r"[+-]?\d+", t):
         try:
             return int(t)
         except ValueError:
@@ -266,6 +275,7 @@ def _coerce_number(token: str):
     # Finally treat the token as a normalized lowercase string.
     return t.lower()
 
+
 def _csv_to_list(ctx, param, value):
     """Normalize comma/space separated inputs into typed Python lists."""
     if value is None:
@@ -275,7 +285,7 @@ def _csv_to_list(ctx, param, value):
         tokens = value
     else:
         # Split by commas or whitespace and drop empty fragments.
-        tokens = [x for x in re.split(r'[,\s]+', str(value).strip()) if x]
+        tokens = [x for x in re.split(r"[,\s]+", str(value).strip()) if x]
 
     return [_coerce_number(str(x)) for x in tokens]
 
@@ -346,11 +356,15 @@ def _load_slide_manifest_from_patches(results_dir: URIPath) -> list[SlidePatchRe
                 slide_mpp = _maybe_float(slide_group.attrs.get("slide_mpp"))
                 slide_width = _maybe_float(slide_group.attrs.get("slide_width"))
                 slide_height = _maybe_float(slide_group.attrs.get("slide_height"))
-        except KeyError as exc:  # pragma: no cover - surfaces corrupted artifacts to users
+        except (
+            KeyError
+        ) as exc:  # pragma: no cover - surfaces corrupted artifacts to users
             raise click.ClickException(
                 f"Patch file {patch_path.name} is missing required slide metadata"
             ) from exc
-        except Exception as exc:  # pragma: no cover - IO/serialization issues bubble to CLI
+        except (
+            Exception
+        ) as exc:  # pragma: no cover - IO/serialization issues bubble to CLI
             raise click.ClickException(
                 f"Unable to read slide metadata from patch file {patch_path.name}"
             ) from exc
@@ -465,9 +479,13 @@ def _optional_uri_paths(ctx: click.Context, param: click.Option, value):
     "-m",
     "--model",
     "model_name",
-    type=click.Choice(sorted(wsinfer_zoo.client.load_registry(
-        registry_file=resolve_zoo_registry_path(),
-    ).models.keys())),
+    type=click.Choice(
+        sorted(
+            wsinfer_zoo.client.load_registry(
+                registry_file=resolve_zoo_registry_path(),
+            ).models.keys()
+        )
+    ),
     help="Name of the model to use from WSInsight Model Zoo. Mutually exclusive with"
     " --config.",
 )
@@ -622,7 +640,6 @@ def _optional_uri_paths(ctx: click.Context, param: click.Option, value):
     ),
 )
 
-
 # --- CLI command --------------------------------------------------------------
 def infer(
     ctx: click.Context,
@@ -756,22 +773,48 @@ def infer(
 
     # --- Resolve model or pseudo-model -------------------------------------
     # Track runtime flags populated once we know which model/config we're using.
-    stain_normalization = False 
+    stain_normalization = False
     object_detection = None
-    
+
     # Resolve the model configuration up-front so downstream stages know spacing,
     # patch sizes, and class metadata.
     model_obj: HFModel | models.LocalModelTorchScript
     if model_name is not None:
         model_obj = models.get_registered_model(name=model_name)
         _config_dict = models.read_registered_model_config_dict(model_obj)
-        object_based = True if 'object_based' in _config_dict.keys() and _config_dict['object_based'] else False
-        mixed_precision = True if 'mixed_precision' in _config_dict.keys() and _config_dict['mixed_precision'] else False
-        stain_normalization = True if 'stain_normalization' in _config_dict.keys() and _config_dict['stain_normalization'] else False
-        object_detection = _config_dict['object_detection']["name"] if object_based and 'object_detection' in _config_dict.keys() and isinstance(_config_dict['object_detection'], dict) else None
-        halo_size_px = _config_dict['halo_size_pixels'] if object_based and 'halo_size_pixels' in _config_dict.keys() and _config_dict['halo_size_pixels'] else 0
+        object_based = (
+            True
+            if "object_based" in _config_dict.keys() and _config_dict["object_based"]
+            else False
+        )
+        mixed_precision = (
+            True
+            if "mixed_precision" in _config_dict.keys()
+            and _config_dict["mixed_precision"]
+            else False
+        )
+        stain_normalization = (
+            True
+            if "stain_normalization" in _config_dict.keys()
+            and _config_dict["stain_normalization"]
+            else False
+        )
+        object_detection = (
+            _config_dict["object_detection"]["name"]
+            if object_based
+            and "object_detection" in _config_dict.keys()
+            and isinstance(_config_dict["object_detection"], dict)
+            else None
+        )
+        halo_size_px = (
+            _config_dict["halo_size_pixels"]
+            if object_based
+            and "halo_size_pixels" in _config_dict.keys()
+            and _config_dict["halo_size_pixels"]
+            else 0
+        )
         del _config_dict
-        
+
     elif config is not None:
         with Path(config).open("r", encoding="utf-8") as f:
             _config_dict = json.load(f)
@@ -779,15 +822,40 @@ def infer(
         model_obj = models.LocalModelTorchScript(
             config=model_config, model_path=str(model_path)
         )
-        
-        object_based = True if 'object_based' in _config_dict.keys() and _config_dict['object_based'] else False
-        mixed_precision = True if 'mixed_precision' in _config_dict.keys() and _config_dict['mixed_precision'] else False
-        stain_normalization = True if 'stain_normalization' in _config_dict.keys() and _config_dict['stain_normalization'] else False
-        object_detection = _config_dict['object_detection']["name"] if object_based and 'object_detection' in _config_dict.keys() and isinstance(_config_dict['object_detection'], dict) else None
-        halo_size_px = _config_dict['halo_size_pixels'] if object_based and 'halo_size_pixels' in _config_dict.keys() and _config_dict['halo_size_pixels'] else 0
+
+        object_based = (
+            True
+            if "object_based" in _config_dict.keys() and _config_dict["object_based"]
+            else False
+        )
+        mixed_precision = (
+            True
+            if "mixed_precision" in _config_dict.keys()
+            and _config_dict["mixed_precision"]
+            else False
+        )
+        stain_normalization = (
+            True
+            if "stain_normalization" in _config_dict.keys()
+            and _config_dict["stain_normalization"]
+            else False
+        )
+        object_detection = (
+            _config_dict["object_detection"]["name"]
+            if object_based
+            and "object_detection" in _config_dict.keys()
+            and isinstance(_config_dict["object_detection"], dict)
+            else None
+        )
+        halo_size_px = (
+            _config_dict["halo_size_pixels"]
+            if object_based
+            and "halo_size_pixels" in _config_dict.keys()
+            and _config_dict["halo_size_pixels"]
+            else 0
+        )
         del _config_dict, model_config
-        
-        
+
     elif qupath_measurement_detection_dir is not None:
         wsi_paths = _selected_wsi_paths()
 
@@ -798,7 +866,7 @@ def infer(
             raise errors.ResultsDirectoryNotFound(results_dir)
 
         class_names = []
-            
+
         print("\nLoading pseudo model data...\n")
         for wsi_path in tqdm.tqdm(wsi_paths):
             slide_det_name = _materialize_local_file(wsi_path).with_suffix(".txt").name
@@ -806,18 +874,28 @@ def infer(
             if slide_det.exists():
                 # Load detections once per slide to collect unique class labels.
                 with slide_det.open("r", encoding="utf-8") as det_fp:
-                    qpdet_df = pd.read_csv(det_fp, delimiter='\t')
+                    qpdet_df = pd.read_csv(det_fp, delimiter="\t")
                 qpdet_class_names = (
-                    qpdet_df["Name"].str.strip().str.replace(" ", "_", regex=False).str.lower().unique().tolist()
+                    qpdet_df["Name"]
+                    .str.strip()
+                    .str.replace(" ", "_", regex=False)
+                    .str.lower()
+                    .unique()
+                    .tolist()
                     if qupath_name_as_class
-                    else qpdet_df["Classification"].str.strip().str.replace(" ", "_", regex=False).str.lower().unique().tolist()
+                    else qpdet_df["Classification"]
+                    .str.strip()
+                    .str.replace(" ", "_", regex=False)
+                    .str.lower()
+                    .unique()
+                    .tolist()
                 )
                 class_names.extend(qpdet_class_names)
                 class_names = list(set(class_names))
-                    
+
         model_obj = Model(
             ModelConfiguration(
-                architecture='qupath.detection',
+                architecture="qupath.detection",
                 num_classes=len(class_names),
                 class_names=class_names,
                 patch_size_pixels=qupath_detection_patch_size,
@@ -826,8 +904,8 @@ def infer(
             ),
             "",
         )
-        
-        patch_size_px=model_obj.config.patch_size_pixels
+
+        patch_size_px = model_obj.config.patch_size_pixels
         object_based = True
         mixed_precision = False
         stain_normalization = None
@@ -847,23 +925,33 @@ def infer(
 
         print("\nLoading pseudo model data...\n")
         for wsi_path in tqdm.tqdm(wsi_paths):
-            slide_geojson_name = _materialize_local_file(wsi_path).with_suffix(".geojson").name
+            slide_geojson_name = (
+                _materialize_local_file(wsi_path).with_suffix(".geojson").name
+            )
             slide_geojson = qupath_geojson_detection_dir / slide_geojson_name
             if slide_geojson.exists():
                 # Load the geojson to derive the distinct detection classes.
                 qpgeojson_gdf = gpd.read_file(slide_geojson.materialize())
                 qpgeojson_gdf.set_crs(None, allow_override=True)
                 qpgeojson_class_names = (
-                    qpgeojson_gdf.name.str.strip().str.replace(" ", "_", regex=False).str.lower().unique().tolist()
+                    qpgeojson_gdf.name.str.strip()
+                    .str.replace(" ", "_", regex=False)
+                    .str.lower()
+                    .unique()
+                    .tolist()
                     if qupath_name_as_class
-                    else qpgeojson_gdf.classification.str.strip().str.replace(" ", "_", regex=False).str.lower().unique().tolist()
+                    else qpgeojson_gdf.classification.str.strip()
+                    .str.replace(" ", "_", regex=False)
+                    .str.lower()
+                    .unique()
+                    .tolist()
                 )
                 class_names.extend(qpgeojson_class_names)
                 class_names = list(set(class_names))
 
         model_obj = Model(
             ModelConfiguration(
-                architecture='qupath.geojson',
+                architecture="qupath.geojson",
                 num_classes=len(class_names),
                 class_names=class_names,
                 patch_size_pixels=qupath_detection_patch_size,
@@ -880,7 +968,6 @@ def infer(
         object_detection = None
         halo_size_px = 0
 
-
     elif qupath_geojson_annotation_dir is not None:
         wsi_paths = _selected_wsi_paths()
 
@@ -891,26 +978,36 @@ def infer(
             raise errors.ResultsDirectoryNotFound(results_dir)
 
         class_names = []
-            
+
         print("\nLoading pseudo model data...\n")
         for wsi_path in tqdm.tqdm(wsi_paths):
-            slide_geojson_name = _materialize_local_file(wsi_path).with_suffix(".geojson").name
+            slide_geojson_name = (
+                _materialize_local_file(wsi_path).with_suffix(".geojson").name
+            )
             slide_geojson = qupath_geojson_annotation_dir / slide_geojson_name
             if slide_geojson.exists():
                 # Load the annotation geojson to derive distinct region labels.
                 qpgeojson_gdf = gpd.read_file(slide_geojson.materialize())
                 qpgeojson_gdf.set_crs(None, allow_override=True)
                 qpgeojson_class_names = (
-                    qpgeojson_gdf.name.str.strip().str.replace(" ", "_", regex=False).str.lower().unique().tolist()
+                    qpgeojson_gdf.name.str.strip()
+                    .str.replace(" ", "_", regex=False)
+                    .str.lower()
+                    .unique()
+                    .tolist()
                     if qupath_name_as_class
-                    else qpgeojson_gdf.classification.str.strip().str.replace(" ", "_", regex=False).str.lower().unique().tolist()
+                    else qpgeojson_gdf.classification.str.strip()
+                    .str.replace(" ", "_", regex=False)
+                    .str.lower()
+                    .unique()
+                    .tolist()
                 )
                 class_names.extend(qpgeojson_class_names)
-                class_names = list(set(class_names))                
-                    
+                class_names = list(set(class_names))
+
         model_obj = Model(
             ModelConfiguration(
-                architecture='qupath.geojson',
+                architecture="qupath.geojson",
                 num_classes=len(class_names),
                 class_names=class_names,
                 patch_size_pixels=qupath_annotation_patch_size,
@@ -919,55 +1016,78 @@ def infer(
             ),
             "",
         )
-        
-        patch_size_px=model_obj.config.patch_size_pixels
+
+        patch_size_px = model_obj.config.patch_size_pixels
         object_based = False
         mixed_precision = False
         stain_normalization = None
         object_detection = None
-        halo_size_px = 0        
-          
-          
+        halo_size_px = 0
+
     else:
         raise click.ClickException("Neither of --config and --model was passed")
 
     if region_inference_dir is not None and not object_based:
-        raise click.ClickException("--region-inference-dir only works with object based model.")
-    
+        raise click.ClickException(
+            "--region-inference-dir only works with object based model."
+        )
+
     # Validating all overlap options
-    nonzero_count = sum([
-        0 if d == 0 else 1 
-        for d in [patch_overlap_ratio, patch_size_um, patch_size_px]
-    ])
-    
-    if nonzero_count > 1 and qupath_measurement_detection_dir is None and qupath_geojson_detection_dir is None:
-        raise click.ClickException("Only one of --patch-overlap-ratio, --patch-size-um, --patch-size-px is allowed")
-    elif nonzero_count == 1 and object_based and qupath_measurement_detection_dir is None and qupath_geojson_detection_dir is None:
-        raise click.ClickException("--object-based doesn't work with variational patch size")
-    
+    nonzero_count = sum(
+        [
+            0 if d == 0 else 1
+            for d in [patch_overlap_ratio, patch_size_um, patch_size_px]
+        ]
+    )
+
+    if (
+        nonzero_count > 1
+        and qupath_measurement_detection_dir is None
+        and qupath_geojson_detection_dir is None
+    ):
+        raise click.ClickException(
+            "Only one of --patch-overlap-ratio, --patch-size-um, --patch-size-px is allowed"
+        )
+    elif (
+        nonzero_count == 1
+        and object_based
+        and qupath_measurement_detection_dir is None
+        and qupath_geojson_detection_dir is None
+    ):
+        raise click.ClickException(
+            "--object-based doesn't work with variational patch size"
+        )
+
     if patch_overlap_ratio != 0.0:
         overlap = patch_overlap_ratio
 
     elif patch_size_um != 0.0:
-        if patch_size_um > (model_obj.config.patch_size_pixels*model_obj.config.spacing_um_px):
-            raise click.ClickException("--patch-size-um has to be smaller than patch size")
-         
-        overlap = 1.0-patch_size_um/(model_obj.config.patch_size_pixels*model_obj.config.spacing_um_px)
-        
+        if patch_size_um > (
+            model_obj.config.patch_size_pixels * model_obj.config.spacing_um_px
+        ):
+            raise click.ClickException(
+                "--patch-size-um has to be smaller than patch size"
+            )
+
+        overlap = 1.0 - patch_size_um / (
+            model_obj.config.patch_size_pixels * model_obj.config.spacing_um_px
+        )
+
     elif patch_size_px != 0:
         if patch_size_px > model_obj.config.patch_size_pixels:
-            raise click.ClickException("--patch-size-px must not be larger than patch size")
-        
-        overlap = 1.0-float(patch_size_px)/float(model_obj.config.patch_size_pixels)
-        
+            raise click.ClickException(
+                "--patch-size-px must not be larger than patch size"
+            )
+
+        overlap = 1.0 - float(patch_size_px) / float(model_obj.config.patch_size_pixels)
+
     else:
         overlap = 0.0
-    
 
     # --- Validate dependent artifacts --------------------------------------
     if not (results_dir / "patches").exists():
         raise click.ClickException(_PATCH_DIR_MISSING_HINT)
-    
+
     if wsi_dir is not None and slide_paths is None:
         wsi_dir = wsi_dir.coerce_image_list()
         slide_paths = sorted(
@@ -985,7 +1105,7 @@ def infer(
 
     # --- Execute model inference -------------------------------------------
     click.secho("\nRunning model inference.\n", fg="green")
-    
+
     failed_patching, failed_inference = run_inference(
         wsi_dir=wsi_dir,
         slide_paths=slide_paths,

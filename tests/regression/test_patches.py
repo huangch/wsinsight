@@ -14,7 +14,6 @@ some segmentation paths emit coordinates in non-deterministic order.
 
 from __future__ import annotations
 
-import shutil
 import subprocess
 import sys
 from pathlib import Path
@@ -50,10 +49,16 @@ def _run_patch_stage(case: RegressionCase, tmp_path: Path, zoo_model: str) -> Pa
     """Invoke ``wsinsight patch`` on a single slide; return the patches dir."""
     out_dir = tmp_path / PATCH_RUN_DIRNAME
     cmd = [
-        sys.executable, "-m", "wsinsight", "patch",
-        "-i", str(case.path),
-        "-o", str(out_dir),
-        "-z", zoo_model,
+        sys.executable,
+        "-m",
+        "wsinsight",
+        "patch",
+        "-i",
+        str(case.path),
+        "-o",
+        str(out_dir),
+        "-z",
+        zoo_model,
         "--overwrite",
     ]
     proc = subprocess.run(cmd, capture_output=True, text=True, timeout=1800)
@@ -102,6 +107,6 @@ def test_patch_coords_match_golden(case: RegressionCase, tmp_path, request):
         f"{case.slide_id}: patch count drift "
         f"(got {actual.shape[0]}, expected {expected.shape[0]})"
     )
-    assert _coord_set(actual) == _coord_set(expected), (
-        f"{case.slide_id}: patch coordinates differ from golden"
-    )
+    assert _coord_set(actual) == _coord_set(
+        expected
+    ), f"{case.slide_id}: patch coordinates differ from golden"

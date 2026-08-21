@@ -221,7 +221,9 @@ def _worker(
             return slide_id, None, None
         # One-hot membership: max over requested niche_ columns is 0/1 per cell, so
         # its per-layer mean is exactly the niche fraction.
-        nodes_df["is_target_type"] = nodes_df[target_niche_cols].fillna(0).max(axis=1) > 0
+        nodes_df["is_target_type"] = (
+            nodes_df[target_niche_cols].fillna(0).max(axis=1) > 0
+        )
     elif target_by == "aggregate":
         target_agg_cols = _resolve_aggregates(target_type_list)
         if not target_agg_cols:
@@ -602,8 +604,12 @@ def hplot_generation(
         future_to_id: dict = {}
         futures = []
         for i, args in enumerate(jobs):
-            fut = ex.submit(_worker, *args, (i % num_workers) + 1,
-                            display_id=short_ids.get(args[0].stem, args[0].stem))
+            fut = ex.submit(
+                _worker,
+                *args,
+                (i % num_workers) + 1,
+                display_id=short_ids.get(args[0].stem, args[0].stem),
+            )
             future_to_id[fut] = args[0].stem
             futures.append(fut)
         outer = tqdm(

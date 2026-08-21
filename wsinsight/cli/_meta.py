@@ -18,7 +18,8 @@ import subprocess
 import sys
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Mapping
+from typing import Any
+from typing import Mapping
 
 import click
 
@@ -68,9 +69,7 @@ def _get_git_info() -> dict[str, Any] | None:
         proc = subprocess.run(args, capture_output=True, cwd=here)
         return "" if proc.returncode != 0 else proc.stdout.decode().strip()
 
-    diff = subprocess.run(
-        ["git", "diff-index", "--quiet", "HEAD", "--"], cwd=here
-    )
+    diff = subprocess.run(["git", "diff-index", "--quiet", "HEAD", "--"], cwd=here)
     return {
         "git_remote": _stdout(["git", "config", "--get", "remote.origin.url"]),
         "git_branch": _stdout(["git", "rev-parse", "--abbrev-ref", "HEAD"]),

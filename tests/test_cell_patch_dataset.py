@@ -25,7 +25,9 @@ def _load_dataset_classes() -> dict:
     """Exec just the patch-dataset classes from niche_generation.py."""
     src_path = (
         Path(__file__).resolve().parents[1]
-        / "wsinsight" / "insightlib" / "niche_generation.py"
+        / "wsinsight"
+        / "insightlib"
+        / "niche_generation.py"
     )
     text = src_path.read_text()
     start = text.index("class DummyPatchDataset(Dataset):")
@@ -78,6 +80,7 @@ def _make_dataset(monkeypatch, centers, *, mpp=0.25, window_um=32.0, slide=None)
 # The regression itself.
 # ---------------------------------------------------------------------------
 
+
 def test_distinct_cells_yield_distinct_crops(monkeypatch):
     """Different cells must produce different pixels.
 
@@ -91,9 +94,9 @@ def test_distinct_cells_yield_distinct_crops(monkeypatch):
 
     for a in range(len(crops)):
         for b in range(a + 1, len(crops)):
-            assert not np.array_equal(crops[a], crops[b]), (
-                f"cells {a} and {b} produced identical crops"
-            )
+            assert not np.array_equal(
+                crops[a], crops[b]
+            ), f"cells {a} and {b} produced identical crops"
 
 
 def test_dummy_dataset_is_constant_by_design():
@@ -108,12 +111,13 @@ def test_dummy_dataset_is_constant_by_design():
 # Geometry.
 # ---------------------------------------------------------------------------
 
+
 def test_crop_is_centred_on_the_cell(monkeypatch):
     ds, slide = _make_dataset(monkeypatch, [[1000, 2000]], mpp=0.25, window_um=32.0)
     ds[0]
 
     (location, level, size) = slide.calls[0]
-    window_px = int(round(32.0 / 0.25))       # 128
+    window_px = int(round(32.0 / 0.25))  # 128
     assert size == (window_px, window_px)
     assert level == 0
     # Centre of the requested region is the cell centre.
@@ -127,9 +131,7 @@ def test_crop_is_centred_on_the_cell(monkeypatch):
 )
 def test_window_size_scales_with_resolution(monkeypatch, mpp, window_um, expected_px):
     """The crop covers a fixed physical area regardless of slide resolution."""
-    ds, slide = _make_dataset(
-        monkeypatch, [[2000, 2000]], mpp=mpp, window_um=window_um
-    )
+    ds, slide = _make_dataset(monkeypatch, [[2000, 2000]], mpp=mpp, window_um=window_um)
     ds[0]
     assert slide.calls[0][2] == (expected_px, expected_px)
 
@@ -152,15 +154,16 @@ def test_output_is_resized_to_encoder_input(monkeypatch):
 # Robustness.
 # ---------------------------------------------------------------------------
 
+
 def test_out_of_bounds_cell_does_not_abort_the_slide(monkeypatch):
     """Cells near the slide edge yield blank tissue instead of raising."""
     ds, _ = _make_dataset(monkeypatch, [[5, 5], [2000, 2000]], mpp=0.25)
 
-    edge = ds[0]                      # would read from negative coordinates
+    edge = ds[0]  # would read from negative coordinates
     assert edge.size == (224, 224)
     assert np.asarray(edge).min() == 255, "edge crop should be blank white"
 
-    interior = ds[1]                  # unaffected
+    interior = ds[1]  # unaffected
     assert np.asarray(interior).min() < 255
 
 
@@ -196,6 +199,7 @@ def test_indices_map_to_detection_table_rows(monkeypatch):
 # Concurrency: the fetch path now reads crops from a thread pool.
 # ---------------------------------------------------------------------------
 
+
 def test_parallel_reads_preserve_order(monkeypatch):
     """executor.map over the dataset must return crops in index order.
 
@@ -209,11 +213,15 @@ def test_parallel_reads_preserve_order(monkeypatch):
 
     serial = [np.asarray(ds[i]) for i in range(len(centers))]
     with ThreadPoolExecutor(max_workers=8) as pool:
-        parallel = [np.asarray(im) for im in pool.map(ds.__getitem__, range(len(centers)))]
+        parallel = [
+            np.asarray(im) for im in pool.map(ds.__getitem__, range(len(centers)))
+        ]
 
     assert len(parallel) == len(serial)
     for i, (a, b) in enumerate(zip(serial, parallel)):
-        assert np.array_equal(a, b), f"crop {i} differs between serial and parallel reads"
+        assert np.array_equal(
+            a, b
+        ), f"crop {i} differs between serial and parallel reads"
 
 
 def test_each_thread_gets_its_own_slide_handle():
@@ -236,7 +244,7 @@ def test_each_thread_gets_its_own_slide_handle():
         mpp_um_per_px=0.25,
     )
     # Patch the lazy opener to build our counting stub instead of a real reader.
-    ds._open_slide = _CountingSlide          # type: ignore[attr-defined]
+    ds._open_slide = _CountingSlide  # type: ignore[attr-defined]
 
     def _read(i):
         slide = getattr(ds._local, "slide", None)

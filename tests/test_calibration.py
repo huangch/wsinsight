@@ -29,8 +29,8 @@ from typing import Optional
 import pytest
 import torch
 
-GIB = 1024 ** 3
-MIB = 1024 ** 2
+GIB = 1024**3
+MIB = 1024**2
 
 
 def _load_helpers() -> dict:
@@ -42,7 +42,9 @@ def _load_helpers() -> dict:
     """
     src_path = (
         Path(__file__).resolve().parents[1]
-        / "wsinsight" / "insightlib" / "niche_generation.py"
+        / "wsinsight"
+        / "insightlib"
+        / "niche_generation.py"
     )
     text = src_path.read_text()
     start = text.index("_HOPTIMUS_BYTES_PER_IMAGE_FALLBACK")
@@ -67,6 +69,7 @@ HELPERS = _load_helpers()
 # ---------------------------------------------------------------------------
 # _is_oom: decides whether the retry loop shrinks or re-raises.
 # ---------------------------------------------------------------------------
+
 
 @pytest.mark.parametrize(
     "exc",
@@ -97,6 +100,7 @@ def test_is_oom_ignores_unrelated_errors(exc):
 # _available_vram: must count allocator-reserved-but-idle blocks as usable.
 # ---------------------------------------------------------------------------
 
+
 def test_available_vram_counts_reusable_cached_blocks(monkeypatch):
     free, reserved, allocated = 10 * GIB, 60 * GIB, 2 * GIB
     monkeypatch.setattr(torch.cuda, "mem_get_info", lambda i: (free, 80 * GIB))
@@ -119,6 +123,7 @@ def test_available_vram_never_negative(monkeypatch):
 # _calibrate_bytes_per_image: the two-point slope must cancel fixed overhead.
 # ---------------------------------------------------------------------------
 
+
 def _stub_cuda_for_calibration(monkeypatch, fixed: int, marginal: int) -> dict:
     """Simulate a device whose peak usage is ``fixed + n * marginal``."""
     seen = {"n": 0}
@@ -129,7 +134,8 @@ def _stub_cuda_for_calibration(monkeypatch, fixed: int, marginal: int) -> dict:
     monkeypatch.setattr(torch.cuda, "empty_cache", lambda *a, **k: None)
     monkeypatch.setattr(torch.cuda, "memory_allocated", lambda *a, **k: 0)
     monkeypatch.setattr(
-        torch.cuda, "max_memory_allocated",
+        torch.cuda,
+        "max_memory_allocated",
         lambda *a, **k: fixed + seen["n"] * marginal,
     )
     # autocast(device_type="cuda") is meaningless on a CPU-only test host.
@@ -139,8 +145,8 @@ def _stub_cuda_for_calibration(monkeypatch, fixed: int, marginal: int) -> dict:
 
 def test_calibration_cancels_fixed_workspace_overhead(monkeypatch):
     """The headline regression: a 2.3 GiB constant must not be billed per image."""
-    fixed = 2300 * MIB      # cuDNN workspace — same for any batch size
-    marginal = 17 * MIB     # true activation cost of one extra image
+    fixed = 2300 * MIB  # cuDNN workspace — same for any batch size
+    marginal = 17 * MIB  # true activation cost of one extra image
     seen = _stub_cuda_for_calibration(monkeypatch, fixed, marginal)
 
     class _FakeModel:
@@ -187,6 +193,7 @@ def test_calibration_falls_back_without_cuda(monkeypatch):
 # ---------------------------------------------------------------------------
 # _auto_batch_size: fills the requested fraction and splits evenly.
 # ---------------------------------------------------------------------------
+
 
 def _stub_cuda_for_sizing(monkeypatch, usable: int, n_gpu: int) -> None:
     monkeypatch.setattr(torch.cuda, "is_available", lambda: True)
@@ -276,13 +283,14 @@ def test_auto_batch_size_survives_introspection_failure(monkeypatch):
 # ids -- far worse than any throughput problem.
 # ---------------------------------------------------------------------------
 
+
 class _FakeGPU:
     """Pretends to be a device that OOMs above ``capacity`` items per batch."""
 
     def __init__(self, capacity: int):
         self.capacity = capacity
-        self.attempts: list[int] = []      # every batch size tried
-        self.succeeded: list[int] = []     # batch sizes that went through
+        self.attempts: list[int] = []  # every batch size tried
+        self.succeeded: list[int] = []  # batch sizes that went through
         self.oom_count = 0
 
     def forward(self, items: list) -> list:
@@ -304,16 +312,18 @@ def _flatten(chunks: list) -> list:
 
 
 def test_loop_processes_every_item_exactly_once_in_order():
-    gpu = _FakeGPU(capacity=10 ** 9)
+    gpu = _FakeGPU(capacity=10**9)
     out = HELPERS["_run_adaptive_batches"](
         n_total=100, batch_size=10, fetch=_fetch_range, forward=gpu.forward
     )
     assert _flatten(out) == list(range(100))
 
 
-@pytest.mark.parametrize("n_total,batch_size", [(100, 10), (100, 7), (5, 10), (1, 1), (37, 6)])
+@pytest.mark.parametrize(
+    "n_total,batch_size", [(100, 10), (100, 7), (5, 10), (1, 1), (37, 6)]
+)
 def test_loop_handles_ragged_final_batch(n_total, batch_size):
-    gpu = _FakeGPU(capacity=10 ** 9)
+    gpu = _FakeGPU(capacity=10**9)
     out = HELPERS["_run_adaptive_batches"](
         n_total=n_total, batch_size=batch_size, fetch=_fetch_range, forward=gpu.forward
     )
@@ -322,7 +332,7 @@ def test_loop_handles_ragged_final_batch(n_total, batch_size):
 
 def test_loop_recovers_from_oom_without_losing_items():
     """The regression that matters: shrinking must not skip the chunk tail."""
-    gpu = _FakeGPU(capacity=25)          # 100-item batches fail, 25 is fine
+    gpu = _FakeGPU(capacity=25)  # 100-item batches fail, 25 is fine
     out = HELPERS["_run_adaptive_batches"](
         n_total=100, batch_size=100, fetch=_fetch_range, forward=gpu.forward
     )
@@ -354,11 +364,14 @@ def test_loop_shrinks_geometrically():
 
 
 def test_loop_raises_when_even_min_batch_ooms():
-    gpu = _FakeGPU(capacity=0)           # nothing ever fits
+    gpu = _FakeGPU(capacity=0)  # nothing ever fits
     with pytest.raises(RuntimeError, match="out of memory"):
         HELPERS["_run_adaptive_batches"](
-            n_total=10, batch_size=8, fetch=_fetch_range,
-            forward=gpu.forward, min_batch=1,
+            n_total=10,
+            batch_size=8,
+            fetch=_fetch_range,
+            forward=gpu.forward,
+            min_batch=1,
         )
 
 
@@ -370,13 +383,17 @@ def test_loop_does_not_decrement_by_one_when_converged():
     # continued OOM should jump back to ~4, not crawl 8→7→6→5→...
     gpu = _FakeGPU(capacity=7)
     HELPERS["_run_adaptive_batches"](
-        n_total=64, batch_size=64, fetch=_fetch_range, forward=gpu.forward,
-        min_batch=1, max_batch=64,
+        n_total=64,
+        batch_size=64,
+        fetch=_fetch_range,
+        forward=gpu.forward,
+        min_batch=1,
+        max_batch=64,
     )
     # Total OOM count must be well below 60 (no decrement loop).
-    assert gpu.oom_count < 30, (
-        f"oom_count={gpu.oom_count} suggests decrement-by-one regression"
-    )
+    assert (
+        gpu.oom_count < 30
+    ), f"oom_count={gpu.oom_count} suggests decrement-by-one regression"
 
 
 def test_loop_propagates_non_oom_errors_immediately():
@@ -399,14 +416,17 @@ def test_loop_calls_on_oom_hook_before_each_retry():
     freed = {"n": 0}
 
     HELPERS["_run_adaptive_batches"](
-        n_total=8, batch_size=16, fetch=_fetch_range, forward=gpu.forward,
+        n_total=8,
+        batch_size=16,
+        fetch=_fetch_range,
+        forward=gpu.forward,
         on_oom=lambda: freed.__setitem__("n", freed["n"] + 1),
     )
     assert freed["n"] == gpu.oom_count
 
 
 def test_loop_is_a_noop_for_empty_input():
-    gpu = _FakeGPU(capacity=10 ** 9)
+    gpu = _FakeGPU(capacity=10**9)
     out = HELPERS["_run_adaptive_batches"](
         n_total=0, batch_size=10, fetch=_fetch_range, forward=gpu.forward
     )
@@ -421,11 +441,15 @@ def test_loop_is_a_noop_for_empty_input():
 # silently attach each cell's embedding to the wrong cell.
 # ---------------------------------------------------------------------------
 
+
 @pytest.mark.parametrize("prefetch", [True, False])
 def test_prefetch_preserves_item_order(prefetch):
-    gpu = _FakeGPU(capacity=10 ** 9)
+    gpu = _FakeGPU(capacity=10**9)
     out = HELPERS["_run_adaptive_batches"](
-        n_total=200, batch_size=16, fetch=_fetch_range, forward=gpu.forward,
+        n_total=200,
+        batch_size=16,
+        fetch=_fetch_range,
+        forward=gpu.forward,
         prefetch=prefetch,
     )
     assert _flatten(out) == list(range(200))
@@ -435,8 +459,13 @@ def test_prefetch_preserves_order_across_oom_resizes():
     """A discarded prefetch must not drop or duplicate the range it covered."""
     gpu = _FakeGPU(capacity=9)
     out = HELPERS["_run_adaptive_batches"](
-        n_total=120, batch_size=64, fetch=_fetch_range, forward=gpu.forward,
-        min_batch=1, max_batch=64, prefetch=True,
+        n_total=120,
+        batch_size=64,
+        fetch=_fetch_range,
+        forward=gpu.forward,
+        min_batch=1,
+        max_batch=64,
+        prefetch=True,
     )
     assert gpu.oom_count > 0, "resize path was not exercised"
     assert _flatten(out) == list(range(120))
@@ -452,12 +481,16 @@ def test_prefetch_actually_runs_ahead():
 
     def _tracking_forward(items):
         events.append(f"forward:{items[0]}")
-        time.sleep(0.05)          # give the background thread room to start
+        time.sleep(0.05)  # give the background thread room to start
         return list(items)
 
     HELPERS["_run_adaptive_batches"](
-        n_total=40, batch_size=10, fetch=_tracking_fetch,
-        forward=_tracking_forward, prefetch=True, max_batch=10,
+        n_total=40,
+        batch_size=10,
+        fetch=_tracking_fetch,
+        forward=_tracking_forward,
+        prefetch=True,
+        max_batch=10,
     )
 
     # fetch:10 must appear before forward:0 completes, i.e. before forward:10.
@@ -472,10 +505,14 @@ def test_fetch_is_called_once_per_range_when_size_is_stable():
         calls.append((start, stop))
         return list(range(start, stop))
 
-    gpu = _FakeGPU(capacity=10 ** 9)
+    gpu = _FakeGPU(capacity=10**9)
     HELPERS["_run_adaptive_batches"](
-        n_total=100, batch_size=25, fetch=_counting_fetch, forward=gpu.forward,
-        max_batch=25, prefetch=True,
+        n_total=100,
+        batch_size=25,
+        fetch=_counting_fetch,
+        forward=gpu.forward,
+        max_batch=25,
+        prefetch=True,
     )
     assert calls == [(0, 25), (25, 50), (50, 75), (75, 100)]
 
@@ -486,9 +523,12 @@ def test_ceiling_prevents_runaway_growth():
     Without the cap the search doubles on every success until it provokes an
     OOM, which wastes work and churns the allocator.
     """
-    gpu = _FakeGPU(capacity=10 ** 9)      # nothing would ever OOM
+    gpu = _FakeGPU(capacity=10**9)  # nothing would ever OOM
     HELPERS["_run_adaptive_batches"](
-        n_total=1000, batch_size=100, fetch=_fetch_range, forward=gpu.forward,
+        n_total=1000,
+        batch_size=100,
+        fetch=_fetch_range,
+        forward=gpu.forward,
         max_batch=100,
     )
     assert max(gpu.attempts) == 100, "batch size grew beyond the ceiling"
@@ -499,13 +539,14 @@ def test_ceiling_prevents_runaway_growth():
 # images, so the loop must slice and measure tensors correctly on the OOM path.
 # ---------------------------------------------------------------------------
 
+
 def _fetch_tensor(start: int, stop: int) -> torch.Tensor:
     """Pseudo preprocessed batch: row i encodes item index i."""
     return torch.arange(start, stop, dtype=torch.float32).unsqueeze(1).repeat(1, 4)
 
 
 def test_loop_handles_tensor_batches():
-    gpu = _FakeGPU(capacity=10 ** 9)
+    gpu = _FakeGPU(capacity=10**9)
 
     def _forward(x):
         gpu.attempts.append(len(x))
@@ -513,7 +554,10 @@ def test_loop_handles_tensor_batches():
         return x
 
     out = HELPERS["_run_adaptive_batches"](
-        n_total=100, batch_size=16, fetch=_fetch_tensor, forward=_forward,
+        n_total=100,
+        batch_size=16,
+        fetch=_fetch_tensor,
+        forward=_forward,
         max_batch=16,
     )
     combined = torch.cat(out, dim=0)
@@ -533,8 +577,12 @@ def test_tensor_batch_oom_slicing_preserves_order():
         return x
 
     out = HELPERS["_run_adaptive_batches"](
-        n_total=60, batch_size=48, fetch=_fetch_tensor, forward=_forward,
-        min_batch=1, max_batch=48,
+        n_total=60,
+        batch_size=48,
+        fetch=_fetch_tensor,
+        forward=_forward,
+        min_batch=1,
+        max_batch=48,
     )
     combined = torch.cat(out, dim=0)
     assert combined.shape[0] == 60
@@ -545,6 +593,7 @@ def test_tensor_batch_oom_slicing_preserves_order():
 # ---------------------------------------------------------------------------
 # Progress-bar bookkeeping (tqdm.reset() zeroing `n` was a real bug).
 # ---------------------------------------------------------------------------
+
 
 class _SpyBar:
     """Minimal tqdm stand-in that records whether progress ever went backwards."""
@@ -567,9 +616,12 @@ class _SpyBar:
 
 def test_loop_grows_batch_via_binary_search_after_success():
     """After a successful batch the search probes upward automatically."""
-    gpu = _FakeGPU(capacity=10 ** 9)
+    gpu = _FakeGPU(capacity=10**9)
     HELPERS["_run_adaptive_batches"](
-        n_total=256, batch_size=8, fetch=_fetch_range, forward=gpu.forward,
+        n_total=256,
+        batch_size=8,
+        fetch=_fetch_range,
+        forward=gpu.forward,
         max_batch=256,
     )
     # Binary search doubles upward when no ceiling is known: 8→16→32→64→128→256
@@ -580,8 +632,12 @@ def test_loop_converges_to_exact_max_fit():
     """Binary search must converge on the largest batch that fits, not just any."""
     gpu = _FakeGPU(capacity=20)
     HELPERS["_run_adaptive_batches"](
-        n_total=256, batch_size=32, fetch=_fetch_range, forward=gpu.forward,
-        max_batch=64, min_batch=1,
+        n_total=256,
+        batch_size=32,
+        fetch=_fetch_range,
+        forward=gpu.forward,
+        max_batch=64,
+        min_batch=1,
     )
     # After convergence every batch should be at most capacity.
     assert max(gpu.succeeded) <= 20
@@ -593,8 +649,12 @@ def test_loop_regrows_after_recovering_from_oom():
     """Binary search probes upward after success, so throughput recovers."""
     gpu = _FakeGPU(capacity=8)
     HELPERS["_run_adaptive_batches"](
-        n_total=256, batch_size=64, fetch=_fetch_range, forward=gpu.forward,
-        max_batch=64, min_batch=1,
+        n_total=256,
+        batch_size=64,
+        fetch=_fetch_range,
+        forward=gpu.forward,
+        max_batch=64,
+        min_batch=1,
     )
     assert gpu.oom_count > 0
     assert max(gpu.succeeded) >= 4
@@ -605,8 +665,12 @@ def test_progress_never_rewinds_across_resizes():
     bar = _SpyBar(total=HELPERS["_remaining_batches"](64, 0, 32))
 
     HELPERS["_run_adaptive_batches"](
-        n_total=64, batch_size=32, fetch=_fetch_range, forward=gpu.forward,
-        pbar=bar, min_batch=1,
+        n_total=64,
+        batch_size=32,
+        fetch=_fetch_range,
+        forward=gpu.forward,
+        pbar=bar,
+        min_batch=1,
     )
 
     assert gpu.oom_count > 0, "resize path was not exercised"
@@ -618,8 +682,12 @@ def test_progress_total_matches_batches_actually_run():
     bar = _SpyBar(total=HELPERS["_remaining_batches"](64, 0, 32))
 
     HELPERS["_run_adaptive_batches"](
-        n_total=64, batch_size=32, fetch=_fetch_range, forward=gpu.forward,
-        pbar=bar, min_batch=1,
+        n_total=64,
+        batch_size=32,
+        fetch=_fetch_range,
+        forward=gpu.forward,
+        pbar=bar,
+        min_batch=1,
     )
     assert bar.n == len(gpu.succeeded)
     assert bar.total == bar.n, "bar must finish full, not stuck mid-way"
@@ -627,7 +695,13 @@ def test_progress_total_matches_batches_actually_run():
 
 @pytest.mark.parametrize(
     "n_total,pos,batch_size,expected",
-    [(100, 0, 10, 10), (100, 95, 10, 1), (100, 100, 10, 0), (100, 120, 10, 0), (7, 0, 3, 3)],
+    [
+        (100, 0, 10, 10),
+        (100, 95, 10, 1),
+        (100, 100, 10, 0),
+        (100, 120, 10, 0),
+        (7, 0, 3, 3),
+    ],
 )
 def test_remaining_batches(n_total, pos, batch_size, expected):
     assert HELPERS["_remaining_batches"](n_total, pos, batch_size) == expected
@@ -637,14 +711,17 @@ def test_remaining_batches(n_total, pos, batch_size, expected):
 # Opt-in: verify the estimate against a real card when one is present.
 # ---------------------------------------------------------------------------
 
+
 @pytest.mark.skipif(not torch.cuda.is_available(), reason="requires CUDA")
 def test_prediction_matches_real_gpu_measurement():
     timm = pytest.importorskip("timm")
 
     try:
-        model = timm.create_model(
-            "vit_small_patch16_224", pretrained=False, num_classes=0
-        ).cuda().eval()
+        model = (
+            timm.create_model("vit_small_patch16_224", pretrained=False, num_classes=0)
+            .cuda()
+            .eval()
+        )
         torch.cuda.empty_cache()
 
         per_image = HELPERS["_calibrate_bytes_per_image"](model, "cuda")

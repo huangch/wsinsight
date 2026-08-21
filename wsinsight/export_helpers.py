@@ -3,7 +3,9 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import List, Optional, Union
+from typing import List
+from typing import Optional
+from typing import Union
 
 import numpy as np
 import pandas as pd
@@ -14,11 +16,17 @@ from .uri_path import URIPath
 PathLike = Union[Path, URIPath]
 
 # Columns that define patch geometry / identity — never treated as measurements.
-_GEOM_COLS = frozenset({
-    "minx", "miny", "width", "height",
-    "center_x", "center_y",
-    "polygon_wkt",
-})
+_GEOM_COLS = frozenset(
+    {
+        "minx",
+        "miny",
+        "width",
+        "height",
+        "center_x",
+        "center_y",
+        "polygon_wkt",
+    }
+)
 
 
 def _read_csv(path: PathLike) -> pd.DataFrame:
@@ -109,7 +117,11 @@ def parse_include_sources(
                     f"Invalid aggregate name '{agg_name}' — must be lowercase alphanumeric with underscores."
                 )
         else:
-            valid = sorted(CELL_SOURCES | SIMPLEX_SOURCES) + ["all", "all-cells", "agg:<name>"]
+            valid = sorted(CELL_SOURCES | SIMPLEX_SOURCES) + [
+                "all",
+                "all-cells",
+                "agg:<name>",
+            ]
             raise ValueError(
                 f"Unknown source '{src}'. Valid sources: {', '.join(valid)}"
             )
@@ -162,13 +174,15 @@ def _read_xenium_summaries(h5ad_path: PathLike, slide_id: str) -> pd.DataFrame:
     if hasattr(X, "toarray"):
         X = X.toarray()
 
-    summaries = pd.DataFrame({
-        "_row_idx": row_indices.values,
-        "xenium_barcode": adata.obs.index.values,
-        "xenium_total_counts": np.asarray(X.sum(axis=1)).flatten(),
-        "xenium_n_genes": np.asarray((X > 0).sum(axis=1)).flatten(),
-        "xenium_matched": True,
-    })
+    summaries = pd.DataFrame(
+        {
+            "_row_idx": row_indices.values,
+            "xenium_barcode": adata.obs.index.values,
+            "xenium_total_counts": np.asarray(X.sum(axis=1)).flatten(),
+            "xenium_n_genes": np.asarray((X > 0).sum(axis=1)).flatten(),
+            "xenium_matched": True,
+        }
+    )
 
     # Filter out invalid row indices and set as index
     summaries = summaries[summaries["_row_idx"] >= 0].copy()
@@ -223,7 +237,9 @@ def build_export_csvs(
     if isinstance(base_dir, URIPath):
         base_csvs = [p for p in base_dir.iterdir(files_only=True) if p.suffix == ".csv"]
     else:
-        base_csvs = sorted(p for p in base_dir.iterdir() if p.is_file() and p.suffix == ".csv")
+        base_csvs = sorted(
+            p for p in base_dir.iterdir() if p.is_file() and p.suffix == ".csv"
+        )
 
     written: list[PathLike] = []
 
@@ -305,6 +321,7 @@ def measure_columns(df: pd.DataFrame) -> List[str]:
     ``neighborhood_*``, boolean flags like ``is_base_type``, etc.
     """
     return [
-        c for c in df.columns
+        c
+        for c in df.columns
         if c not in _GEOM_COLS and pd.api.types.is_numeric_dtype(df[c])
     ]

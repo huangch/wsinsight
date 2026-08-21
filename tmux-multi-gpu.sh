@@ -12,7 +12,7 @@ tmux select-layout -t wsinsight:0 even-vertical
 
 # Split each row in half — target steps by 2 because each split inserts a pane
 tmux split-window -h -t wsinsight:0.0   # row 1: 0(L), 1(R)
-tmux split-window -h -t wsinsight:0.4   # row 3: 4(L), 5(R) 
+tmux split-window -h -t wsinsight:0.4   # row 3: 4(L), 5(R)
 tmux split-window -h -t wsinsight:0.6   # row 4: 6(L), 7(R)
 
 # Layout:

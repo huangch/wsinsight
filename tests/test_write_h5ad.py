@@ -6,9 +6,9 @@ from pathlib import Path
 
 import anndata as ad
 import pandas as pd
-import pytest
 
-from wsinsight.write_h5ad import build_anndata_from_df, write_h5ads
+from wsinsight.write_h5ad import build_anndata_from_df
+from wsinsight.write_h5ad import write_h5ads
 
 
 def _sample_df() -> pd.DataFrame:

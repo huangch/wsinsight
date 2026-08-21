@@ -24,24 +24,30 @@ Per slide
 from __future__ import annotations
 
 import logging
-from concurrent.futures import ThreadPoolExecutor, as_completed
+from concurrent.futures import ThreadPoolExecutor
 from itertools import combinations_with_replacement
 from pathlib import Path
-from typing import List, Mapping
+from typing import List
+from typing import Mapping
 
 import numpy as np
 import pandas as pd
 from tqdm import tqdm
 
 from .. import errors
-from ..cancel import cancellable_as_completed, critical_section
-from ..wsi import _validate_wsi_directory, get_avg_mpp
+from ..cancel import cancellable_as_completed
+from ..cancel import critical_section
 from ..uri_path import URIPath
-
+from ..wsi import _validate_wsi_directory
+from ..wsi import get_avg_mpp
+from .graph_cache import _cache_path
+from .graph_cache import get_or_build_delaunay
+from .graph_cache import read_graph_cache
 from .insight_helpers import compute_cell_center_points
 from .insight_helpers import make_short_ids
-from .graph_cache import get_or_build_delaunay, read_graph_cache, _cache_path
-from .simplex_helpers import build_dual_graph, k_hop_adjacency_matrix, triad_geometry
+from .simplex_helpers import build_dual_graph
+from .simplex_helpers import k_hop_adjacency_matrix
+from .simplex_helpers import triad_geometry
 
 _logger = logging.getLogger(__name__)
 
@@ -142,6 +148,7 @@ def _worker(
         simplices_all = cache["simplices"].astype(np.int64)
     else:
         from .insight_helpers import _delaunay_full
+
         simplices_all, _src, _dst, _lengths = _delaunay_full(centers)
         simplices_all = simplices_all.astype(np.int64)
     _step("triangulate")
@@ -175,8 +182,8 @@ def _worker(
 
     # --- Fast path: skip dual graph + k-hop entirely -----------------------
     if no_neighborhood:
-        _step("dual graph")       # advance pbar — skipped
-        _step("k-hop nbrs")       # advance pbar — skipped
+        _step("dual graph")  # advance pbar — skipped
+        _step("k-hop nbrs")  # advance pbar — skipped
 
         cell_type_array = nodes_df["cell_type"].to_numpy()
         ct_triples = cell_type_array[simplices_sorted]
@@ -184,7 +191,7 @@ def _worker(
         triad_type = np.array(
             ["__".join(row) for row in ct_sorted.tolist()], dtype=object
         )
-        area_um2 = geom["area_px2"] * (mpp ** 2)
+        area_um2 = geom["area_px2"] * (mpp**2)
         max_edge_um_arr = geom["max_edge_px"] * mpp
         perimeter_um = geom["perimeter_px"] * mpp
 
@@ -209,8 +216,12 @@ def _worker(
         if region_cols:
             region_labels = [c.removeprefix("region_prob_") for c in region_cols]
             region_probs = nodes_df[region_cols].to_numpy(dtype=np.float32)
-            centroid_region_idx = region_probs[simplices_sorted].sum(axis=1).argmax(axis=1)
-            data["centroid_region"] = np.array(region_labels, dtype=object)[centroid_region_idx]
+            centroid_region_idx = (
+                region_probs[simplices_sorted].sum(axis=1).argmax(axis=1)
+            )
+            data["centroid_region"] = np.array(region_labels, dtype=object)[
+                centroid_region_idx
+            ]
         _step("triad comp.")
 
         out_df = pd.DataFrame(data)
@@ -239,12 +250,10 @@ def _worker(
     # To produce the alphabetized triad_type string we sort the *cell types* per row.
     ct_triples = cell_type_array[simplices_sorted]  # (T, 3)
     ct_sorted = np.sort(ct_triples, axis=1)
-    triad_type = np.array(
-        ["__".join(row) for row in ct_sorted.tolist()], dtype=object
-    )
+    triad_type = np.array(["__".join(row) for row in ct_sorted.tolist()], dtype=object)
 
     # Convert geometric px units to µm.
-    area_um2 = geom["area_px2"] * (mpp ** 2)
+    area_um2 = geom["area_px2"] * (mpp**2)
     max_edge_um_arr = geom["max_edge_px"] * mpp
     perimeter_um = geom["perimeter_px"] * mpp
 
@@ -271,14 +280,14 @@ def _worker(
     area_f32 = area_um2.astype(np.float32)
     max_edge_f32 = max_edge_um_arr.astype(np.float32)
     sum_area = np.asarray(A_k @ area_f32, dtype=np.float64)
-    sum_area_sq = np.asarray(A_k @ (area_f32 ** 2), dtype=np.float64)
+    sum_area_sq = np.asarray(A_k @ (area_f32**2), dtype=np.float64)
     sum_max_edge = np.asarray(A_k @ max_edge_f32, dtype=np.float64)
 
     with np.errstate(divide="ignore", invalid="ignore"):
         nhood_mean_area = np.where(nhood_size > 0, sum_area / nhood_size, np.nan)
         var_area = np.where(
             nhood_size > 0,
-            sum_area_sq / nhood_size - nhood_mean_area ** 2,
+            sum_area_sq / nhood_size - nhood_mean_area**2,
             np.nan,
         )
         var_area = np.where(var_area < 0, 0.0, var_area)
@@ -362,7 +371,9 @@ def tcomp_generation(
         )
 
     if slide_paths is not None:
-        normalized = [p if isinstance(p, URIPath) else URIPath(str(p)) for p in slide_paths]
+        normalized = [
+            p if isinstance(p, URIPath) else URIPath(str(p)) for p in slide_paths
+        ]
     elif wsi_dir_path is not None:
         normalized = [p for p in wsi_dir_path.iterdir() if p.is_file()]
     else:

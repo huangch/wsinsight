@@ -24,12 +24,15 @@ import signal
 import threading
 import time
 from contextlib import contextmanager
-from typing import Iterable, Iterator, TYPE_CHECKING
+from typing import TYPE_CHECKING
+from typing import Iterable
+from typing import Iterator
 
 import click
 
 if TYPE_CHECKING:  # pragma: no cover
-    from concurrent.futures import Executor, Future
+    from concurrent.futures import Executor
+    from concurrent.futures import Future
 
 
 # ---- public state --------------------------------------------------------
@@ -115,9 +118,7 @@ def critical_section(msg: str = "") -> Iterator[None]:
 def _hard_exit() -> None:
     """Print a final notice and terminate with POSIX SIGINT exit code."""
     try:
-        click.secho(
-            "\nWSInsight: aborting now (exit 130).", fg="red", err=True
-        )
+        click.secho("\nWSInsight: aborting now (exit 130).", fg="red", err=True)
     except Exception:  # pragma: no cover - stdio may be torn down
         pass
     os._exit(130)

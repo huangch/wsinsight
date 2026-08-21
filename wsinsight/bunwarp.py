@@ -59,11 +59,11 @@ def load_elastic(path: Path):
     """Read bUnwarpJ saveElasticTransformation: intervals + (I+3)x(I+3) cx,cy."""
     toks = Path(path).read_text().split()
     intervals = None
-    if "Intervals=" in toks:                          # spaced: "Intervals= 8"
+    if "Intervals=" in toks:  # spaced: "Intervals= 8"
         intervals = int(toks[toks.index("Intervals=") + 1])
     else:
         for t in toks:
-            if t.startswith("Intervals="):           # concatenated: "Intervals=8"
+            if t.startswith("Intervals="):  # concatenated: "Intervals=8"
                 intervals = int(t.split("=", 1)[1])
                 break
     if intervals is None:
@@ -71,13 +71,14 @@ def load_elastic(path: Path):
     nums = [float(t) for t in toks if _is_float(t)]
     n = (intervals + 3) ** 2
     cx = np.array(nums[:n]).reshape(intervals + 3, intervals + 3)
-    cy = np.array(nums[n:2 * n]).reshape(intervals + 3, intervals + 3)
+    cy = np.array(nums[n : 2 * n]).reshape(intervals + 3, intervals + 3)
     return intervals, cx, cy
 
 
 def _is_float(t: str) -> bool:
     try:
-        float(t); return True
+        float(t)
+        return True
     except ValueError:
         return False
 
@@ -117,8 +118,14 @@ def _apply_source_transform(xy_px: np.ndarray, p: dict) -> np.ndarray:
     return np.stack([ax, ay], 1)
 
 
-def _bspline(axy: np.ndarray, intervals: int, cx: np.ndarray, cy: np.ndarray,
-             denom_w: float, denom_h: float) -> np.ndarray:
+def _bspline(
+    axy: np.ndarray,
+    intervals: int,
+    cx: np.ndarray,
+    cy: np.ndarray,
+    denom_w: float,
+    denom_h: float,
+) -> np.ndarray:
     """bUnwarpJ elastic warp in the TargetScale-downsampled target frame.
 
     axy      : affine output (target px at the TargetScale level).
@@ -149,8 +156,10 @@ def _bspline(axy: np.ndarray, intervals: int, cx: np.ndarray, cy: np.ndarray,
 
 def _b3(t):
     t = abs(t)
-    if t < 1: return 2/3 - t*t + 0.5*t**3
-    if t < 2: return ((2 - t) ** 3) / 6
+    if t < 1:
+        return 2 / 3 - t * t + 0.5 * t**3
+    if t < 2:
+        return ((2 - t) ** 3) / 6
     return 0.0
 
 
@@ -172,8 +181,8 @@ def map_cells(xy_um, params, elastic=None, mode="affine+bspline", target_wh=None
     (N, 2) array of full-resolution H&E pixel coordinates.
     """
     p = load_params(params)
-    xy_px = np.asarray(xy_um, float) / p["pxl"]          # µm -> full-res DAPI px
-    axy = _apply_source_transform(xy_px, p)              # -> target px @ TargetScale level
+    xy_px = np.asarray(xy_um, float) / p["pxl"]  # µm -> full-res DAPI px
+    axy = _apply_source_transform(xy_px, p)  # -> target px @ TargetScale level
 
     if mode == "affine+bspline":
         if elastic is None:
@@ -189,6 +198,8 @@ def map_cells(xy_um, params, elastic=None, mode="affine+bspline", target_wh=None
         denom_h = int(target_wh[1] / tgt + 0.5) - 1
         axy = _bspline(axy, intervals, cx, cy, denom_w, denom_h)
     elif mode != "affine":
-        raise ValueError(f"unknown mode {mode!r}; expected 'affine' or 'affine+bspline'")
+        raise ValueError(
+            f"unknown mode {mode!r}; expected 'affine' or 'affine+bspline'"
+        )
 
-    return axy * p["tgt_scale"]                          # -> full-res H&E px
+    return axy * p["tgt_scale"]  # -> full-res H&E px

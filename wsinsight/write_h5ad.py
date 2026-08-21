@@ -21,7 +21,8 @@ from __future__ import annotations
 import os
 import tempfile
 from pathlib import Path
-from typing import List, Optional, Union
+from typing import List
+from typing import Union
 
 import numpy as np
 import pandas as pd
@@ -34,11 +35,17 @@ PathLike = Union[Path, URIPath]
 
 # Columns that carry geometry/identity — never treated as measurements (the X
 # matrix); kept in ``obs`` instead.  Matches ``write_geojson._GEOM_COLS``.
-_GEOM_COLS = frozenset({
-    "minx", "miny", "width", "height",
-    "center_x", "center_y",
-    "polygon_wkt",
-})
+_GEOM_COLS = frozenset(
+    {
+        "minx",
+        "miny",
+        "width",
+        "height",
+        "center_x",
+        "center_y",
+        "polygon_wkt",
+    }
+)
 
 
 def _read_csv(path: PathLike) -> pd.DataFrame:
@@ -73,11 +80,12 @@ def build_anndata_from_df(
 
     if prob_cols:
         x_cols = prob_cols
-        var_names = [c[len(prefix) + 1:] for c in prob_cols]
+        var_names = [c[len(prefix) + 1 :] for c in prob_cols]
     else:
         # Fall back to every numeric non-geometry column as the feature matrix.
         x_cols = [
-            c for c in df.columns
+            c
+            for c in df.columns
             if c not in _GEOM_COLS and pd.api.types.is_numeric_dtype(df[c])
         ]
         var_names = list(x_cols)
@@ -178,7 +186,9 @@ def write_h5ads(
     pending = [p for p in csvs if p.stem not in already]
 
     written: list[PathLike] = []
-    iterator = tqdm(pending, desc="Writing h5ad", unit="slide") if show_progress else pending
+    iterator = (
+        tqdm(pending, desc="Writing h5ad", unit="slide") if show_progress else pending
+    )
     for csv_path in iterator:
         slide_id = csv_path.stem
         out_path = out_root / f"{slide_id}.h5ad"

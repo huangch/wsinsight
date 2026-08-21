@@ -2,18 +2,14 @@
 
 from __future__ import annotations
 
-import os
 from pathlib import Path
 
 import click
 
-from ..export_helpers import (
-    build_export_csvs,
-    CELL_SOURCES,
-    SIMPLEX_SOURCES,
-    parse_include_sources,
-)
-from ..uri_path import URIPath, URIPathType
+from ..export_helpers import build_export_csvs
+from ..export_helpers import parse_include_sources
+from ..uri_path import URIPath
+from ..uri_path import URIPathType
 from ._meta import write_runtime_metadata
 from ._paths import default_storage_kwargs
 
@@ -167,7 +163,9 @@ def export(
 
     # --- Parse and validate include sources ----------------------------------
     try:
-        cell_sources, simplex_sources = parse_include_sources(include_sources, results_dir)
+        cell_sources, simplex_sources = parse_include_sources(
+            include_sources, results_dir
+        )
     except ValueError as e:
         raise click.ClickException(str(e))
 
@@ -184,14 +182,10 @@ def export(
 
     export_dir = results_dir / "export-csv"
     export_candidates = list(export_dir.iterdir(files_only=True))
-    export_csvs = [
-        _to_local_path(p) for p in export_candidates if p.suffix == ".csv"
-    ]
+    export_csvs = [_to_local_path(p) for p in export_candidates if p.suffix == ".csv"]
 
     if not export_csvs:
-        raise click.ClickException(
-            "No export CSVs were produced — nothing to export."
-        )
+        raise click.ClickException("No export CSVs were produced — nothing to export.")
 
     click.echo(f"  {len(export_csvs)} slide(s) ready for export.")
 
@@ -343,14 +337,20 @@ def _export_simplex(
     """
     source_path = results_dir / source_dir
     if not source_path.exists():
-        click.secho(f"  ⚠ {source_dir}/ not found — skipping {label} export.", fg="yellow")
+        click.secho(
+            f"  ⚠ {source_dir}/ not found — skipping {label} export.", fg="yellow"
+        )
         return
 
     csvs = [
-        _to_local_path(p) for p in source_path.iterdir(files_only=True) if p.suffix == ".csv"
+        _to_local_path(p)
+        for p in source_path.iterdir(files_only=True)
+        if p.suffix == ".csv"
     ]
     if not csvs:
-        click.secho(f"  ⚠ No CSVs in {source_dir}/ — skipping {label} export.", fg="yellow")
+        click.secho(
+            f"  ⚠ No CSVs in {source_dir}/ — skipping {label} export.", fg="yellow"
+        )
         return
 
     click.echo(f"\n  Found {len(csvs)} {label} CSV(s) in {source_dir}/")

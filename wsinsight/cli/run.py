@@ -14,36 +14,39 @@ from __future__ import annotations
 import math
 import os
 import re
-from dataclasses import dataclass, field
+from dataclasses import dataclass
+from dataclasses import field
 from pathlib import Path
-from typing import Any, List
+from typing import Any
+from typing import List
 
 import click
 import tqdm
-
 import wsinfer_zoo.client
-from ..modellib.models import resolve_zoo_registry_path
-from .infer import infer as infer_command
-from .infer import DEFAULT_STITCH_WORKERS as _DEFAULT_STITCH_WORKERS
-from .niche import niche as niche_command
-from .niche import FLOAT_LIST as _NICHE_LEIDEN_LIST
-from .niche import _DEFAULT_LEIDEN_RESOLUTIONS as _NICHE_DEFAULT_LEIDEN
-from .ecomp import ecomp as ecomp_command
-from .hplot import hplot as hplot_command
-from .ncomp import ncomp as ncomp_command
-from .patch import patch as patch_command
-from .tcomp import tcomp as tcomp_command
-from .agg import agg as agg_command
-from .sptx_import import sptx_import as import_command
-from ..export_helpers import build_export_csvs
-from ..qupath import make_qupath_project
+
 from ..cancel import raise_if_cancelled
-from ..uri_path import URIPath, URIPathType
+from ..export_helpers import build_export_csvs
+from ..modellib.models import resolve_zoo_registry_path
+from ..qupath import make_qupath_project
+from ..uri_path import URIPath
+from ..uri_path import URIPathType
 from ..write_geojson import write_geojsons
 from ..write_h5ad import write_h5ads
 from ..write_omecsv import write_omecsvs
 from ._meta import write_runtime_metadata
 from ._paths import default_storage_kwargs
+from .agg import agg as agg_command
+from .ecomp import ecomp as ecomp_command
+from .hplot import hplot as hplot_command
+from .infer import DEFAULT_STITCH_WORKERS as _DEFAULT_STITCH_WORKERS
+from .infer import infer as infer_command
+from .ncomp import ncomp as ncomp_command
+from .niche import _DEFAULT_LEIDEN_RESOLUTIONS as _NICHE_DEFAULT_LEIDEN
+from .niche import FLOAT_LIST as _NICHE_LEIDEN_LIST
+from .niche import niche as niche_command
+from .patch import patch as patch_command
+from .sptx_import import sptx_import as import_command
+from .tcomp import tcomp as tcomp_command
 
 _STORAGE_KWARGS = default_storage_kwargs()
 
@@ -100,14 +103,16 @@ def _scan_existing_artifacts(
     patches_dir = results_dir / "patches"
     if patches_dir.exists():
         status.existing_patches = {
-            p.stem for p in patches_dir.iterdir(files_only=True)
+            p.stem
+            for p in patches_dir.iterdir(files_only=True)
             if p.suffix.lower() == ".h5"
         }
 
     csv_dir = results_dir / "model-outputs-csv"
     if csv_dir.exists():
         status.existing_csvs = {
-            p.stem for p in csv_dir.iterdir(files_only=True)
+            p.stem
+            for p in csv_dir.iterdir(files_only=True)
             if p.suffix.lower() == ".csv"
         }
 
@@ -139,7 +144,9 @@ def _log_reconciliation_summary(status: SlideStatus, stage: str = "final") -> No
             click.echo(f"\n  Patched this run: {len(status.patched_this_run)}")
         failed = status.failed_patch
         if failed:
-            click.secho(f"\n  WARNING: {len(failed)} slide(s) failed patching:", fg="red")
+            click.secho(
+                f"\n  WARNING: {len(failed)} slide(s) failed patching:", fg="red"
+            )
             for stem in sorted(failed)[:10]:
                 click.echo(f"    - {stem}")
             if len(failed) > 10:
@@ -150,7 +157,9 @@ def _log_reconciliation_summary(status: SlideStatus, stage: str = "final") -> No
             click.echo(f"\n  Inferred this run: {len(status.inferred_this_run)}")
         failed = status.failed_infer
         if failed:
-            click.secho(f"\n  WARNING: {len(failed)} slide(s) failed inference:", fg="red")
+            click.secho(
+                f"\n  WARNING: {len(failed)} slide(s) failed inference:", fg="red"
+            )
             for stem in sorted(failed)[:10]:
                 click.echo(f"    - {stem}")
             if len(failed) > 10:
@@ -168,12 +177,16 @@ def _log_reconciliation_summary(status: SlideStatus, stage: str = "final") -> No
         if status.inferred_this_run:
             click.echo(f"  Inferred this run:   {len(status.inferred_this_run)}")
 
-        all_failed = status.missing_patches | (status.existing_patches - status.existing_csvs)
+        all_failed = status.missing_patches | (
+            status.existing_patches - status.existing_csvs
+        )
         if all_failed:
             click.secho(f"  Still incomplete:    {len(all_failed)}", fg="red")
             for stem in sorted(all_failed)[:10]:
                 has_patch = stem in status.existing_patches
-                click.echo(f"    - {stem} (patch={'yes' if has_patch else 'NO'}, csv=NO)")
+                click.echo(
+                    f"    - {stem} (patch={'yes' if has_patch else 'NO'}, csv=NO)"
+                )
             if len(all_failed) > 10:
                 click.echo(f"    ... and {len(all_failed) - 10} more")
         else:
@@ -383,7 +396,7 @@ def _select_kwargs(values: dict[str, Any], keys: tuple[str, ...]) -> dict[str, A
 @click.option(
     "-i",
     "--wsi-dir",
-    type=URIPathType(exists=True, **_STORAGE_KWARGS),               
+    type=URIPathType(exists=True, **_STORAGE_KWARGS),
     required=True,
     help="Directory containing whole slide images, or an image-list:///path/to/filelist.txt"
     " URI pointing to a text file with one slide path per line (blank lines and # comments ignored).",
@@ -454,9 +467,13 @@ def _select_kwargs(values: dict[str, Any], keys: tuple[str, ...]) -> dict[str, A
     "-m",
     "--model",
     "model_name",
-    type=click.Choice(sorted(wsinfer_zoo.client.load_registry(
-        registry_file=resolve_zoo_registry_path(),
-    ).models.keys())),
+    type=click.Choice(
+        sorted(
+            wsinfer_zoo.client.load_registry(
+                registry_file=resolve_zoo_registry_path(),
+            ).models.keys()
+        )
+    ),
     help="Name of the model to use from WSInsight Model Zoo. Mutually exclusive with"
     " --config.",
 )
@@ -691,7 +708,7 @@ def _select_kwargs(values: dict[str, Any], keys: tuple[str, ...]) -> dict[str, A
     default=0.5,
     type=click.FloatRange(min=0, max=1),
     help="The minimal ratio of tumor cells in the neighborhood of a cell, determining "
-        "is this cell included in a tumor region.",
+    "is this cell included in a tumor region.",
 )
 @click.option(
     "--hplot-range-max",
@@ -1340,9 +1357,14 @@ def run(
 
     # --- Stage 2: inference --------------------------------------------------
     # Only infer slides that have patches but no CSV (unless overwrite)
-    slides_needing_infer = status.needs_inference if not overwrite else status.existing_patches
+    slides_needing_infer = (
+        status.needs_inference if not overwrite else status.existing_patches
+    )
     if slides_needing_infer:
-        click.secho(f"\nRunning inference on {len(slides_needing_infer)} slide(s)...\n", fg="green")
+        click.secho(
+            f"\nRunning inference on {len(slides_needing_infer)} slide(s)...\n",
+            fg="green",
+        )
         infer_params = params.copy()
         # Filter slide_paths to only those needing inference
         infer_params["slide_paths"] = [
@@ -1351,7 +1373,9 @@ def run(
         ctx.invoke(infer_command, **_select_kwargs(infer_params, _INFER_PARAM_NAMES))
         status.inferred_this_run = slides_needing_infer.copy()
     else:
-        click.echo("\nAll slides already have inference outputs — skipping inference stage.\n")
+        click.echo(
+            "\nAll slides already have inference outputs — skipping inference stage.\n"
+        )
     raise_if_cancelled()
 
     # --- Post-inference reconciliation: update status ------------------------
@@ -1400,9 +1424,7 @@ def run(
     # --- Stage 5b (optional): cell-type aggregate (agg) analysis -------------
     if agg:
         if not agg_name or not agg_types:
-            raise click.UsageError(
-                "--agg requires both --agg-name and --agg-types."
-            )
+            raise click.UsageError("--agg requires both --agg-name and --agg-types.")
         ctx.invoke(agg_command, **_select_kwargs(params, _AGG_PARAM_NAMES))
         raise_if_cancelled()
 

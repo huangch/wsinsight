@@ -193,6 +193,7 @@ def write_color_txt(
     num_processes: int = 6,
 ) -> None:
     """Compute whiteness/blackness/redness features for each patch via multiprocessing."""
+
     def whiteness(arr: npt.ArrayLike) -> float:
         arr = np.asarray(arr)
         return np.std(arr, axis=(0, 1)).mean()  # type: ignore

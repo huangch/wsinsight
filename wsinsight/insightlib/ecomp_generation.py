@@ -21,24 +21,29 @@ Per slide
 from __future__ import annotations
 
 import logging
-from concurrent.futures import ThreadPoolExecutor, as_completed
+from concurrent.futures import ThreadPoolExecutor
 from itertools import combinations_with_replacement
 from pathlib import Path
-from typing import List, Mapping
+from typing import List
+from typing import Mapping
 
 import numpy as np
 import pandas as pd
 from tqdm import tqdm
 
 from .. import errors
-from ..cancel import cancellable_as_completed, critical_section
-from ..wsi import _validate_wsi_directory, get_avg_mpp
+from ..cancel import cancellable_as_completed
+from ..cancel import critical_section
 from ..uri_path import URIPath
-
+from ..wsi import _validate_wsi_directory
+from ..wsi import get_avg_mpp
+from .graph_cache import _cache_path
+from .graph_cache import get_or_build_delaunay
+from .graph_cache import read_graph_cache
 from .insight_helpers import compute_cell_center_points
 from .insight_helpers import make_short_ids
-from .graph_cache import get_or_build_delaunay, read_graph_cache, _cache_path
-from .simplex_helpers import build_line_graph, k_hop_adjacency_matrix
+from .simplex_helpers import build_line_graph
+from .simplex_helpers import k_hop_adjacency_matrix
 
 _logger = logging.getLogger(__name__)
 
@@ -150,6 +155,7 @@ def _worker(
     else:
         # Without a cache, fall back to inline Delaunay (rare path).
         from .insight_helpers import _delaunay_full
+
         simplices, src, dst, lengths = _delaunay_full(centers)
         cache = {
             "simplices": simplices,
@@ -178,8 +184,8 @@ def _worker(
 
     # --- Fast path: skip line graph + k-hop entirely -----------------------
     if no_neighborhood:
-        _step("line graph")       # advance pbar — skipped
-        _step("k-hop nbrs")       # advance pbar — skipped
+        _step("line graph")  # advance pbar — skipped
+        _step("k-hop nbrs")  # advance pbar — skipped
 
         cell_type_array = nodes_df["cell_type"].to_numpy()
         all_types = sorted(c.removeprefix("prob_") for c in prob_columns)
@@ -218,10 +224,12 @@ def _worker(
         if region_cols:
             region_labels = [c.removeprefix("region_prob_") for c in region_cols]
             region_probs = nodes_df[region_cols].to_numpy(dtype=np.float32)
-            edge_region_idx = (
-                (region_probs[edge_src] + region_probs[edge_dst]).argmax(axis=1)
+            edge_region_idx = (region_probs[edge_src] + region_probs[edge_dst]).argmax(
+                axis=1
             )
-            data["center_region"] = np.array(region_labels, dtype=object)[edge_region_idx]
+            data["center_region"] = np.array(region_labels, dtype=object)[
+                edge_region_idx
+            ]
         _step("edge comp.")
 
         out_df = pd.DataFrame(data)
@@ -238,10 +246,9 @@ def _worker(
     if use_gpu:
         import cupy as cp
         import cupyx.scipy.sparse as cpsp
-        from .simplex_helpers_gpu import (
-            build_line_graph_gpu,
-            k_hop_adjacency_matrix_gpu,
-        )
+
+        from .simplex_helpers_gpu import build_line_graph_gpu
+        from .simplex_helpers_gpu import k_hop_adjacency_matrix_gpu
 
         L_gpu = build_line_graph_gpu(edges, num_vertices=N)
         _step("line graph")
@@ -313,7 +320,7 @@ def _worker(
         edge_len_um_f32 = edge_len_um.astype(np.float32)
         edge_len_um_gpu = cp.asarray(edge_len_um_f32)
         sum_len = cp.asnumpy(A_k_gpu @ edge_len_um_gpu).astype(np.float64)
-        sum_len_sq = cp.asnumpy(A_k_gpu @ (edge_len_um_gpu ** 2)).astype(np.float64)
+        sum_len_sq = cp.asnumpy(A_k_gpu @ (edge_len_um_gpu**2)).astype(np.float64)
     else:
         from scipy.sparse import csr_matrix as _csr
 
@@ -330,12 +337,12 @@ def _worker(
 
         edge_len_um_f32 = edge_len_um.astype(np.float32)
         sum_len = np.asarray(A_k @ edge_len_um_f32, dtype=np.float64)
-        sum_len_sq = np.asarray(A_k @ (edge_len_um_f32 ** 2), dtype=np.float64)
+        sum_len_sq = np.asarray(A_k @ (edge_len_um_f32**2), dtype=np.float64)
 
     with np.errstate(divide="ignore", invalid="ignore"):
         mean_len = np.where(nhood_size > 0, sum_len / nhood_size, np.nan)
         var_len = np.where(
-            nhood_size > 0, sum_len_sq / nhood_size - mean_len ** 2, np.nan
+            nhood_size > 0, sum_len_sq / nhood_size - mean_len**2, np.nan
         )
         # Clip tiny negatives from float round-off before sqrt.
         var_len = np.where(var_len < 0, 0.0, var_len)
@@ -419,7 +426,9 @@ def ecomp_generation(
         )
 
     if slide_paths is not None:
-        normalized = [p if isinstance(p, URIPath) else URIPath(str(p)) for p in slide_paths]
+        normalized = [
+            p if isinstance(p, URIPath) else URIPath(str(p)) for p in slide_paths
+        ]
     elif wsi_dir_path is not None:
         normalized = [p for p in wsi_dir_path.iterdir() if p.is_file()]
     else:

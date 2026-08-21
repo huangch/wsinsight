@@ -1,16 +1,24 @@
 """Voronoi-based niche region helpers for merging cell clusters into polygons."""
 
 from __future__ import annotations
-from typing import Dict, List, Tuple, Any
+
 import math
+from typing import Any
+from typing import Dict
+from typing import List
+from typing import Tuple
+
+import geopandas as gpd
 import numpy as np
 import pandas as pd
 from scipy.spatial import Voronoi
-from shapely.geometry import Polygon, MultiPolygon, Point, LineString
+from shapely import set_precision
+from shapely.geometry import LineString
+from shapely.geometry import MultiPolygon
+from shapely.geometry import Point
+from shapely.geometry import Polygon
 from shapely.ops import unary_union
 from shapely.strtree import STRtree
-from shapely import set_precision
-import geopandas as gpd
 
 # Optional acceleration (only used if available and use_gpd_overlap=True)
 # try:
@@ -22,11 +30,16 @@ import geopandas as gpd
 
 # ============================ STRtree pairs (version-agnostic) ============================
 
+
 def _strtree_query_pairs(tree: STRtree, items):
     """Return unique geometry index pairs that intersect, abstracting STRtree APIs."""
     if hasattr(tree, "query_bulk"):
         pairs = tree.query_bulk(items)
-        out, ia, ib = set(), np.asarray(pairs[0]).tolist(), np.asarray(pairs[1]).tolist()
+        out, ia, ib = (
+            set(),
+            np.asarray(pairs[0]).tolist(),
+            np.asarray(pairs[1]).tolist(),
+        )
         for i, j in zip(ia, ib):
             if j > i:
                 out.add((int(i), int(j)))
@@ -34,7 +47,7 @@ def _strtree_query_pairs(tree: STRtree, items):
 
     out = set()
     probe = tree.query(items[0])
-    returns_indices = (len(probe) > 0 and isinstance(probe[0], (int, np.integer)))
+    returns_indices = len(probe) > 0 and isinstance(probe[0], (int, np.integer))
 
     if returns_indices:
         for i, gi in enumerate(items):
@@ -86,7 +99,10 @@ def _strtree_query_pairs(tree: STRtree, items):
 
 # ============================ Voronoi helpers ============================
 
-def _finite_voronoi_regions_no_bbox(vor: Voronoi, far_mult: float = 10.0) -> Dict[int, Polygon]:
+
+def _finite_voronoi_regions_no_bbox(
+    vor: Voronoi, far_mult: float = 10.0
+) -> Dict[int, Polygon]:
     """Construct bounded Voronoi regions by extending rays to a distant envelope."""
     out: Dict[int, Polygon] = {}
     center = vor.points.mean(axis=0)
@@ -115,7 +131,7 @@ def _finite_voronoi_regions_no_bbox(vor: Voronoi, far_mult: float = 10.0) -> Dic
                 continue
             t = vor.points[q] - vor.points[p]
             n = np.array([-t[1], t[0]], dtype=float)
-            n /= (np.linalg.norm(n) + 1e-12)
+            n /= np.linalg.norm(n) + 1e-12
             midpoint = (vor.points[p] + vor.points[q]) / 2.0
             direction = np.sign(np.dot(midpoint - center, n)) * n
             far_point = midpoint + direction * R
@@ -146,19 +162,21 @@ def build_capped_voronoi_from_df(
     max_radius_um: float = 15.0,
     niche_prefix: str = "niche_",
     circle_resolution: int = 64,
-    min_area: float = 0.0
+    min_area: float = 0.0,
 ) -> Tuple[Dict[int, List[Polygon]], np.ndarray]:
     """Generate per-cluster capped Voronoi polygons and return label mapping."""
-    cx = df["minx"].to_numpy(float) + df["width"].to_numpy(float)/2.0
-    cy = df["miny"].to_numpy(float) + df["height"].to_numpy(float)/2.0
+    cx = df["minx"].to_numpy(float) + df["width"].to_numpy(float) / 2.0
+    cy = df["miny"].to_numpy(float) + df["height"].to_numpy(float) / 2.0
     pts_all = np.column_stack([cx, cy])
 
     niche_cols = [c for c in df.columns if c.startswith(niche_prefix)]
     # Prefer 'niche_id' (integer niche cluster labels).  Fall back to
     # 'classification' only when 'niche_id' is absent — not when both exist,
     # because 'classification' in model-output CSVs is a string cell-type name.
-    _label_col = "niche_id" if "niche_id" in df.columns else (
-        "classification" if "classification" in df.columns else None
+    _label_col = (
+        "niche_id"
+        if "niche_id" in df.columns
+        else ("classification" if "classification" in df.columns else None)
     )
     if not niche_cols and _label_col is None:
         raise ValueError(
@@ -199,25 +217,31 @@ def build_capped_voronoi_from_df(
         if p.geom_type == "Polygon":
             label_to_polys.setdefault(lab, []).append(p)
         else:
-            label_to_polys.setdefault(lab, []).extend([g for g in p.geoms if not g.is_empty])
+            label_to_polys.setdefault(lab, []).extend(
+                [g for g in p.geoms if not g.is_empty]
+            )
 
     return label_to_polys, labels
 
 
 # ============================ Index / remap helpers ============================
 
+
 def _union_find_components(n: int, edges: List[Tuple[int, int]]) -> List[List[int]]:
     """Group vertex indices into connected components given undirected edges."""
     parent = list(range(n))
     rank = [0] * n
+
     def find(x):
         while parent[x] != x:
             parent[x] = parent[parent[x]]
             x = parent[x]
         return x
+
     def union(a, b):
         ra, rb = find(a), find(b)
-        if ra == rb: return
+        if ra == rb:
+            return
         if rank[ra] < rank[rb]:
             parent[ra] = rb
         elif rank[ra] > rank[rb]:
@@ -225,12 +249,18 @@ def _union_find_components(n: int, edges: List[Tuple[int, int]]) -> List[List[in
         else:
             parent[rb] = ra
             rank[ra] += 1
-    for i, j in edges: union(i, j)
+
+    for i, j in edges:
+        union(i, j)
     buckets: Dict[int, List[int]] = {}
-    for i in range(n): buckets.setdefault(find(i), []).append(i)
+    for i in range(n):
+        buckets.setdefault(find(i), []).append(i)
     return list(buckets.values())
 
-def remap_edges_to_valid_indices(edges_df: pd.DataFrame, valid_mask: np.ndarray) -> pd.DataFrame:
+
+def remap_edges_to_valid_indices(
+    edges_df: pd.DataFrame, valid_mask: np.ndarray
+) -> pd.DataFrame:
     """Shrink edge indices down to the subset of nodes flagged as valid."""
     valid_idx = np.flatnonzero(valid_mask)
     orig2valid = {orig: k for k, orig in enumerate(valid_idx)}
@@ -243,30 +273,40 @@ def remap_edges_to_valid_indices(edges_df: pd.DataFrame, valid_mask: np.ndarray)
 
 # ============================ Exact shared-edge merge helpers ============================
 
+
 def _q_coord(x: float, grid: float) -> float:
     return float(np.round(x / grid) * grid) if grid > 0 else float(x)
+
 
 def _normalize_edge(p1, p2, grid):
     a = (_q_coord(p1[0], grid), _q_coord(p1[1], grid))
     b = (_q_coord(p2[0], grid), _q_coord(p2[1], grid))
     return (a, b) if a <= b else (b, a)
 
+
 def _polygon_edges(poly: Polygon, grid: float, include_holes: bool = True):
     edges = []
+
     def ring_edges(coords):
         for i in range(len(coords) - 1):
-            p1 = coords[i]; p2 = coords[i+1]
+            p1 = coords[i]
+            p2 = coords[i + 1]
             edges.append(_normalize_edge((p1[0], p1[1]), (p2[0], p2[1]), grid))
+
     ring_edges(list(poly.exterior.coords))
     if include_holes:
         for hole in poly.interiors:
             ring_edges(list(hole.coords))
     return edges
 
-def _build_shared_edge_adjacency(polys: List[Polygon], edge_grid_px: float) -> List[Tuple[int,int]]:
-    edge_to_polys: Dict[Tuple[Tuple[float,float], Tuple[float,float]], List[int]] = {}
+
+def _build_shared_edge_adjacency(
+    polys: List[Polygon], edge_grid_px: float
+) -> List[Tuple[int, int]]:
+    edge_to_polys: Dict[Tuple[Tuple[float, float], Tuple[float, float]], List[int]] = {}
     for i, g in enumerate(polys):
-        if g.is_empty: continue
+        if g.is_empty:
+            continue
         for e in _polygon_edges(g, edge_grid_px, True):
             lst = edge_to_polys.get(e)
             if lst is None:
@@ -276,56 +316,80 @@ def _build_shared_edge_adjacency(polys: List[Polygon], edge_grid_px: float) -> L
                     lst.append(i)
     adj = []
     for lst in edge_to_polys.values():
-        if len(lst) < 2: continue
+        if len(lst) < 2:
+            continue
         uniq = sorted(set(lst))
         for a in range(len(uniq)):
-            for b in range(a+1, len(uniq)):
+            for b in range(a + 1, len(uniq)):
                 adj.append((uniq[a], uniq[b]))
-    return sorted(set((min(i,j), max(i,j)) for (i,j) in adj)) if adj else []
+    return sorted(set((min(i, j), max(i, j)) for (i, j) in adj)) if adj else []
 
 
 # ============================ Tolerant overlap (classic) ============================
 
+
 def _segmentize_polygon_edges(poly: Polygon, grid: float, include_holes: bool = True):
     segs: List[Tuple[LineString, int]] = []
     rid = 0
+
     def add_ring(coords, rid):
         for i in range(len(coords) - 1):
-            x1,y1 = coords[i]; x2,y2 = coords[i+1]
-            x1 = _q_coord(x1, grid); y1 = _q_coord(y1, grid)
-            x2 = _q_coord(x2, grid); y2 = _q_coord(y2, grid)
-            if (x1 == x2) and (y1 == y2): continue
-            segs.append((LineString([(x1,y1),(x2,y2)]), rid))
-    add_ring(list(poly.exterior.coords), rid); rid += 1
+            x1, y1 = coords[i]
+            x2, y2 = coords[i + 1]
+            x1 = _q_coord(x1, grid)
+            y1 = _q_coord(y1, grid)
+            x2 = _q_coord(x2, grid)
+            y2 = _q_coord(y2, grid)
+            if (x1 == x2) and (y1 == y2):
+                continue
+            segs.append((LineString([(x1, y1), (x2, y2)]), rid))
+
+    add_ring(list(poly.exterior.coords), rid)
+    rid += 1
     if include_holes:
         for hole in poly.interiors:
-            add_ring(list(hole.coords), rid); rid += 1
+            add_ring(list(hole.coords), rid)
+            rid += 1
     return segs
 
+
 def _angle_between(a, b) -> float:
-    ax, ay = a; bx, by = b
-    na = math.hypot(ax, ay); nb = math.hypot(bx, by)
-    if na == 0 or nb == 0: return math.pi
-    cosv = max(-1.0, min(1.0, (ax*bx + ay*by) / (na*nb)))
+    ax, ay = a
+    bx, by = b
+    na = math.hypot(ax, ay)
+    nb = math.hypot(bx, by)
+    if na == 0 or nb == 0:
+        return math.pi
+    cosv = max(-1.0, min(1.0, (ax * bx + ay * by) / (na * nb)))
     return math.acos(cosv)
 
-def _colinear_close_overlap_len(s1: LineString, s2: LineString, angle_tol_rad: float, dist_tol: float) -> float:
+
+def _colinear_close_overlap_len(
+    s1: LineString, s2: LineString, angle_tol_rad: float, dist_tol: float
+) -> float:
     if not s1.envelope.intersects(s2.envelope):
         return 0.0
-    (x1,y1),(x2,y2) = list(s1.coords)
-    (u1,v1),(u2,v2) = list(s2.coords)
-    v1a = (x2-x1, y2-y1); v2a = (u2-u1, v2-v1)
+    (x1, y1), (x2, y2) = list(s1.coords)
+    (u1, v1), (u2, v2) = list(s2.coords)
+    v1a = (x2 - x1, y2 - y1)
+    v2a = (u2 - u1, v2 - v1)
     ang = _angle_between(v1a, v2a)
     ang = min(ang, abs(math.pi - ang))
-    if ang > angle_tol_rad: return 0.0
-    if s1.distance(s2) > dist_tol: return 0.0
+    if ang > angle_tol_rad:
+        return 0.0
+    if s1.distance(s2) > dist_tol:
+        return 0.0
 
     def proj(seg):
-        (a,b),(c,d) = seg.coords
-        return sorted([a,c]) if abs(c-a) >= abs(d-b) else sorted([b,d])
-    r1 = proj(s1); r2 = proj(s2)
-    lo = max(r1[0], r2[0]); hi = min(r1[1], r2[1])
+        (a, b), (c, d) = seg.coords
+        return sorted([a, c]) if abs(c - a) >= abs(d - b) else sorted([b, d])
+
+    r1 = proj(s1)
+    r2 = proj(s2)
+    lo = max(r1[0], r2[0])
+    hi = min(r1[1], r2[1])
     return float(max(0.0, hi - lo))
+
 
 # def _build_overlap_edge_adjacency(polys: List[Polygon],
 #                                   edge_grid_px: float,
@@ -358,11 +422,14 @@ def _colinear_close_overlap_len(s1: LineString, s2: LineString, angle_tol_rad: f
 
 # ============================ Tolerant overlap (GeoPandas / sindex) ============================
 
-def _build_overlap_edge_adjacency_gpd(polys: List[Polygon],
-                                      edge_grid_px: float,
-                                      angle_tol_deg: float,
-                                      dist_tol_px: float,
-                                      min_overlap_px: float) -> List[Tuple[int,int]]:
+
+def _build_overlap_edge_adjacency_gpd(
+    polys: List[Polygon],
+    edge_grid_px: float,
+    angle_tol_deg: float,
+    dist_tol_px: float,
+    min_overlap_px: float,
+) -> List[Tuple[int, int]]:
     """
     GeoPandas+sindex accelerated version. Same thresholds & logic as classic path.
     """
@@ -373,13 +440,17 @@ def _build_overlap_edge_adjacency_gpd(polys: List[Polygon],
     # segmentize & build owner table
     seg_geom, owners = [], []
     for i, g in enumerate(polys):
-        if g.is_empty: continue
+        if g.is_empty:
+            continue
         for ls, _ in _segmentize_polygon_edges(g, edge_grid_px, True):
-            seg_geom.append(ls); owners.append(i)
+            seg_geom.append(ls)
+            owners.append(i)
     if not seg_geom:
         return []
 
-    gdf = gpd.GeoDataFrame({"owner": owners}, geometry=gpd.GeoSeries(seg_geom), crs=None)  # pixel space
+    gdf = gpd.GeoDataFrame(
+        {"owner": owners}, geometry=gpd.GeoSeries(seg_geom), crs=None
+    )  # pixel space
     # Expand bboxes by dist_tol_px to get candidate pairs
     # (buffer(0) keeps them as LineStrings; but we only need bbox)
     b = gdf.geometry.bounds
@@ -389,9 +460,14 @@ def _build_overlap_edge_adjacency_gpd(polys: List[Polygon],
     cand_pairs = set()
     for i, row in gdf.iterrows():
         minx, miny, maxx, maxy = row.geometry.bounds
-        query_rect = (minx - dist_tol_px, miny - dist_tol_px, maxx + dist_tol_px, maxy + dist_tol_px)
+        query_rect = (
+            minx - dist_tol_px,
+            miny - dist_tol_px,
+            maxx + dist_tol_px,
+            maxy + dist_tol_px,
+        )
         for j in sidx.intersection(query_rect):
-            if j <= i: 
+            if j <= i:
                 continue
             if gdf.at[i, "owner"] == gdf.at[j, "owner"]:
                 continue
@@ -400,7 +476,8 @@ def _build_overlap_edge_adjacency_gpd(polys: List[Polygon],
     angle_tol_rad = math.radians(angle_tol_deg)
     pairs_set = set()
     for i, j in cand_pairs:
-        s1 = gdf.geometry.iat[i]; s2 = gdf.geometry.iat[j]
+        s1 = gdf.geometry.iat[i]
+        s2 = gdf.geometry.iat[j]
         overlap = _colinear_close_overlap_len(s1, s2, angle_tol_rad, dist_tol_px)
         if overlap >= min_overlap_px:
             oi, oj = int(gdf.at[i, "owner"]), int(gdf.at[j, "owner"])
@@ -411,41 +488,55 @@ def _build_overlap_edge_adjacency_gpd(polys: List[Polygon],
 
 # ============================ Self-clean & fallback boundary length ============================
 
+
 def _clean_polygon_self_overlaps(poly: Polygon, grid_px: float) -> Polygon:
     """Resolve self-overlaps/numerical noise in polygons using snap+buffer tricks."""
-    if poly.is_empty: return poly
-    if grid_px > 0: poly = set_precision(poly, grid_px)
+    if poly.is_empty:
+        return poly
+    if grid_px > 0:
+        poly = set_precision(poly, grid_px)
     p = poly.buffer(0)
-    if p.is_empty: return p
-    if p.geom_type == "Polygon": return p
+    if p.is_empty:
+        return p
+    if p.geom_type == "Polygon":
+        return p
     try:
         u = unary_union(p)
-        if u.geom_type == "Polygon": return u
+        if u.geom_type == "Polygon":
+            return u
         parts = [g for g in u.geoms if not g.is_empty]
-        if not parts: return u
+        if not parts:
+            return u
         parts.sort(key=lambda g: g.area, reverse=True)
         return parts[0]
     except Exception:
         return p
 
-def _shared_boundary_len(a: Polygon, b: Polygon, tol_len_px: float, boundary_buffer_px: float = 0.0) -> float:
+
+def _shared_boundary_len(
+    a: Polygon, b: Polygon, tol_len_px: float, boundary_buffer_px: float = 0.0
+) -> float:
     """Measure shared boundary length between polygons with optional buffering."""
     if boundary_buffer_px > 0:
         a = a.buffer(boundary_buffer_px)
         b = b.buffer(boundary_buffer_px)
     inter = a.boundary.intersection(b.boundary)
-    if inter.is_empty: return 0.0
-    if inter.geom_type == "LineString": return inter.length
-    if inter.geom_type == "MultiLineString": return sum(seg.length for seg in inter.geoms)
+    if inter.is_empty:
+        return 0.0
+    if inter.geom_type == "LineString":
+        return inter.length
+    if inter.geom_type == "MultiLineString":
+        return sum(seg.length for seg in inter.geoms)
     return 0.0
 
 
 # ============================ Main pipeline ============================
 
+
 def merge_same_label_by_shared_edges_iterative(
     df: pd.DataFrame,
-    edges_df: pd.DataFrame,          # ['source','target'] from your filtered Delaunay
-    niche_clustering_k = 10,
+    edges_df: pd.DataFrame,  # ['source','target'] from your filtered Delaunay
+    niche_clustering_k=10,
     *,
     mpp: float,
     max_radius_um: float = 15.0,
@@ -469,16 +560,18 @@ def merge_same_label_by_shared_edges_iterative(
 ) -> pd.DataFrame:
     """Merge niche Voronoi pieces of the same label using exact and tolerant edges."""
     # Step 0: centers & labels
-    cx = df["minx"].to_numpy(float) + df["width"].to_numpy(float)/2.0
-    cy = df["miny"].to_numpy(float) + df["height"].to_numpy(float)/2.0
+    cx = df["minx"].to_numpy(float) + df["width"].to_numpy(float) / 2.0
+    cy = df["miny"].to_numpy(float) + df["height"].to_numpy(float) / 2.0
     pts_all = np.column_stack([cx, cy])
 
     niche_cols = [c for c in df.columns if c.startswith(niche_prefix)]
     # Prefer 'niche_id' (integer niche cluster labels).  Fall back to
     # 'classification' only when 'niche_id' is absent — not when both exist,
     # because 'classification' in model-output CSVs is a string cell-type name.
-    _label_col = "niche_id" if "niche_id" in df.columns else (
-        "classification" if "classification" in df.columns else None
+    _label_col = (
+        "niche_id"
+        if "niche_id" in df.columns
+        else ("classification" if "classification" in df.columns else None)
     )
     if not niche_cols and _label_col is None:
         raise ValueError(
@@ -512,7 +605,8 @@ def merge_same_label_by_shared_edges_iterative(
 
     capped: Dict[int, Polygon] = {}
     for i, poly in regions.items():
-        if poly.is_empty: continue
+        if poly.is_empty:
+            continue
         x, y = pts[i]
         disk = Point(x, y).buffer(r_px, resolution=circle_resolution)
         p = poly.intersection(disk).buffer(0)
@@ -531,12 +625,18 @@ def merge_same_label_by_shared_edges_iterative(
     _capped_mask = np.zeros(N, dtype=bool)
     _capped_mask[np.fromiter(capped.keys(), dtype=np.int64, count=len(capped))] = True
     _sel = (
-        (_src >= 0) & (_src < N) & (_tgt >= 0) & (_tgt < N)
-        & _capped_mask[_src] & _capped_mask[_tgt]
+        (_src >= 0)
+        & (_src < N)
+        & (_tgt >= 0)
+        & (_tgt < N)
+        & _capped_mask[_src]
+        & _capped_mask[_tgt]
         & (labels[_src] == labels[_tgt])
     )
     for i, j in zip(_src[_sel].tolist(), _tgt[_sel].tolist()):
-        shared = _shared_boundary_len(capped[i], capped[j], tol_len_px, boundary_buffer_px)
+        shared = _shared_boundary_len(
+            capped[i], capped[j], tol_len_px, boundary_buffer_px
+        )
         if shared > tol_len_px:
             adj_edges.append((i, j))
 
@@ -549,7 +649,8 @@ def merge_same_label_by_shared_edges_iterative(
     rev = {k: i for i, k in idx_map.items()}
     for comp in comps:
         nodes = [rev[k] for k in comp if rev[k] in capped]
-        if not nodes: continue
+        if not nodes:
+            continue
         lab = int(labels[nodes[0]])
         merged = unary_union([capped[u] for u in nodes]).buffer(0)
         parts = [merged] if merged.geom_type == "Polygon" else list(merged.geoms)
@@ -559,9 +660,10 @@ def merge_same_label_by_shared_edges_iterative(
 
     used_nodes = set([i for e in adj_edges for i in e])
     for i in active:
-        if i in used_nodes: continue
+        if i in used_nodes:
+            continue
         lab = int(labels[i])
-        if (min_area <= 0 or capped[i].area >= min_area):
+        if min_area <= 0 or capped[i].area >= min_area:
             out.setdefault(lab, []).append(capped[i])
 
     # Step 3: iterative polygon-level merging
@@ -573,14 +675,24 @@ def merge_same_label_by_shared_edges_iterative(
         for lab, polys in out.items():
             if not polys:
                 continue
-            polys = [_clean_polygon_self_overlaps(g, grid_px=edge_grid_px) for g in polys]
-            polys = [g for g in polys if (not g.is_empty and (min_area <= 0 or g.area >= min_area))]
+            polys = [
+                _clean_polygon_self_overlaps(g, grid_px=edge_grid_px) for g in polys
+            ]
+            polys = [
+                g
+                for g in polys
+                if (not g.is_empty and (min_area <= 0 or g.area >= min_area))
+            ]
             if len(polys) <= 1:
                 new_out.setdefault(lab, []).extend(polys)
                 continue
 
-            snap_polys = [set_precision(g, edge_grid_px) if edge_grid_px > 0 else g for g in polys]
-            edge_adj = _build_shared_edge_adjacency(snap_polys, edge_grid_px=edge_grid_px)
+            snap_polys = [
+                set_precision(g, edge_grid_px) if edge_grid_px > 0 else g for g in polys
+            ]
+            edge_adj = _build_shared_edge_adjacency(
+                snap_polys, edge_grid_px=edge_grid_px
+            )
 
             work_polys = polys
             if edge_adj:
@@ -588,10 +700,11 @@ def merge_same_label_by_shared_edges_iterative(
                 merged_after_edges: List[Polygon] = []
                 for comp in comps_edge:
                     m = unary_union([polys[k] for k in comp]).buffer(0)
-                    if m.is_empty: continue
+                    if m.is_empty:
+                        continue
                     cands = [m] if m.geom_type == "Polygon" else list(m.geoms)
                     for g in cands:
-                        if (min_area <= 0 or g.area >= min_area):
+                        if min_area <= 0 or g.area >= min_area:
                             merged_after_edges.append(g)
                 if len(merged_after_edges) != len(polys):
                     changed = True
@@ -612,17 +725,25 @@ def merge_same_label_by_shared_edges_iterative(
                     after_ol: List[Polygon] = []
                     for comp in comps_ol:
                         m = unary_union([work_polys[k] for k in comp]).buffer(0)
-                        if m.is_empty: continue
+                        if m.is_empty:
+                            continue
                         cands = [m] if m.geom_type == "Polygon" else list(m.geoms)
                         for g in cands:
-                            if (min_area <= 0 or g.area >= min_area):
+                            if min_area <= 0 or g.area >= min_area:
                                 after_ol.append(g)
                     if len(after_ol) != len(work_polys):
                         changed = True
                     work_polys = after_ol
 
-            work_polys = [_clean_polygon_self_overlaps(g, grid_px=edge_grid_px) for g in work_polys]
-            work_polys = [g for g in work_polys if (not g.is_empty and (min_area <= 0 or g.area >= min_area))]
+            work_polys = [
+                _clean_polygon_self_overlaps(g, grid_px=edge_grid_px)
+                for g in work_polys
+            ]
+            work_polys = [
+                g
+                for g in work_polys
+                if (not g.is_empty and (min_area <= 0 or g.area >= min_area))
+            ]
             new_out.setdefault(lab, []).extend(work_polys)
 
         out = new_out
@@ -636,6 +757,7 @@ def merge_same_label_by_shared_edges_iterative(
 
 # ============================ Output serialization ============================
 
+
 def _pieces_dict_to_dataframe(
     pieces_dict: dict,
     *,
@@ -644,7 +766,8 @@ def _pieces_dict_to_dataframe(
     geom_format: str = "wkt",
 ) -> pd.DataFrame:
     """Serialize merged polygons back to a DataFrame with niche_id column."""
-    import json, binascii
+    import binascii
+    import json
 
     rows = []
 
@@ -676,10 +799,12 @@ def _pieces_dict_to_dataframe(
         for poly in polys:
             if poly.is_empty or not isinstance(poly, (Polygon, MultiPolygon)):
                 continue
-            rows.append({
-                "niche_id": label_to_int(lab),
-                geom_col: serialize_geom(poly),
-                "area": float(poly.area),
-            })
+            rows.append(
+                {
+                    "niche_id": label_to_int(lab),
+                    geom_col: serialize_geom(poly),
+                    "area": float(poly.area),
+                }
+            )
 
     return pd.DataFrame(rows, columns=["niche_id", geom_col, "area"])

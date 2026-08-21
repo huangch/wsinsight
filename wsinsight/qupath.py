@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import sys
 from pathlib import Path
+
 from .uri_path import URIPath
 
 try:
@@ -45,9 +46,7 @@ def add_image_and_geojson(
         print(f"Failed to run load_geojson function with error:: {e}")
 
 
-def make_qupath_project(
-        wsi_dir: str | URIPath | None,
-        results_dir: Path) -> None:
+def make_qupath_project(wsi_dir: str | URIPath | None, results_dir: Path) -> None:
     """Materialize a QuPath project from WSInsight CSV+GeoJSON outputs."""
     if not HAS_PAQUO:
         print(

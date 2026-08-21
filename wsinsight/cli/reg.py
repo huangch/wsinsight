@@ -2,32 +2,27 @@
 
 from __future__ import annotations
 
-import os
 from pathlib import Path
 
 import click
 import pandas as pd
 import tqdm
 
-from ..insightlib.region_registration import (
-    register_objects_to_objects,
-    register_objects_to_regions,
-)
-from ..io.schema import (
-    discover_prob_prefixes,
-    make_object_prefix,
-    make_region_prefix,
-    resolve_no_tag_prefix,
-)
-from ..uri_path import URIPath, URIPathType
-from ..wsi import CannotReadSpacing, get_avg_mpp
+from ..insightlib.region_registration import register_objects_to_objects
+from ..insightlib.region_registration import register_objects_to_regions
+from ..io.schema import discover_prob_prefixes
+from ..io.schema import make_object_prefix
+from ..io.schema import make_region_prefix
+from ..io.schema import resolve_no_tag_prefix
+from ..uri_path import URIPath
+from ..uri_path import URIPathType
 from ..write_geojson import write_geojsons
 from ..write_omecsv import write_omecsvs
+from ..wsi import CannotReadSpacing
+from ..wsi import get_avg_mpp
 from ._meta import write_runtime_metadata
-from ._paths import (
-    default_storage_kwargs,
-    ensure_input_directory,
-)
+from ._paths import default_storage_kwargs
+from ._paths import ensure_input_directory
 
 _STORAGE_KWARGS = default_storage_kwargs()
 
@@ -208,7 +203,9 @@ def reg(
             f"--results-dir does not contain a model-outputs-csv/ subfolder: {results_dir}"
         )
     if not sec_csv_dir.exists():
-        sec_flag = "--region-inference-dir" if kind == "region" else "--object-inference-dir"
+        sec_flag = (
+            "--region-inference-dir" if kind == "region" else "--object-inference-dir"
+        )
         raise click.ClickException(
             f"{sec_flag} does not contain a model-outputs-csv/ subfolder: {secondary_dir}"
         )
@@ -216,12 +213,13 @@ def reg(
     if wsi_dir is not None:
         wsi_dir = wsi_dir.coerce_image_list()
         ensure_input_directory(wsi_dir, "--wsi-dir")
-        wsi_paths = [p for p in wsi_dir.iterdir()
-                     if wsi_dir.scheme == "image-list" or p.is_file()]
+        wsi_paths = [
+            p
+            for p in wsi_dir.iterdir()
+            if wsi_dir.scheme == "image-list" or p.is_file()
+        ]
         wsi_by_stem: dict[str, URIPath] | None = {p.stem: p for p in wsi_paths}
-        obj_csvs = sorted(
-            obj_csv_dir / p.with_suffix(".csv").name for p in wsi_paths
-        )
+        obj_csvs = sorted(obj_csv_dir / p.with_suffix(".csv").name for p in wsi_paths)
     else:
         wsi_by_stem = None
         obj_csvs = sorted(p for p in obj_csv_dir.iterdir() if p.suffix == ".csv")
@@ -251,8 +249,7 @@ def reg(
     processed = 0
     low_match_slides: list[str] = []
     with tqdm.tqdm(obj_csvs, desc="Slides", position=0) as slide_bar:
-        chunk_bar = tqdm.tqdm(desc="Registering", position=1, leave=False,
-                              unit="chunk")
+        chunk_bar = tqdm.tqdm(desc="Registering", position=1, leave=False, unit="chunk")
         for obj_csv in slide_bar:
             sec_csv = sec_csv_dir / obj_csv.name
             if not sec_csv.exists():
@@ -287,7 +284,10 @@ def reg(
 
             if kind == "region":
                 slide_df, match_rate = register_objects_to_regions(
-                    slide_df, annot_df, pbar=chunk_bar, out_prefix=prefix,
+                    slide_df,
+                    annot_df,
+                    pbar=chunk_bar,
+                    out_prefix=prefix,
                 )
             else:
                 # Resolve per-slide pixel spacing.  Prefer the WSI metadata
@@ -298,9 +298,7 @@ def reg(
                     wsi_path = wsi_by_stem.get(obj_csv.stem)
                     if wsi_path is not None:
                         try:
-                            slide_spacing = float(
-                                get_avg_mpp(wsi_path.__fspath__())
-                            )
+                            slide_spacing = float(get_avg_mpp(wsi_path.__fspath__()))
                             spacing_source = "WSI metadata"
                         except (CannotReadSpacing, OSError, ValueError) as exc:
                             click.secho(
@@ -339,9 +337,7 @@ def reg(
             processed += 1
         chunk_bar.close()
 
-    click.secho(
-        f"\nDone. Processed: {processed}, skipped: {skipped}.\n", fg="green"
-    )
+    click.secho(f"\nDone. Processed: {processed}, skipped: {skipped}.\n", fg="green")
     if low_match_slides:
         click.secho(
             f"WARNING: {len(low_match_slides)} slide(s) had object match-rate "

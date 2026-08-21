@@ -499,7 +499,7 @@ class URIPath:
     def _validate_credentials(self) -> None:
         """
         Fail fast on bad credentials for remote targets.
-    
+
         Local paths: no-op.
         gdc-manifest: if a token is set, do a tiny HEAD.
         S3 (and other fsspec remotes): verify AWS identity (S3) or init fs.
@@ -525,7 +525,7 @@ class URIPath:
             except Exception as e:
                 raise RuntimeError(f"GDC credential check failed: {e!r}") from e
             return
-    
+
         # fsspec-backed remotes
         if self.scheme == "s3":
             # 1) Init the filesystem with current options (surfaces invalid tokens in practice)
@@ -534,7 +534,7 @@ class URIPath:
             except Exception as e:
                 raise RuntimeError(f"S3 filesystem init failed for {self.uri!r}: {e!r}") from e
             return
-    
+
         if self.scheme == "gs":
             # Init gcsfs with current options (surfaces missing gcsfs / bad creds early).
             # Auth defaults to Application Default Credentials
@@ -544,13 +544,13 @@ class URIPath:
             except Exception as e:
                 raise RuntimeError(f"GCS filesystem init failed for {self.uri!r}: {e!r}") from e
             return
-    
+
         # Generic fsspec scheme (e.g., abfs): try to init the FS
         try:
             self._fs_and_path()
         except Exception as e:
             raise RuntimeError(f"Remote filesystem init failed for {self.uri!r}: {e!r}") from e
-    
+
 
     # ------------------------ fsspec helpers ------------------------
     def _fs_and_path(self, **overrides: Any):

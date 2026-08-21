@@ -14,12 +14,11 @@ from pathlib import Path
 import click
 import pandas as pd
 
-from ..uri_path import URIPath, URIPathType
+from ..uri_path import URIPath
+from ..uri_path import URIPathType
 from ._meta import write_runtime_metadata
-from ._paths import (
-    default_storage_kwargs,
-    ensure_input_directory,
-)
+from ._paths import default_storage_kwargs
+from ._paths import ensure_input_directory
 
 _STORAGE_KWARGS = default_storage_kwargs()
 
@@ -40,7 +39,8 @@ class _FloatListParamType(click.ParamType):
             self.fail(
                 f"{value!r} is not a comma-separated list of numbers "
                 "(e.g. '0.5,1.0,2.0').",
-                param, ctx,
+                param,
+                ctx,
             )
         if not out:
             self.fail("at least one resolution is required.", param, ctx)
@@ -63,6 +63,7 @@ def _num_cpus() -> int:
 # ---------------------------------------------------------------------------
 # Click command
 # ---------------------------------------------------------------------------
+
 
 @click.command()
 @click.option(
@@ -221,9 +222,7 @@ def _num_cpus() -> int:
     default=50,
     show_default=True,
     type=click.IntRange(min=1),
-    help=(
-        "Never trigger early stopping before this many epochs have elapsed."
-    ),
+    help=("Never trigger early stopping before this many epochs have elapsed."),
 )
 @click.option(
     "--amp",
@@ -269,9 +268,7 @@ def _num_cpus() -> int:
     default=15.0,
     show_default=True,
     type=click.FloatRange(min=0),
-    help=(
-        "Maximal cell radius (um) used when merging annotation-level regions."
-    ),
+    help=("Maximal cell radius (um) used when merging annotation-level regions."),
 )
 @click.option(
     "--soft",
@@ -377,13 +374,10 @@ def niche(
     ensure_input_directory(results_dir, "--results-dir")
 
     slide_paths = sorted(
-        p for p in wsi_dir.iterdir()
-        if wsi_dir.scheme == "image-list" or p.is_file()
+        p for p in wsi_dir.iterdir() if wsi_dir.scheme == "image-list" or p.is_file()
     )
     if not slide_paths:
-        raise click.ClickException(
-            f"No files found in slide directory: {wsi_dir}"
-        )
+        raise click.ClickException(f"No files found in slide directory: {wsi_dir}")
 
     model_output_dir = results_dir / "model-outputs-csv"
     if not model_output_dir.exists():
@@ -392,9 +386,7 @@ def niche(
             "directory.  Run 'wsinsight infer' or 'wsinsight run' first."
         )
 
-    click.secho(
-        "\nRunning niche analysis.\n", fg="green"
-    )
+    click.secho("\nRunning niche analysis.\n", fg="green")
 
     if niche_hoptimus_only and not niche_hoptimus:
         raise click.UsageError("--hoptimus-only requires --hoptimus.")
@@ -444,9 +436,7 @@ def niche(
         if niche_cells_dir.exists():
             niche_cell_csvs = sorted(niche_cells_dir.glob("*.csv"))
             if niche_cell_csvs:
-                click.echo(
-                    "\nWriting niche cell detections to GeoJSON files...\n"
-                )
+                click.echo("\nWriting niche cell detections to GeoJSON files...\n")
                 write_geojsons(
                     csvs=niche_cell_csvs,
                     overlap=0,
@@ -463,12 +453,14 @@ def niche(
             else:
                 click.secho(
                     "  [warn] niche-outputs-csv/cells/ exists but contains no CSVs — "
-                    "skipping cell GeoJSON export.", fg="yellow"
+                    "skipping cell GeoJSON export.",
+                    fg="yellow",
                 )
         else:
             click.secho(
                 "  [warn] niche-outputs-csv/cells/ not found — "
-                "skipping cell GeoJSON export.", fg="yellow"
+                "skipping cell GeoJSON export.",
+                fg="yellow",
             )
 
         # --- GeoJSON: annotation-level niche regions ---------------------------
@@ -476,9 +468,7 @@ def niche(
         if niche_niches_dir.exists():
             niche_csvs = sorted(niche_niches_dir.glob("*.csv"))
             if niche_csvs:
-                click.echo(
-                    "\nWriting niche annotation regions to GeoJSON files...\n"
-                )
+                click.echo("\nWriting niche annotation regions to GeoJSON files...\n")
                 write_geojsons(
                     csvs=niche_csvs,
                     overlap=0,
@@ -495,12 +485,14 @@ def niche(
             else:
                 click.secho(
                     "  [warn] niche-outputs-csv/niches/ exists but contains no CSVs — "
-                    "skipping niche region GeoJSON export.", fg="yellow"
+                    "skipping niche region GeoJSON export.",
+                    fg="yellow",
                 )
         else:
             click.secho(
                 "  [warn] niche-outputs-csv/niches/ not found — "
-                "skipping niche region GeoJSON export.", fg="yellow"
+                "skipping niche region GeoJSON export.",
+                fg="yellow",
             )
 
     write_runtime_metadata(
@@ -515,6 +507,7 @@ def niche(
 # ---------------------------------------------------------------------------
 # wsinsight niche-profile
 # ---------------------------------------------------------------------------
+
 
 @click.command(name="niche-profile")
 @click.option(
@@ -545,7 +538,10 @@ def niche_profile_cmd(*, results_dir: URIPath, top_genes: int, top_types: int) -
     from ..insightlib.niche_profile import niche_profile
 
     comp, markers = niche_profile(
-        str(results_dir), top_genes=top_genes, top_types=top_types, write=True,
+        str(results_dir),
+        top_genes=top_genes,
+        top_types=top_types,
+        write=True,
     )
 
     click.secho("\nniche composition (mean cell-type fractions):\n", fg="green")
@@ -556,7 +552,9 @@ def niche_profile_cmd(*, results_dir: URIPath, top_genes: int, top_types: int) -
     if markers is not None:
         click.secho("\nTop enriched marker genes per niche:\n", fg="green")
         for niche_id, grp in markers.groupby("niche", sort=False):
-            top = ", ".join(f"{r.gene}({r.log2_enrichment:+.1f})" for r in grp.itertuples())
+            top = ", ".join(
+                f"{r.gene}({r.log2_enrichment:+.1f})" for r in grp.itertuples()
+            )
             click.echo(f"  {niche_id}: {top}")
     else:
         click.secho(

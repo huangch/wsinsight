@@ -30,7 +30,8 @@ import subprocess
 import sys
 import time
 from pathlib import Path
-from typing import Annotated, Any
+from typing import Annotated
+from typing import Any
 
 try:
     from fastmcp import FastMCP
@@ -46,11 +47,10 @@ from wsinsight.mcp.adapters import args_to_argv
 from wsinsight.mcp.jobs import JobManager
 from wsinsight.mcp.schema import (
     command_to_input_schema,  # noqa: F401 - re-exported for tests
-    discover_commands,
-    is_long_running,
-    load_schema,
 )
-
+from wsinsight.mcp.schema import discover_commands
+from wsinsight.mcp.schema import is_long_running
+from wsinsight.mcp.schema import load_schema
 
 # -- Click kind -> Python type mapping -------------------------------------
 
@@ -67,7 +67,9 @@ _KIND_TO_PY: dict[str, type] = {
 }
 
 
-def _build_signature(command: dict[str, Any]) -> tuple[inspect.Signature, dict[str, Any]]:
+def _build_signature(
+    command: dict[str, Any],
+) -> tuple[inspect.Signature, dict[str, Any]]:
     """Return ``(signature, annotations_dict)`` for one CLI command."""
     parameters: list[inspect.Parameter] = []
     annotations: dict[str, Any] = {}
@@ -92,9 +94,7 @@ def _build_signature(command: dict[str, Any]) -> tuple[inspect.Signature, dict[s
             # Allow None as the absence sentinel so adapters can drop it.
             wide = py_type | None  # type: ignore[operator]
             annotation = (
-                Annotated[wide, Field(description=help_text)]
-                if help_text
-                else wide
+                Annotated[wide, Field(description=help_text)] if help_text else wide
             )
             raw_default = p.get("default", None)
             default = raw_default
@@ -194,11 +194,13 @@ def _walk_results_dir(root: Path, max_entries: int = 500) -> list[dict]:
             size = p.stat().st_size if p.is_file() else None
         except OSError:
             size = None
-        out.append({
-            "path": rel,
-            "type": "dir" if p.is_dir() else "file",
-            "size_bytes": size,
-        })
+        out.append(
+            {
+                "path": rel,
+                "type": "dir" if p.is_dir() else "file",
+                "size_bytes": size,
+            }
+        )
     return out
 
 
@@ -218,7 +220,11 @@ def build_server(
     # 1. Per-subcommand tools.
     for name, cmd in discover_commands(experimental=experimental).items():
         long_running = is_long_running(name)
-        fn = _make_long_tool(jobs, name, cmd) if long_running else _make_short_tool(name, cmd)
+        fn = (
+            _make_long_tool(jobs, name, cmd)
+            if long_running
+            else _make_short_tool(name, cmd)
+        )
         help_text = " ".join(str(cmd.get("help", "")).split())
         if long_running:
             description = (

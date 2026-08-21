@@ -24,8 +24,8 @@ import threading
 import time
 import uuid
 from collections import deque
-from dataclasses import dataclass, field
-from typing import Iterable
+from dataclasses import dataclass
+from dataclasses import field
 
 _LOG_RING_SIZE = 4000  # lines kept per job
 _LOG_LINE_TRUNCATE = 2000  # chars per line
@@ -69,9 +69,7 @@ class JobState:
     finished_at: float | None = None
     returncode: int | None = None
     error: str | None = None
-    log_lines: deque = field(
-        default_factory=lambda: deque(maxlen=_LOG_RING_SIZE)
-    )
+    log_lines: deque = field(default_factory=lambda: deque(maxlen=_LOG_RING_SIZE))
     total_lines: int = 0  # monotonically increasing line counter
     cancel_requested_at: float | None = None
     _proc: subprocess.Popen | None = field(default=None, repr=False)
@@ -109,7 +107,8 @@ class JobManager:
         experimental: bool = False,
     ) -> None:
         self.max_concurrent = (
-            max_concurrent if max_concurrent and max_concurrent > 0
+            max_concurrent
+            if max_concurrent and max_concurrent > 0
             else _detect_default_max_concurrent()
         )
         self.experimental = experimental
@@ -130,7 +129,10 @@ class JobManager:
         with self._lock:
             self._jobs[job_id] = state
         threading.Thread(
-            target=self._run_job, args=(state,), daemon=True, name=f"wsinsight-job-{job_id}"
+            target=self._run_job,
+            args=(state,),
+            daemon=True,
+            name=f"wsinsight-job-{job_id}",
         ).start()
         return job_id
 
@@ -140,7 +142,9 @@ class JobManager:
             j = self._jobs.get(job_id)
         return j.to_dict() if j else None
 
-    def logs(self, job_id: str, since_line: int = 0, max_lines: int = 500) -> dict | None:
+    def logs(
+        self, job_id: str, since_line: int = 0, max_lines: int = 500
+    ) -> dict | None:
         """Return ``{lines, next_line, total}`` for the job, or None."""
         with self._lock:
             j = self._jobs.get(job_id)

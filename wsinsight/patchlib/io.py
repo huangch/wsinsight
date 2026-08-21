@@ -3,7 +3,8 @@
 from __future__ import annotations
 
 import logging
-from typing import List, Sequence
+from typing import List
+from typing import Sequence
 
 import cv2 as cv
 import h5py

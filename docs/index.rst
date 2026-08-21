@@ -120,7 +120,7 @@ Visual overview
 Integrative patch-level and single-cell inference
 -------------------------------------------------
 
-The models used in this experiment include: 
+The models used in this experiment include:
 * ``CellViT-SAM-H-x40``
 * ``breast-tumor-resnet34.tcga-brca``
 * ``pancancer-lymphocytes-inceptionv4.tcga``
@@ -301,7 +301,7 @@ WSInfer-compatible models: ::
   Huang, C.-H., Awosika, O. E., & Fernandez, D. (2025).
   WSInsight: a cloud-native, agent-callable platform for single-cell whole-slide
   pathology. *npj Precision Oncology*. https://doi.org/10.1038/s41698-025-00841-9
-          
+
   Kaczmarzyk, J.R., O'Callaghan, A., Inglis, F. et al. Open and reusable deep
   learning for pathology with WSInfer and QuPath. *npj Precis. Onc.* **8**, 9
   (2024). https://doi.org/10.1038/s41698-024-00499-9

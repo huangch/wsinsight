@@ -20,12 +20,13 @@ All functions operate on numpy/scipy.sparse; no pandas or pandas-typed inputs.
 from __future__ import annotations
 
 import numpy as np
-from scipy.sparse import csr_matrix, eye as speye
-
+from scipy.sparse import csr_matrix
+from scipy.sparse import eye as speye
 
 # ---------------------------------------------------------------------------
 # Edges
 # ---------------------------------------------------------------------------
+
 
 def enumerate_edges_from_simplices(simplices: np.ndarray) -> np.ndarray:
     """Return unique undirected edges derived from a ``(M, 3)`` simplex array.
@@ -61,6 +62,7 @@ def enumerate_edges_from_simplices(simplices: np.ndarray) -> np.ndarray:
 # ---------------------------------------------------------------------------
 # Line graph (edge-edge adjacency)
 # ---------------------------------------------------------------------------
+
 
 def build_line_graph(edges: np.ndarray, num_vertices: int) -> csr_matrix:
     """Return the line graph adjacency: two edges are neighbors iff they share a vertex.
@@ -105,6 +107,7 @@ def build_line_graph(edges: np.ndarray, num_vertices: int) -> csr_matrix:
 # Dual graph (triad-triad adjacency)
 # ---------------------------------------------------------------------------
 
+
 def build_dual_graph(simplices: np.ndarray, num_vertices: int) -> csr_matrix:
     """Return the dual graph adjacency: two triads are neighbors iff they share ≥ 1 vertex.
 
@@ -144,6 +147,7 @@ def build_dual_graph(simplices: np.ndarray, num_vertices: int) -> csr_matrix:
 # Generic k-hop reachability
 # ---------------------------------------------------------------------------
 
+
 def k_hop_on_adjacency(adj: csr_matrix, k: int) -> list[list[int]]:
     """Return the list of k-hop neighbors for each node of an adjacency matrix.
 
@@ -171,7 +175,7 @@ def k_hop_on_adjacency(adj: csr_matrix, k: int) -> list[list[int]]:
     indices = Mk.indices
     neighbor_lists: list[list[int]] = []
     for i in range(N):
-        row = indices[indptr[i]:indptr[i + 1]]
+        row = indices[indptr[i] : indptr[i + 1]]
         nbrs = row[row != i].tolist()
         neighbor_lists.append(nbrs)
     return neighbor_lists
@@ -213,6 +217,7 @@ def k_hop_adjacency_matrix(adj: csr_matrix, k: int) -> csr_matrix:
 # ---------------------------------------------------------------------------
 # Triad geometry
 # ---------------------------------------------------------------------------
+
 
 def triad_geometry(centers: np.ndarray, simplices: np.ndarray) -> dict[str, np.ndarray]:
     """Compute per-triad geometry in pixel units.
@@ -277,7 +282,7 @@ def triad_geometry(centers: np.ndarray, simplices: np.ndarray) -> dict[str, np.n
     with np.errstate(divide="ignore", invalid="ignore"):
         regularity = np.where(
             perimeter > 0,
-            12.0 * np.sqrt(3.0) * area / (perimeter ** 2),
+            12.0 * np.sqrt(3.0) * area / (perimeter**2),
             0.0,
         )
     # Clip to [0, 1] to absorb floating-point noise.

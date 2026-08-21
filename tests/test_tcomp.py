@@ -56,9 +56,7 @@ def test_tcomp_end_to_end(tmp_path: Path):
 
     from wsinsight.uri_path import URIPath
 
-    with patch(
-        "wsinsight.insightlib.tcomp_generation.get_avg_mpp", return_value=1.0
-    ):
+    with patch("wsinsight.insightlib.tcomp_generation.get_avg_mpp", return_value=1.0):
         failed = tcomp_generation(
             wsi_dir=URIPath(str(fake_slide.parent)),
             slide_paths=[URIPath(str(fake_slide))],
@@ -83,8 +81,12 @@ def test_tcomp_end_to_end(tmp_path: Path):
     }
     assert set(df["triad_type"].unique()).issubset(expected_triad_types)
 
-    prop_cols = [c for c in df.columns if c.startswith("neighborhood_") and c.endswith("_prop")]
-    count_cols = [c for c in df.columns if c.startswith("neighborhood_") and c.endswith("_count")]
+    prop_cols = [
+        c for c in df.columns if c.startswith("neighborhood_") and c.endswith("_prop")
+    ]
+    count_cols = [
+        c for c in df.columns if c.startswith("neighborhood_") and c.endswith("_count")
+    ]
     assert len(prop_cols) == 10
     assert len(count_cols) == 10
 

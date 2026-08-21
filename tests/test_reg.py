@@ -11,13 +11,10 @@ from click.testing import CliRunner
 
 from wsinsight.cli.reg import reg
 from wsinsight.insightlib.region_registration import register_objects_to_objects
-from wsinsight.io.schema import (
-    discover_prob_prefixes,
-    make_object_prefix,
-    make_region_prefix,
-    resolve_no_tag_prefix,
-)
-
+from wsinsight.io.schema import discover_prob_prefixes
+from wsinsight.io.schema import make_object_prefix
+from wsinsight.io.schema import make_region_prefix
+from wsinsight.io.schema import resolve_no_tag_prefix
 
 # ---------------------------------------------------------------------------
 # schema.py
@@ -133,7 +130,9 @@ class TestDiscoverProbPrefixes:
 # ---------------------------------------------------------------------------
 
 
-def _bbox_df(centers: list[tuple[float, float]], extra: dict | None = None) -> pd.DataFrame:
+def _bbox_df(
+    centers: list[tuple[float, float]], extra: dict | None = None
+) -> pd.DataFrame:
     """Build a DataFrame whose objects are 2x2 boxes centred at `centers`."""
     cols: dict[str, list] = {
         "minx": [cx - 1 for cx, _ in centers],
@@ -155,7 +154,10 @@ class TestRegisterObjectsToObjects:
         )
         # 1 um/px so radius_px == 5.
         out, rate = register_objects_to_objects(
-            primary, secondary, radius_um=5.0, spacing_um_px=1.0,
+            primary,
+            secondary,
+            radius_um=5.0,
+            spacing_um_px=1.0,
             out_prefix="object_",
         )
         assert rate == pytest.approx(1.0)
@@ -170,7 +172,10 @@ class TestRegisterObjectsToObjects:
             extra={"prob_pos": [0.9]},
         )
         out, rate = register_objects_to_objects(
-            primary, secondary, radius_um=5.0, spacing_um_px=1.0,
+            primary,
+            secondary,
+            radius_um=5.0,
+            spacing_um_px=1.0,
             out_prefix="object_",
         )
         assert rate == pytest.approx(0.5)
@@ -179,12 +184,13 @@ class TestRegisterObjectsToObjects:
         assert np.isnan(out["object_prob_pos"].iloc[1])
 
     def test_empty_primary(self) -> None:
-        primary = pd.DataFrame(
-            {"minx": [], "miny": [], "width": [], "height": []}
-        )
+        primary = pd.DataFrame({"minx": [], "miny": [], "width": [], "height": []})
         secondary = _bbox_df([(0, 0)], extra={"prob_pos": [1.0]})
         out, rate = register_objects_to_objects(
-            primary, secondary, radius_um=5.0, spacing_um_px=1.0,
+            primary,
+            secondary,
+            radius_um=5.0,
+            spacing_um_px=1.0,
         )
         assert rate == 0.0
         assert "object_prob_pos" in out.columns
@@ -196,7 +202,10 @@ class TestRegisterObjectsToObjects:
             {"minx": [], "miny": [], "width": [], "height": [], "prob_pos": []}
         )
         out, rate = register_objects_to_objects(
-            primary, secondary, radius_um=5.0, spacing_um_px=1.0,
+            primary,
+            secondary,
+            radius_um=5.0,
+            spacing_um_px=1.0,
         )
         assert rate == 0.0
         assert np.isnan(out["object_prob_pos"].iloc[0])
@@ -206,14 +215,20 @@ class TestRegisterObjectsToObjects:
         primary = _bbox_df([(0, 0)])
         secondary = _bbox_df([(10, 0)], extra={"prob_pos": [0.5]})
         _, rate = register_objects_to_objects(
-            primary, secondary, radius_um=5.0, spacing_um_px=0.25,
+            primary,
+            secondary,
+            radius_um=5.0,
+            spacing_um_px=0.25,
         )
         assert rate == pytest.approx(1.0)
         # Same 10-px gap, but 1 um/px -> radius_px = 5 -> no match.
         primary = _bbox_df([(0, 0)])
         secondary = _bbox_df([(10, 0)], extra={"prob_pos": [0.5]})
         _, rate2 = register_objects_to_objects(
-            primary, secondary, radius_um=5.0, spacing_um_px=1.0,
+            primary,
+            secondary,
+            radius_um=5.0,
+            spacing_um_px=1.0,
         )
         assert rate2 == pytest.approx(0.0)
 
@@ -222,18 +237,27 @@ class TestRegisterObjectsToObjects:
         secondary = _bbox_df([(0, 0)])
         with pytest.raises(ValueError):
             register_objects_to_objects(
-                primary, secondary, radius_um=0.0, spacing_um_px=1.0,
+                primary,
+                secondary,
+                radius_um=0.0,
+                spacing_um_px=1.0,
             )
         with pytest.raises(ValueError):
             register_objects_to_objects(
-                primary, secondary, radius_um=5.0, spacing_um_px=0.0,
+                primary,
+                secondary,
+                radius_um=5.0,
+                spacing_um_px=0.0,
             )
 
     def test_custom_prefix(self) -> None:
         primary = _bbox_df([(0, 0)])
         secondary = _bbox_df([(0.1, 0.1)], extra={"prob_pos": [0.6]})
         out, _ = register_objects_to_objects(
-            primary, secondary, radius_um=5.0, spacing_um_px=1.0,
+            primary,
+            secondary,
+            radius_um=5.0,
+            spacing_um_px=1.0,
             out_prefix="object_ki67_",
         )
         assert "object_ki67_prob_pos" in out.columns
@@ -262,11 +286,13 @@ class TestRegCLIValidation:
     def test_xor_both_set(self, tmp_path: Path) -> None:
         primary = _make_results(tmp_path, "obj", _bbox_df([(0, 0)]))
         regd = _make_results(
-            tmp_path, "reg",
+            tmp_path,
+            "reg",
             _bbox_df([(0, 0)], extra={"prob_x": [0.5]}),
         )
         objd = _make_results(
-            tmp_path, "obj2",
+            tmp_path,
+            "obj2",
             _bbox_df([(0, 0)], extra={"prob_x": [0.5]}),
         )
         result = CliRunner().invoke(
@@ -279,7 +305,8 @@ class TestRegCLIValidation:
     def test_invalid_tag_rejected(self, tmp_path: Path) -> None:
         primary = _make_results(tmp_path, "obj", _bbox_df([(0, 0)]))
         objd = _make_results(
-            tmp_path, "obj2",
+            tmp_path,
+            "obj2",
             _bbox_df([(0, 0)], extra={"prob_x": [0.5]}),
         )
         result = CliRunner().invoke(
@@ -294,7 +321,8 @@ class TestRegCLIEndToEnd:
     def test_object_to_object_run_writes_columns(self, tmp_path: Path) -> None:
         primary = _make_results(tmp_path, "primary", _bbox_df([(0, 0), (5, 5)]))
         secondary = _make_results(
-            tmp_path, "secondary",
+            tmp_path,
+            "secondary",
             _bbox_df(
                 [(0.1, 0.1), (5.1, 5.1)],
                 extra={"prob_pos": [0.8, 0.2]},
@@ -303,10 +331,14 @@ class TestRegCLIEndToEnd:
         result = CliRunner().invoke(
             reg,
             [
-                "-o", str(primary),
-                "-c", str(secondary),
-                "--radius-um", "5",
-                "--spacing-um-px", "1",
+                "-o",
+                str(primary),
+                "-c",
+                str(secondary),
+                "--radius-um",
+                "5",
+                "--spacing-um-px",
+                "1",
             ],
         )
         assert result.exit_code == 0, result.output
@@ -320,16 +352,21 @@ class TestRegCLIEndToEnd:
         df["object_prob_existing"] = [0.5]
         primary = _make_results(tmp_path, "primary", df)
         secondary = _make_results(
-            tmp_path, "secondary",
+            tmp_path,
+            "secondary",
             _bbox_df([(0.1, 0.1)], extra={"prob_pos": [0.9]}),
         )
         result = CliRunner().invoke(
             reg,
             [
-                "-o", str(primary),
-                "-c", str(secondary),
-                "--radius-um", "5",
-                "--spacing-um-px", "1",
+                "-o",
+                str(primary),
+                "-c",
+                str(secondary),
+                "--radius-um",
+                "5",
+                "--spacing-um-px",
+                "1",
             ],
         )
         assert result.exit_code == 0, result.output
@@ -343,17 +380,23 @@ class TestRegCLIEndToEnd:
         df["object_foo_prob_pos"] = [0.5]
         primary = _make_results(tmp_path, "primary", df)
         secondary = _make_results(
-            tmp_path, "secondary",
+            tmp_path,
+            "secondary",
             _bbox_df([(0.1, 0.1)], extra={"prob_pos": [0.9]}),
         )
         result = CliRunner().invoke(
             reg,
             [
-                "-o", str(primary),
-                "-c", str(secondary),
-                "--tag", "foo",
-                "--radius-um", "5",
-                "--spacing-um-px", "1",
+                "-o",
+                str(primary),
+                "-c",
+                str(secondary),
+                "--tag",
+                "foo",
+                "--radius-um",
+                "5",
+                "--spacing-um-px",
+                "1",
             ],
         )
         assert result.exit_code == 0, result.output
@@ -367,18 +410,24 @@ class TestRegCLIEndToEnd:
         df["object_foo_prob_pos"] = [0.5]
         primary = _make_results(tmp_path, "primary", df)
         secondary = _make_results(
-            tmp_path, "secondary",
+            tmp_path,
+            "secondary",
             _bbox_df([(0.1, 0.1)], extra={"prob_pos": [0.9]}),
         )
         result = CliRunner().invoke(
             reg,
             [
-                "-o", str(primary),
-                "-c", str(secondary),
-                "--tag", "foo",
+                "-o",
+                str(primary),
+                "-c",
+                str(secondary),
+                "--tag",
+                "foo",
                 "--overwrite",
-                "--radius-um", "5",
-                "--spacing-um-px", "1",
+                "--radius-um",
+                "5",
+                "--spacing-um-px",
+                "1",
             ],
         )
         assert result.exit_code == 0, result.output

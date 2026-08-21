@@ -6,26 +6,35 @@ OME-CSV files can be loaded into whole slide image viewers like QuPath.
 
 from __future__ import annotations
 
-from pathlib import Path
-from concurrent.futures import ProcessPoolExecutor, as_completed
-from typing import List, Dict, Optional, Union
-
 import gzip
+from concurrent.futures import ProcessPoolExecutor
+from pathlib import Path
+from typing import Dict
+from typing import List
+from typing import Optional
+from typing import Union
+
 import numpy as np
 import pandas as pd
 from tqdm.auto import tqdm
 
-from .uri_path import URIPath
 from .cancel import cancellable_as_completed
+from .uri_path import URIPath
 
 PathLike = Union[Path, URIPath]
 
 # Columns that carry geometry/identity — excluded from per-cell measurements.
-_GEOM_COLS = frozenset({
-    "minx", "miny", "width", "height",
-    "center_x", "center_y",
-    "polygon_wkt",
-})
+_GEOM_COLS = frozenset(
+    {
+        "minx",
+        "miny",
+        "width",
+        "height",
+        "center_x",
+        "center_y",
+        "polygon_wkt",
+    }
+)
 
 
 def _dataframe_to_omecsv(
@@ -64,7 +73,8 @@ def _dataframe_to_omecsv(
 
     # 1. All numeric non-geometry columns → measurements (prob_* + hplot_*, ncomp_*, etc.)
     all_meas_cols = [
-        c for c in df.columns
+        c
+        for c in df.columns
         if c not in _GEOM_COLS and pd.api.types.is_numeric_dtype(df[c])
     ]
 
@@ -73,14 +83,21 @@ def _dataframe_to_omecsv(
 
     # 2. Header line
     head_str = ",".join(
-        ["object", "secondary_object", "polygon", "objectType", "classification", *all_meas_cols]
+        [
+            "object",
+            "secondary_object",
+            "polygon",
+            "objectType",
+            "classification",
+            *all_meas_cols,
+        ]
     )
 
     # 3. Probabilities & class labels (vectorized, for classification only)
     prob_arr = df[prob_cols].to_numpy(copy=False)  # shape (N, C)
-    class_names = np.array([c[len(class_prefix):] for c in prob_cols])
-    best_idx = prob_arr.argmax(axis=1)             # shape (N,)
-    cls_arr = class_names[best_idx]               # shape (N,)
+    class_names = np.array([c[len(class_prefix) :] for c in prob_cols])
+    best_idx = prob_arr.argmax(axis=1)  # shape (N,)
+    cls_arr = class_names[best_idx]  # shape (N,)
 
     # 3. Build all lines
     lines = [head_str]
@@ -261,7 +278,9 @@ def write_omecsvs(
     if not results_dir.exists():
         raise FileNotFoundError(f"results_dir does not exist: {results_dir}")
 
-    missing_dirs = sorted({p.parent for p in csvs if not p.parent.exists()}, key=lambda d: str(d))
+    missing_dirs = sorted(
+        {p.parent for p in csvs if not p.parent.exists()}, key=lambda d: str(d)
+    )
     if missing_dirs:
         if (results_dir / "patches").exists():
             raise FileNotFoundError(
@@ -277,8 +296,7 @@ def write_omecsvs(
     if missing_files:
         missing_str = ", ".join(str(p) for p in missing_files)
         raise FileNotFoundError(
-            "The following CSV files were not found: "
-            f"{missing_str}"
+            "The following CSV files were not found: " f"{missing_str}"
         )
 
     # Skip CSVs that already have corresponding OME-CSV outputs
@@ -325,8 +343,6 @@ def write_omecsvs(
             pbar.update(1)
 
     pbar.close()
-
-
 
 
 # """Convert CSVs of model outputs to OMECSV files.
@@ -548,9 +564,9 @@ def write_omecsvs(
 # #         json.dump(omecsv, f)
 #
 #
-# def make_omecsv(csv: Path, 
-#                 results_dir: Path, 
-#                 output_dir: Path, 
+# def make_omecsv(csv: Path,
+#                 results_dir: Path,
+#                 output_dir: Path,
 #                 overlap: float,
 #                 prefix: str,
 #                 usecols: Optional[List[str]] = None,
@@ -663,10 +679,10 @@ def write_omecsvs(
 #         f.write(omecsv.encode('utf-8'))
 #
 #
-# def write_omecsvs(csvs: list[Path], 
-#                   h5s: list[Path], 
-#                   overlap: float, 
-#                   results_dir: Path, 
+# def write_omecsvs(csvs: list[Path],
+#                   h5s: list[Path],
+#                   overlap: float,
+#                   results_dir: Path,
 #                   input_dir: Path,
 #                   output_dir: Path,
 #                   prefix: str,
@@ -706,10 +722,10 @@ def write_omecsvs(
 #         # If output directory doesn't exist, make one and set csvs_final to csvs
 #         output.mkdir(parents=True, exist_ok=True)
 #
-#     # make_omecsv(csvs[0], 
+#     # make_omecsv(csvs[0],
 #     #             results_dir=results_dir,
 #     #             output_dir=output_dir,
-#     #             overlap=overlap, 
+#     #             overlap=overlap,
 #     #             prefix=prefix,
 #     #             usecols=usecols,
 #     #             dtype=dtype,
@@ -718,17 +734,17 @@ def write_omecsvs(
 #
 #     total = len(csvs)
 #     if total == 0:
-#         return    
+#         return
 #
-#     pbar = tqdm(total=total, desc="Files completed", dynamic_ncols=True) 
+#     pbar = tqdm(total=total, desc="Files completed", dynamic_ncols=True)
 #
 #     # Run with progress bar
 #     with ProcessPoolExecutor(max_workers=num_workers) as ex:
-#         futures = [ex.submit(make_omecsv, 
+#         futures = [ex.submit(make_omecsv,
 #                              csv,
 #                              results_dir=results_dir,
 #                              output_dir=output_dir,
-#                              overlap=overlap, 
+#                              overlap=overlap,
 #                              prefix=prefix,
 #                              usecols=usecols,
 #                              dtype=dtype,
@@ -742,9 +758,9 @@ def write_omecsvs(
 #
 #
 #
-#     # func = partial(make_omecsv, 
+#     # func = partial(make_omecsv,
 #     #                results_dir=results_dir,
-#     #                overlap=overlap, 
+#     #                overlap=overlap,
 #     #                prefix=prefix,
 #     #                usecols=usecols,
 #     #                dtype=dtype,

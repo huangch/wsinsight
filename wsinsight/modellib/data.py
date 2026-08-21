@@ -7,17 +7,19 @@ from typing import Callable
 from typing import Sequence
 
 import h5py
+import histomicstk as htk
 import numpy as np
 import numpy.typing as npt
 import torch
 from PIL import Image
-import histomicstk as htk
 
 from wsinsight.wsi import get_wsi_cls
+
 from ..uri_path import URIPath
 
 EPSILON = 1e-8
 I_0 = 255
+
 
 def _read_patch_coords(path: str | Path) -> npt.NDArray[np.int_]:
     """Read HDF5 file of patch coordinates are return numpy array.
@@ -51,16 +53,24 @@ def _read_patch_coords(path: str | Path) -> npt.NDArray[np.int_]:
         # [minx, miny, width, height]
         wh = np.full_like(coords, coords_metadata["patch_size"])
         coords = np.concatenate((coords, wh), axis=1)
-        tile_dim = coords_metadata["tile_dim"] if "tile_dim" in coords_metadata.keys() else None
+        tile_dim = (
+            coords_metadata["tile_dim"]
+            if "tile_dim" in coords_metadata.keys()
+            else None
+        )
         # step_size = coords_metadata["step_size"]
         patch_size = coords_metadata["patch_size"]
         # halo_size = coords_metadata["halo_size"]
-        
+
         # object_based = coords_metadata["object_based"]
         # object_end2end = coords_metadata["object_end2end"]
-        
+
     # return coords, tile_dim, step_size, patch_size, halo_size, # object_based, object_end2end
-    return coords, tile_dim, patch_size, # halo_size, # object_based, object_end2end
+    return (
+        coords,
+        tile_dim,
+        patch_size,
+    )  # halo_size, # object_based, object_end2end
 
 
 # class WholeSlideImagePatches(torch.utils.data.Dataset):
@@ -128,9 +138,9 @@ def _read_patch_coords(path: str | Path) -> npt.NDArray[np.int_]:
 #
 #         )
 #
-#         patch_im = patch_im.convert("RGB")        
+#         patch_im = patch_im.convert("RGB")
 #
-#         if self.W_est is not None and self.W_def is not None: 
+#         if self.W_est is not None and self.W_def is not None:
 #             patch_im = np.array(patch_im).astype(np.float32)
 #             patch_im = htk.preprocessing.color_normalization.deconvolution_based_normalization(patch_im+EPSILON, W_source=self.W_est, W_target=self.W_def)
 #             patch_im = Image.fromarray(patch_im, mode='RGB')
@@ -141,7 +151,7 @@ def _read_patch_coords(path: str | Path) -> npt.NDArray[np.int_]:
 #             patch_im = np.transpose(np.array(patch_im), (2, 0, 1))
 #
 #         # if self.color_mode == "BGR":
-#         #     patch_im = patch_im[[2,1,0],:,:] 
+#         #     patch_im = patch_im[[2,1,0],:,:]
 #
 #         return patch_im, torch.as_tensor([minx, miny, width, height])
 
@@ -185,7 +195,11 @@ class WholeSlideImagePatches(torch.utils.data.Dataset):
         assert self.patch_path.exists(), "patch path not found"
 
         # coords: (N, 4) = [minx, miny, width, height]
-        (self.patches, self.tile_dim, self.patch_size,) = _read_patch_coords(self.patch_path)
+        (
+            self.patches,
+            self.tile_dim,
+            self.patch_size,
+        ) = _read_patch_coords(self.patch_path)
         if self.patches.size == 0:
             raise ValueError(f"No patches were found in {self.patch_path}")
         assert self.patches.ndim == 2, "expected 2D array of patch coordinates"
@@ -195,7 +209,6 @@ class WholeSlideImagePatches(torch.utils.data.Dataset):
         self.slide = None
         self._h5_file: h5py.File | None = None
         self._images_dset = None
-        
 
     def worker_init(self, worker_id: int | None = None) -> None:
         """Open slide and HDF5 handles in each worker process."""
@@ -220,7 +233,9 @@ class WholeSlideImagePatches(torch.utils.data.Dataset):
             # Basic sanity checks
             if imgs.ndim != 4:
                 # Expected (N, H, W, C) or (N, C, H, W)
-                print(f"[WholeSlideImagePatches] /images has unexpected ndim={imgs.ndim}, ignoring.")
+                print(
+                    f"[WholeSlideImagePatches] /images has unexpected ndim={imgs.ndim}, ignoring."
+                )
             elif imgs.shape[0] != self.patches.shape[0]:
                 print(
                     f"[WholeSlideImagePatches] /images length ({imgs.shape[0]}) "
@@ -249,7 +264,9 @@ class WholeSlideImagePatches(torch.utils.data.Dataset):
 
         # Expect either (H, W, 3) or (3, H, W)
         if arr.ndim != 3:
-            raise ValueError(f"/images[idx] must be 3D (H,W,3 or C,H,W), got shape {arr.shape}")
+            raise ValueError(
+                f"/images[idx] must be 3D (H,W,3 or C,H,W), got shape {arr.shape}"
+            )
 
         if arr.shape[-1] == 3:
             # (H, W, 3)
@@ -294,10 +311,12 @@ class WholeSlideImagePatches(torch.utils.data.Dataset):
         # 2) Optional stain normalization
         if self.W_est is not None and self.W_def is not None:
             patch_arr = np.array(patch_im).astype(np.float32)
-            patch_arr = htk.preprocessing.color_normalization.deconvolution_based_normalization(
-                patch_arr + EPSILON,
-                W_source=self.W_est,
-                W_target=self.W_def,
+            patch_arr = (
+                htk.preprocessing.color_normalization.deconvolution_based_normalization(
+                    patch_arr + EPSILON,
+                    W_source=self.W_est,
+                    W_target=self.W_def,
+                )
             )
             patch_im = Image.fromarray(patch_arr.astype(np.uint8), mode="RGB")
 
@@ -322,4 +341,3 @@ class WholeSlideImagePatches(torch.utils.data.Dataset):
                 self._h5_file.close()
         except Exception:
             pass
-

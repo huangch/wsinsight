@@ -8,17 +8,11 @@ These tests verify that `wsinsight run`:
 
 from __future__ import annotations
 
-import tempfile
 from pathlib import Path
-from unittest.mock import MagicMock
 
-import pytest
-
-from wsinsight.cli.run import (
-    SlideStatus,
-    _scan_existing_artifacts,
-    _log_reconciliation_summary,
-)
+from wsinsight.cli.run import SlideStatus
+from wsinsight.cli.run import _log_reconciliation_summary
+from wsinsight.cli.run import _scan_existing_artifacts
 from wsinsight.uri_path import URIPath
 
 
@@ -249,4 +243,10 @@ class TestReconciliationScenarios:
 
         assert status.missing_patches == set()
         assert status.needs_inference == set()
-        assert status.completed == {"slide_0", "slide_1", "slide_2", "slide_3", "slide_4"}
+        assert status.completed == {
+            "slide_0",
+            "slide_1",
+            "slide_2",
+            "slide_3",
+            "slide_4",
+        }

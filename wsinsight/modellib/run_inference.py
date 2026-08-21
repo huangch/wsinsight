@@ -7,39 +7,42 @@ From the original paper (https://www.ncbi.nlm.nih.gov/pmc/articles/PMC7369575/):
 
 from __future__ import annotations
 
-import logging
-import os
 # from pathlib import Path
 import gc
+import logging
+import os
+from typing import List
+
+import geopandas as gpd
+import h5py
+import histomicstk as htk
 import numpy as np
 import numpy.typing as npt
+
 # from scipy.signal import medfilt2d
 import pandas as pd
 import torch
 import tqdm
-import histomicstk as htk
 import wsinfer_zoo.client
-import geopandas as gpd
-import h5py 
-from math import ceil
-from concurrent.futures import ProcessPoolExecutor, ThreadPoolExecutor, as_completed
-from typing import List
 
 logger = logging.getLogger(__name__)
 
+from wsinsight.modellib.tilefuse import TileRemapStitcher
+
 from .. import errors
-from ..cancel import critical_section, is_cancelled, raise_if_cancelled
-from ..wsi import _validate_wsi_directory
+from ..cancel import critical_section
+from ..cancel import is_cancelled
+from ..cancel import raise_if_cancelled
+from ..insightlib.region_registration import register_objects_to_regions
+
 # from ..wsi import get_avg_mpp
 # from ..wsi import get_wsi_cls
 from ..uri_path import URIPath
-from ..num_worker_optimizer import pick_workers_safe, throttle_when_busy
-from ..insightlib.region_registration import register_objects_to_regions
-from .transforms import make_compose_from_transform_config
-from wsinsight.modellib.tilefuse import TileRemapStitcher
+from ..wsi import _validate_wsi_directory
 from .data import WholeSlideImagePatches
 from .models import LocalModelTorchScript
 from .models import get_pretrained_torch_module
+from .transforms import make_compose_from_transform_config
 
 EPSILON = 1e-8
 I_0 = 255
@@ -77,7 +80,12 @@ def _as_output_tensor(pred: object) -> torch.Tensor:
 
 
 def _advance_batch_search(
-    current: int, lo: int, hi: int, max_bs: int, *, oom: bool,
+    current: int,
+    lo: int,
+    hi: int,
+    max_bs: int,
+    *,
+    oom: bool,
     probe_factor: float = 2.0,
 ) -> tuple[int, int, int]:
     """Update the OOM binary-search state and propose the next batch size.
@@ -162,6 +170,7 @@ def _calibrate_inference_batch_size(
         return 32, 0
     try:
         from PIL import Image as _Image
+
         # Determine model input tensor shape from the transform.
         dummy_pil = _Image.new("RGB", (patch_size_px, patch_size_px))
         dummy_tensor = transform(dummy_pil)  # e.g. [3, H, W]
@@ -309,17 +318,19 @@ def run_inference(
         inference phase failed, respectively.
     """
     # Make sure required directories exist.
-    
+
     if wsi_dir:
         if not wsi_dir.exists():
-            raise errors.WholeSlideImageDirectoryNotFound(f"directory not found: {wsi_dir}")
+            raise errors.WholeSlideImageDirectoryNotFound(
+                f"directory not found: {wsi_dir}"
+            )
         # wsi_paths = [p for p in tqdm.tqdm(wsi_dir.iterdir(), desc="") if p.is_file()]
-        
+
         # if not wsi_paths:
         #     raise errors.WholeSlideImagesNotFound(wsi_dir)
-        
+
         _validate_wsi_directory(wsi_dir)
-        
+
     if not results_dir.exists():
         raise errors.ResultsDirectoryNotFound(results_dir)
 
@@ -334,13 +345,15 @@ def run_inference(
         )
     # Create the patch paths based on the whole slide image paths. In effect, only
     # create patch paths if the whole slide image patch exists.
-    
+
     # patch_paths = [patch_dir / p.with_suffix(".h5").name for p in wsi_paths]
     patch_paths = [p for p in patch_dir.iterdir() if p.is_file()]
-    
+
     if slide_paths:
-        patch_paths = [p for p in patch_paths if p.stem in {s.stem for s in slide_paths}]
-    
+        patch_paths = [
+            p for p in patch_paths if p.stem in {s.stem for s in slide_paths}
+        ]
+
     model_output_dir = results_dir / "model-outputs-csv"
     model_output_dir.mkdir(exist_ok=True)
 
@@ -365,26 +378,30 @@ def run_inference(
         device = torch.device("cpu")
     print(f'Using device "{device}"')
 
-    if qupath_measurement_detection_dir is None and qupath_geojson_detection_dir is None and qupath_geojson_annotation_dir is None:
+    if (
+        qupath_measurement_detection_dir is None
+        and qupath_geojson_detection_dir is None
+        and qupath_geojson_annotation_dir is None
+    ):
         # model.to(device)
         model = get_pretrained_torch_module(
-            model=model_info, 
+            model=model_info,
             # device=device,
-            )
+        )
 
         model.eval()
-    
+
         if torch.cuda.is_available() and torch.cuda.device_count() > 1:
             model = torch.nn.DataParallel(model)
-        
+
         # if speedup:
         #     if TYPE_CHECKING:
         #         model = type_cast(torch.nn.Module, jit_compile(model))
         #     else:
         #         model = jit_compile(model)
-    
+
         transform = make_compose_from_transform_config(model_info.config.transform)
-        
+
     else:
         transform = None
 
@@ -435,25 +452,25 @@ def run_inference(
     #     if not patch_path.exists():
     #         print(f"Skipping because patch file not found: {patch_path}")
     #         continue
-            
+
     # with tqdm.tqdm(total=len(wsi_paths), desc="Images", position=0) as pbar:
     #     for _, (wsi_path, patch_path) in enumerate(zip(wsi_paths, patch_paths)):
-            
+
     with tqdm.tqdm(total=len(patch_paths), desc="Images", position=0) as pbar:
         for _, patch_path in enumerate(patch_paths):
             raise_if_cancelled()
             with h5py.File(patch_path, "r") as f:
-                use_hdf5_images = '/images' in f
+                use_hdf5_images = "/images" in f
                 g_slide = f["/slide"]
                 wsi_path = URIPath(g_slide.attrs["slide_path"])
                 mpp = g_slide.attrs["slide_mpp"]
                 slide_width = g_slide.attrs["slide_width"]
                 slide_height = g_slide.attrs["slide_height"]
-                
+
             # print(f"Slide {i+1} of {len(wsi_paths)}")
             # print(f" Slide path: {wsi_path}")
             # print(f" Patch path: {patch_path}")
-            
+
             slide_csv_name = wsi_path.with_suffix(".csv").name
             slide_csv = model_output_dir / slide_csv_name
             if not overwrite and slide_csv.exists():
@@ -461,12 +478,12 @@ def run_inference(
                 print(slide_csv)
                 pbar.update(1)
                 continue
-            
+
             if not patch_path.exists():
                 print(f"Skipping because patch file not found: {patch_path}")
                 pbar.update(1)
                 continue
-            
+
             if stain_normalization:
                 try:
                     stain_normalization_dset = WholeSlideImagePatches(
@@ -475,17 +492,19 @@ def run_inference(
                         use_hdf5_images=use_hdf5_images,
                     )
                 except Exception as exc:
-                    logger.warning("Stain normalization failed for %s: %s", wsi_path.stem, exc)
+                    logger.warning(
+                        "Stain normalization failed for %s: %s", wsi_path.stem, exc
+                    )
                     failed_inference.append(wsi_path.stem)
                     pbar.update(1)
                     continue
-                
+
                 # The worker_init_fn does not seem to be used when num_workers=0
                 # so we call it manually to finish setting up the dataset.
-                
+
                 if num_workers == 0:
                     stain_normalization_dset.worker_init()
-                
+
                 stain_normalization_loader = torch.utils.data.DataLoader(
                     stain_normalization_dset,
                     batch_size=256,
@@ -494,16 +513,24 @@ def run_inference(
                     worker_init_fn=stain_normalization_dset.worker_init,
                     # multiprocessing_context="spawn",
                 )
-                
-                stain_normalization_batch_imgs, _ = next(iter(stain_normalization_loader))
-                stain_normalization_batch_imgs = stain_normalization_batch_imgs.numpy().transpose((0, 2, 3, 1)).reshape(-1, 3)
-                W_est = htk.preprocessing.color_deconvolution.rgb_separate_stains_macenko_pca(stain_normalization_batch_imgs+EPSILON, I_0)
+
+                stain_normalization_batch_imgs, _ = next(
+                    iter(stain_normalization_loader)
+                )
+                stain_normalization_batch_imgs = (
+                    stain_normalization_batch_imgs.numpy()
+                    .transpose((0, 2, 3, 1))
+                    .reshape(-1, 3)
+                )
+                W_est = htk.preprocessing.color_deconvolution.rgb_separate_stains_macenko_pca(
+                    stain_normalization_batch_imgs + EPSILON, I_0
+                )
                 stain_color_map = htk.preprocessing.color_deconvolution.stain_color_map
-                stains = ['eosin', 'hematoxylin', 'null']
+                stains = ["eosin", "hematoxylin", "null"]
                 W_def = np.array([stain_color_map[st] for st in stains]).T
             else:
                 W_est = W_def = None
-            
+
             try:
                 dset = WholeSlideImagePatches(
                     wsi_path=wsi_path,
@@ -514,14 +541,16 @@ def run_inference(
                     W_def=W_def,
                 )
             except Exception as exc:
-                logger.warning("Failed to create dataset for %s: %s", wsi_path.stem, exc)
+                logger.warning(
+                    "Failed to create dataset for %s: %s", wsi_path.stem, exc
+                )
                 failed_inference.append(wsi_path.stem)
                 pbar.update(1)
                 continue
-            
+
             # The worker_init_fn does not seem to be used when num_workers=0
             # so we call it manually to finish setting up the dataset.
-            
+
             if num_workers == 0:
                 dset.worker_init()
 
@@ -531,135 +560,174 @@ def run_inference(
                 shuffle=False,
                 num_workers=_effective_num_workers,
                 worker_init_fn=dset.worker_init,
-                pin_memory=_effective_pin_memory and (torch.cuda.is_available() or torch.backends.mps.is_available()),
+                pin_memory=_effective_pin_memory
+                and (torch.cuda.is_available() or torch.backends.mps.is_available()),
                 persistent_workers=_effective_num_workers > 0,
                 prefetch_factor=2 if _effective_num_workers > 0 else None,
                 multiprocessing_context="spawn",
             )
-    
+
             # slide_path = Path(wsi_path)
             #
             # if wsi_dir:
             #     mpp = get_avg_mpp(slide_path)
             #     slide = get_wsi_cls()(wsi_path)
             #     slide_width, slide_height = slide.dimensions
-            
+
             # target_step_px = int(round(model_info.config.patch_size_pixels * model_info.config.spacing_um_px / mpp))
-            model_output_size_px = model_info.config.patch_size_pixels-2*halo_size_px
-            slide_patch_size = int(round(model_output_size_px * model_info.config.spacing_um_px / mpp))
-            slide_halo_size = int(round(halo_size_px * model_info.config.spacing_um_px / mpp))
-            
+            model_output_size_px = (
+                model_info.config.patch_size_pixels - 2 * halo_size_px
+            )
+            slide_patch_size = int(
+                round(model_output_size_px * model_info.config.spacing_um_px / mpp)
+            )
+            slide_halo_size = int(
+                round(halo_size_px * model_info.config.spacing_um_px / mpp)
+            )
+
             # Store the coordinates and model probabiltiies of each patch in this slide.
             # This lets us know where the probabiltiies map to in the slide.
             slide_coords: list[npt.NDArray[np.integer]] = []
             slide_probs: list[npt.NDArray[np.floating]] = []
             slide_superior_structure = None  # initialized here; set per-branch below
 
-            if object_based \
-                and qupath_measurement_detection_dir is not None \
-                and qupath_geojson_detection_dir is None \
-                and qupath_geojson_annotation_dir is None:
-                
+            if (
+                object_based
+                and qupath_measurement_detection_dir is not None
+                and qupath_geojson_detection_dir is None
+                and qupath_geojson_annotation_dir is None
+            ):
                 slide_det_name = wsi_path.with_suffix(".txt").name
                 slide_det = qupath_measurement_detection_dir / slide_det_name
-                
+
                 if not slide_det.exists():
                     failed_inference.append(wsi_path.stem)
                     continue
-                
-                qpdet_df = pd.read_csv(slide_det, delimiter='\t')
+
+                qpdet_df = pd.read_csv(slide_det, delimiter="\t")
                 # Keep only detection/cell objects so coords, labels and N stay aligned.
-                qpdet_df = qpdet_df[(qpdet_df["Object type"] == "Detection") | (qpdet_df["Object type"] == "Cell")].reset_index(drop=True)
-                width  = model_info.config.patch_size_pixels
+                qpdet_df = qpdet_df[
+                    (qpdet_df["Object type"] == "Detection")
+                    | (qpdet_df["Object type"] == "Cell")
+                ].reset_index(drop=True)
+                width = model_info.config.patch_size_pixels
                 height = model_info.config.patch_size_pixels
                 half_patch_size = round(model_info.config.patch_size_pixels / 2)
-                
-                x = np.rint(qpdet_df["Centroid X µm"] / mpp - half_patch_size).astype(np.int32)
-                y = np.rint(qpdet_df["Centroid Y µm"] / mpp - half_patch_size).astype(np.int32)
-                
+
+                x = np.rint(qpdet_df["Centroid X µm"] / mpp - half_patch_size).astype(
+                    np.int32
+                )
+                y = np.rint(qpdet_df["Centroid Y µm"] / mpp - half_patch_size).astype(
+                    np.int32
+                )
+
                 # shape: (N, 4)
-                coords = np.column_stack([x, y, np.full_like(x, width), np.full_like(y, height)])
+                coords = np.column_stack(
+                    [x, y, np.full_like(x, width), np.full_like(y, height)]
+                )
                 slide_coords = [row[np.newaxis, :] for row in coords]
-                
-                indexer = pd.Index(model_info.config.class_names).get_indexer(qpdet_df["Name"].str.strip().str.replace(' ', '_').str.lower()) \
-                    if qupath_name_as_class else pd.Index(model_info.config.class_names).get_indexer(qpdet_df["Classification"].str.strip().str.replace(' ', '_').str.lower())
-                    
+
+                indexer = (
+                    pd.Index(model_info.config.class_names).get_indexer(
+                        qpdet_df["Name"].str.strip().str.replace(" ", "_").str.lower()
+                    )
+                    if qupath_name_as_class
+                    else pd.Index(model_info.config.class_names).get_indexer(
+                        qpdet_df["Classification"]
+                        .str.strip()
+                        .str.replace(" ", "_")
+                        .str.lower()
+                    )
+                )
+
                 N = len(qpdet_df)
                 K = len(model_info.config.class_names)
                 probs = np.zeros((N, K), dtype=np.float32)
-                
+
                 valid = indexer >= 0
-                rows  = np.nonzero(valid)[0]
-                cols  = indexer[valid]
+                rows = np.nonzero(valid)[0]
+                cols = indexer[valid]
                 probs[rows, cols] = 1.0
-                
-                slide_probs = [row[np.newaxis, :]for row in probs]
-           
+
+                slide_probs = [row[np.newaxis, :] for row in probs]
+
                 slide_superior_structure = qpdet_df["Parent"]
-                
-                
-            elif object_based \
-                and qupath_measurement_detection_dir is None \
-                and qupath_geojson_detection_dir is not None \
-                and qupath_geojson_annotation_dir is None:
-                
+
+            elif (
+                object_based
+                and qupath_measurement_detection_dir is None
+                and qupath_geojson_detection_dir is not None
+                and qupath_geojson_annotation_dir is None
+            ):
                 patch_size = model_info.config.patch_size_pixels
                 half_patch_size = round(patch_size / 2)
-                
+
                 slide_geojson_name = wsi_path.with_suffix(".geojson").name
                 slide_geojson = qupath_geojson_detection_dir / slide_geojson_name
-                
+
                 if not slide_geojson.exists():
                     failed_inference.append(wsi_path.stem)
                     continue
-                
+
                 gdf = gpd.read_file(slide_geojson)
                 gdf.set_crs(None, allow_override=True)
                 # Keep only detection/cell objects so coords, labels and N stay aligned.
-                gdf = gdf[(gdf["objectType"] == "detection") | (gdf["objectType"] == "cell")].reset_index(drop=True)
+                gdf = gdf[
+                    (gdf["objectType"] == "detection") | (gdf["objectType"] == "cell")
+                ].reset_index(drop=True)
                 # model_info.config.class_names = \
                 #     gdf.name.str.strip().str.replace(" ", "_", regex=False).str.lower().unique().tolist() \
                 #     if qupath_name_as_class else \
                 #     gdf.classification.str.strip().str.replace(" ", "_", regex=False).str.lower().unique().tolist()
-                
+
                 # prob_cols = [col for col in gdf.name.unique().tolist()] \
                 #     if qupath_name_as_class else \
                 #     [col for col in gdf.classification.unique().tolist()]
-          
+
                 # --- coords (vectorized) ---
                 # constants
-                width  = model_info.config.patch_size_pixels
+                width = model_info.config.patch_size_pixels
                 height = model_info.config.patch_size_pixels
                 half_patch_size = round(model_info.config.patch_size_pixels / 2)
-                
-                x = (gdf.geometry.centroid.x / mpp)-half_patch_size
-                y = (gdf.geometry.centroid.y / mpp)-half_patch_size
-        
+
+                x = (gdf.geometry.centroid.x / mpp) - half_patch_size
+                y = (gdf.geometry.centroid.y / mpp) - half_patch_size
+
                 x = x.to_numpy().round().astype(np.int32)
                 y = y.to_numpy().round().astype(np.int32)
-        
+
                 # shape: (N, 4)
-                coords = np.column_stack([x, y, np.full_like(x, width), np.full_like(y, height)])
+                coords = np.column_stack(
+                    [x, y, np.full_like(x, width), np.full_like(y, height)]
+                )
                 slide_coords = [row[np.newaxis, :] for row in coords]
-                
-                indexer = pd.Index(model_info.config.class_names).get_indexer(gdf["name"].str.strip().str.replace(' ', '_').str.lower()) \
-                    if qupath_name_as_class else \
-                    pd.Index(model_info.config.class_names).get_indexer(gdf["classification"].str.strip().str.replace(' ', '_').str.lower())
-                
+
+                indexer = (
+                    pd.Index(model_info.config.class_names).get_indexer(
+                        gdf["name"].str.strip().str.replace(" ", "_").str.lower()
+                    )
+                    if qupath_name_as_class
+                    else pd.Index(model_info.config.class_names).get_indexer(
+                        gdf["classification"]
+                        .str.strip()
+                        .str.replace(" ", "_")
+                        .str.lower()
+                    )
+                )
+
                 N = len(gdf)
                 K = len(model_info.config.class_names)
                 probs = np.zeros((N, K), dtype=np.float32)
-                
+
                 valid = indexer >= 0
-                rows  = np.nonzero(valid)[0]
-                cols  = indexer[valid]
+                rows = np.nonzero(valid)[0]
+                cols = indexer[valid]
                 probs[rows, cols] = 1.0
-                
-                slide_probs = [row[np.newaxis, :]for row in probs]
-                
+
+                slide_probs = [row[np.newaxis, :] for row in probs]
+
                 slide_superior_structure = None
-        
-            
+
             elif not object_based and qupath_geojson_annotation_dir:
                 patch_size = model_info.config.patch_size_pixels
                 half_patch_size = round(patch_size / 2)
@@ -684,7 +752,7 @@ def run_inference(
                 pbar.update(1)
                 continue
 
-            elif object_based and object_detection=="end2end":
+            elif object_based and object_detection == "end2end":
                 _oom_skip = False
                 # Counts OOMs at the *current* batch size for *this slide*.
                 # The first OOM at a converged batch size is treated as a
@@ -720,23 +788,43 @@ def run_inference(
                             _bs_lo = 0
                             _bs_hi = _slide_bs_max + 1
                     try:
-                        with tqdm.tqdm(total=len(loader), desc="Inference", position=1, leave=False) as qbar:
+                        with tqdm.tqdm(
+                            total=len(loader), desc="Inference", position=1, leave=False
+                        ) as qbar:
                             for batch_imgs, batch_coords in loader:
                                 if is_cancelled():
                                     break
-                                assert batch_imgs.shape[0] == batch_coords.shape[0], "length mismatch"
+                                assert (
+                                    batch_imgs.shape[0] == batch_coords.shape[0]
+                                ), "length mismatch"
                                 if mixed_precision:
                                     with torch.no_grad():
-                                        with torch.autocast(device_type=device.type, dtype=torch.float16):
-                                            pred_dict = model(batch_imgs.to(device, non_blocking=True))
+                                        with torch.autocast(
+                                            device_type=device.type, dtype=torch.float16
+                                        ):
+                                            pred_dict = model(
+                                                batch_imgs.to(device, non_blocking=True)
+                                            )
                                 else:
                                     with torch.no_grad():
-                                        pred_dict = model(batch_imgs.to(device, non_blocking=True))
-                                stitcher.accumulate_batch_torch(pred_dict, batch_coords.to(device))
+                                        pred_dict = model(
+                                            batch_imgs.to(device, non_blocking=True)
+                                        )
+                                stitcher.accumulate_batch_torch(
+                                    pred_dict, batch_coords.to(device)
+                                )
                                 qbar.update(1)
                                 gc.collect()
                         raise_if_cancelled()
-                        with tqdm.tqdm(desc="Stitching", mininterval=0, miniters=1, smoothing=0, dynamic_ncols=True, position=1, leave=False) as qbar:
+                        with tqdm.tqdm(
+                            desc="Stitching",
+                            mininterval=0,
+                            miniters=1,
+                            smoothing=0,
+                            dynamic_ncols=True,
+                            position=1,
+                            leave=False,
+                        ) as qbar:
                             slide_coords, slide_probs, slide_polys = stitcher.finalize(
                                 pbar=qbar,
                                 num_workers=stitch_workers,
@@ -753,7 +841,11 @@ def run_inference(
                             or "out of memory" in str(_oom_err).lower()
                         )
                         _is_worker_death = _is_worker_killed(_oom_err)
-                        if isinstance(_oom_err, RuntimeError) and not _is_cuda_oom and not _is_worker_death:
+                        if (
+                            isinstance(_oom_err, RuntimeError)
+                            and not _is_cuda_oom
+                            and not _is_worker_death
+                        ):
                             raise
                         # Handle worker death (system OOM killer) separately.
                         if _is_worker_death:
@@ -763,7 +855,9 @@ def run_inference(
                                     f"[WorkerKilled] Disabling pin_memory — retrying {wsi_path.stem}"
                                 )
                             elif _effective_num_workers > 0:
-                                _effective_num_workers = max(0, _effective_num_workers // 2)
+                                _effective_num_workers = max(
+                                    0, _effective_num_workers // 2
+                                )
                                 tqdm.tqdm.write(
                                     f"[WorkerKilled] Reducing num_workers → {_effective_num_workers} — retrying {wsi_path.stem}"
                                 )
@@ -780,9 +874,15 @@ def run_inference(
                                 shuffle=False,
                                 num_workers=_effective_num_workers,
                                 worker_init_fn=dset.worker_init,
-                                pin_memory=_effective_pin_memory and (torch.cuda.is_available() or torch.backends.mps.is_available()),
+                                pin_memory=_effective_pin_memory
+                                and (
+                                    torch.cuda.is_available()
+                                    or torch.backends.mps.is_available()
+                                ),
                                 persistent_workers=_effective_num_workers > 0,
-                                prefetch_factor=2 if _effective_num_workers > 0 else None,
+                                prefetch_factor=2
+                                if _effective_num_workers > 0
+                                else None,
                                 multiprocessing_context="spawn",
                             )
                             continue
@@ -790,11 +890,16 @@ def run_inference(
                         torch.cuda.empty_cache()
                         gc.collect()
                         if current_batch_size <= 1:
-                            tqdm.tqdm.write(f"[OOM] batch_size=1 still OOM — skipping {wsi_path.stem}")
+                            tqdm.tqdm.write(
+                                f"[OOM] batch_size=1 still OOM — skipping {wsi_path.stem}"
+                            )
                             failed_inference.append(wsi_path.stem)
                             _oom_skip = True
                             break
-                        if _is_bs_converged(current_batch_size, _bs_lo, _bs_hi) and _oom_retries_at_current == 0:
+                        if (
+                            _is_bs_converged(current_batch_size, _bs_lo, _bs_hi)
+                            and _oom_retries_at_current == 0
+                        ):
                             # Likely fragmentation. Retry in place at the same
                             # batch size after the cache flush above.
                             _oom_retries_at_current = 1
@@ -809,7 +914,7 @@ def run_inference(
                             _old_bs = current_batch_size
                             _bs_hi = current_batch_size
                             _bs_lo = 0
-                            _PHI = (1.0 + 5.0 ** 0.5) / 2.0
+                            _PHI = (1.0 + 5.0**0.5) / 2.0
                             current_batch_size = max(1, int(_bs_hi / _PHI))
                             _oom_retries_at_current = 0
                             tqdm.tqdm.write(
@@ -829,7 +934,11 @@ def run_inference(
                             shuffle=False,
                             num_workers=_effective_num_workers,
                             worker_init_fn=dset.worker_init,
-                            pin_memory=_effective_pin_memory and (torch.cuda.is_available() or torch.backends.mps.is_available()),
+                            pin_memory=_effective_pin_memory
+                            and (
+                                torch.cuda.is_available()
+                                or torch.backends.mps.is_available()
+                            ),
                             persistent_workers=_effective_num_workers > 0,
                             prefetch_factor=2 if _effective_num_workers > 0 else None,
                             multiprocessing_context="spawn",
@@ -837,56 +946,60 @@ def run_inference(
                 if _oom_skip:
                     pbar.update(1)
                     continue
-                
-            #     if slide_polys is not None and len(slide_polys) > 0:
-            #         with h5py.File(patch_path, "a") as f:
-            #             # f.create_dataset("/polygons", data=polygons, compression=compression)
-            #             # object_xy_list: List[np.ndarray], each arr shape (Ni, 2), dtype float32 (or castable)
-            #             lengths = np.array([xy.shape[0] for xy in slide_polys], dtype=np.int64)
-            #             offsets = np.concatenate(([0], np.cumsum(lengths)))
-            #             coords  = np.vstack(slide_polys).astype(np.float32) if lengths.sum() > 0 \
-            #                       else np.zeros((0, 2), np.float32)
-            #
-            #             if "/polygons" in f:
-            #                 del f["/polygons"]
-            #
-            #             g = f.create_group("/polygons")
-            #
-            #             d_coords = g.create_dataset(
-            #                 "coords", data=coords, dtype="float32",
-            #                 compression=f["/coords"].compression, shuffle=True, chunks=True  # good defaults
-            #             )
-            # #            d_offsets = g.create_dataset("offsets", data=offsets, dtype="int64")
-            #             g.create_dataset("offsets", data=offsets, dtype="int64")
-            #
-            #             # Helpful metadata
-            #             g.attrs["layout"] = "ragged_offsets"
-            #             d_coords.attrs["columns"] = np.array(["x", "y"], dtype="S1")
-                
+
+                #     if slide_polys is not None and len(slide_polys) > 0:
+                #         with h5py.File(patch_path, "a") as f:
+                #             # f.create_dataset("/polygons", data=polygons, compression=compression)
+                #             # object_xy_list: List[np.ndarray], each arr shape (Ni, 2), dtype float32 (or castable)
+                #             lengths = np.array([xy.shape[0] for xy in slide_polys], dtype=np.int64)
+                #             offsets = np.concatenate(([0], np.cumsum(lengths)))
+                #             coords  = np.vstack(slide_polys).astype(np.float32) if lengths.sum() > 0 \
+                #                       else np.zeros((0, 2), np.float32)
+                #
+                #             if "/polygons" in f:
+                #                 del f["/polygons"]
+                #
+                #             g = f.create_group("/polygons")
+                #
+                #             d_coords = g.create_dataset(
+                #                 "coords", data=coords, dtype="float32",
+                #                 compression=f["/coords"].compression, shuffle=True, chunks=True  # good defaults
+                #             )
+                # #            d_offsets = g.create_dataset("offsets", data=offsets, dtype="int64")
+                #             g.create_dataset("offsets", data=offsets, dtype="int64")
+                #
+                #             # Helpful metadata
+                #             g.attrs["layout"] = "ragged_offsets"
+                #             d_coords.attrs["columns"] = np.array(["x", "y"], dtype="S1")
+
                 if slide_polys is not None and len(slide_polys) > 0:
                     # slide_polys: list of (Ni, 2) arrays (x, y) in slide coords
-                    lengths = np.array([xy.shape[0] for xy in slide_polys], dtype=np.int64)
+                    lengths = np.array(
+                        [xy.shape[0] for xy in slide_polys], dtype=np.int64
+                    )
                     total_len = int(lengths.sum())
                     offsets = np.concatenate(([0], np.cumsum(lengths)))
-                
+
                     poly_coords = (
                         np.vstack(slide_polys).astype(np.float32)
                         if total_len > 0
                         else np.zeros((0, 2), np.float32)
                     )
-                  
-                    with patch_path.open("rb+" if patch_path.exists() else "wb+") as fh:      # URIPath 提供本地缓存并在关闭时同步回远端
+
+                    with patch_path.open(
+                        "rb+" if patch_path.exists() else "wb+"
+                    ) as fh:  # URIPath 提供本地缓存并在关闭时同步回远端
                         with h5py.File(fh, "a") as f:
                             # Try to mirror coords compression; fall back to None if missing
                             coords_dset = f["/coords"]
                             poly_compression = coords_dset.compression
-                    
+
                             # Replace any existing polygons group
                             if "/polygons" in f:
                                 del f["/polygons"]
-                    
+
                             g = f.create_group("/polygons")
-                    
+
                             d_coords = g.create_dataset(
                                 "coords",
                                 data=poly_coords,
@@ -896,13 +1009,13 @@ def run_inference(
                                 chunks=True,
                             )
                             g.create_dataset("offsets", data=offsets, dtype="int64")
-                    
+
                             # Keep metadata consistent with save_hdf5()
                             g.attrs["layout"] = "ragged_offsets"
                             d_coords.attrs["columns"] = np.array(["x", "y"], dtype="S1")
 
                 slide_superior_structure = None
-                
+
             else:
                 _oom_skip = False
                 # See end2end branch above for rationale: first OOM at a
@@ -913,15 +1026,25 @@ def run_inference(
                     slide_coords = []
                     slide_probs = []
                     try:
-                        with tqdm.tqdm(total=len(loader), position=1, leave=False) as qbar:
+                        with tqdm.tqdm(
+                            total=len(loader), position=1, leave=False
+                        ) as qbar:
                             for batch_imgs, batch_coords in loader:
                                 if is_cancelled():
                                     break
-                                assert batch_imgs.shape[0] == batch_coords.shape[0], "length mismatch"
+                                assert (
+                                    batch_imgs.shape[0] == batch_coords.shape[0]
+                                ), "length mismatch"
                                 with torch.no_grad():
-                                    logits: torch.Tensor = _as_output_tensor(
-                                        model(batch_imgs.to(device, non_blocking=True))
-                                    ).detach().cpu()
+                                    logits: torch.Tensor = (
+                                        _as_output_tensor(
+                                            model(
+                                                batch_imgs.to(device, non_blocking=True)
+                                            )
+                                        )
+                                        .detach()
+                                        .cpu()
+                                    )
                                 # probs has shape (batch_size, num_classes) or (batch_size,)
                                 if len(logits.shape) > 1 and logits.shape[1] > 1:
                                     probs = torch.nn.functional.softmax(logits, dim=1)
@@ -942,7 +1065,11 @@ def run_inference(
                             or "out of memory" in str(_oom_err).lower()
                         )
                         _is_worker_death = _is_worker_killed(_oom_err)
-                        if isinstance(_oom_err, RuntimeError) and not _is_cuda_oom and not _is_worker_death:
+                        if (
+                            isinstance(_oom_err, RuntimeError)
+                            and not _is_cuda_oom
+                            and not _is_worker_death
+                        ):
                             raise
                         # Handle worker death (system OOM killer) separately.
                         if _is_worker_death:
@@ -952,7 +1079,9 @@ def run_inference(
                                     f"[WorkerKilled] Disabling pin_memory — retrying {wsi_path.stem}"
                                 )
                             elif _effective_num_workers > 0:
-                                _effective_num_workers = max(0, _effective_num_workers // 2)
+                                _effective_num_workers = max(
+                                    0, _effective_num_workers // 2
+                                )
                                 tqdm.tqdm.write(
                                     f"[WorkerKilled] Reducing num_workers → {_effective_num_workers} — retrying {wsi_path.stem}"
                                 )
@@ -969,9 +1098,15 @@ def run_inference(
                                 shuffle=False,
                                 num_workers=_effective_num_workers,
                                 worker_init_fn=dset.worker_init,
-                                pin_memory=_effective_pin_memory and (torch.cuda.is_available() or torch.backends.mps.is_available()),
+                                pin_memory=_effective_pin_memory
+                                and (
+                                    torch.cuda.is_available()
+                                    or torch.backends.mps.is_available()
+                                ),
                                 persistent_workers=_effective_num_workers > 0,
-                                prefetch_factor=2 if _effective_num_workers > 0 else None,
+                                prefetch_factor=2
+                                if _effective_num_workers > 0
+                                else None,
                                 multiprocessing_context="spawn",
                             )
                             continue
@@ -979,11 +1114,16 @@ def run_inference(
                         torch.cuda.empty_cache()
                         gc.collect()
                         if current_batch_size <= 1:
-                            tqdm.tqdm.write(f"[OOM] batch_size=1 still OOM — skipping {wsi_path.stem}")
+                            tqdm.tqdm.write(
+                                f"[OOM] batch_size=1 still OOM — skipping {wsi_path.stem}"
+                            )
                             failed_inference.append(wsi_path.stem)
                             _oom_skip = True
                             break
-                        if _is_bs_converged(current_batch_size, _bs_lo, _bs_hi) and _oom_retries_at_current == 0:
+                        if (
+                            _is_bs_converged(current_batch_size, _bs_lo, _bs_hi)
+                            and _oom_retries_at_current == 0
+                        ):
                             _oom_retries_at_current = 1
                             tqdm.tqdm.write(
                                 f"[OOM] empty_cache retry at bs={current_batch_size} — retrying {wsi_path.stem}"
@@ -996,7 +1136,7 @@ def run_inference(
                             _old_bs = current_batch_size
                             _bs_hi = current_batch_size
                             _bs_lo = 0
-                            _PHI = (1.0 + 5.0 ** 0.5) / 2.0
+                            _PHI = (1.0 + 5.0**0.5) / 2.0
                             current_batch_size = max(1, int(_bs_hi / _PHI))
                             _oom_retries_at_current = 0
                             tqdm.tqdm.write(
@@ -1016,7 +1156,11 @@ def run_inference(
                             shuffle=False,
                             num_workers=_effective_num_workers,
                             worker_init_fn=dset.worker_init,
-                            pin_memory=_effective_pin_memory and (torch.cuda.is_available() or torch.backends.mps.is_available()),
+                            pin_memory=_effective_pin_memory
+                            and (
+                                torch.cuda.is_available()
+                                or torch.backends.mps.is_available()
+                            ),
                             persistent_workers=_effective_num_workers > 0,
                             prefetch_factor=2 if _effective_num_workers > 0 else None,
                             multiprocessing_context="spawn",
@@ -1028,10 +1172,10 @@ def run_inference(
             #
             # Until here, we've obtained both slide coords and slide_probs
             #
-            
-            if len(slide_coords) == 0: # No coords are registered
+
+            if len(slide_coords) == 0:  # No coords are registered
                 continue
-            
+
             slide_coords_arr = np.concatenate(slide_coords, axis=0)
             slide_df = pd.DataFrame(
                 dict(
@@ -1042,14 +1186,14 @@ def run_inference(
                 )
             )
             slide_probs_arr = np.concatenate(slide_probs, axis=0)
-            
-            # # I did below for filtering but do not remember if this is actually a good idea. 
+
+            # # I did below for filtering but do not remember if this is actually a good idea.
             # # The goal of this section is to perform a median pass fildering
             # # So that the noises generated from patch prediction can be canceld.
             # # However, by now I believe this possible doesn't provide much information.
-            # # In addition, it requires an additional step_size parameter passing through 
-            # # Loader, that seems not a good idea by now. 
-            #  
+            # # In addition, it requires an additional step_size parameter passing through
+            # # Loader, that seems not a good idea by now.
+            #
             # if not object_based:
             #     tile_indices_arr = slide_coords_arr[:, :2].astype(np.int32)
             #     prob_map = 1.0/float(slide_probs_arr.shape[1])*np.ones((slide_probs_arr.shape[1], dset.tile_dim[0], dset.tile_dim[1]),dtype=np.float32)
@@ -1065,8 +1209,8 @@ def run_inference(
             #         for i, (x, y) in enumerate(tile_indices_arr):
             #             slide_probs_arr[i, s] = prob_map[s, x, y]
             #
-            # # I did above for filtering but do not remember if this u=is actually a good idea. 
-            
+            # # I did above for filtering but do not remember if this u=is actually a good idea.
+
             # Use 'prob-' prefix for all classes. This should make it clearer that the
             # column has probabilities for the class. It also makes it easier for us to
             # identify columns associated with probabilities.
@@ -1077,12 +1221,13 @@ def run_inference(
             # This mirrors QuPath's classification concept and makes results immediately
             # usable without recomputing argmax from the prob_* columns.
             _argmax_idx = slide_probs_arr.argmax(axis=1)
-            slide_df["classification"] = np.array(model_info.config.class_names)[_argmax_idx]
-            
+            slide_df["classification"] = np.array(model_info.config.class_names)[
+                _argmax_idx
+            ]
+
             if slide_superior_structure is not None:
                 slide_df.loc[:, "qupath_detection_parent"] = slide_superior_structure
-            
-              
+
             if region_inference_dir is not None and object_based:
                 annot_csv = region_inference_dir / "model-outputs-csv" / slide_csv_name
                 annot_df = pd.read_csv(
@@ -1101,14 +1246,15 @@ def run_inference(
                             f"Use --overwrite to replace."
                         )
                         with slide_csv.open("wb") as fh:
-                            with critical_section(f"saving inference output for {wsi_path.stem}"):
+                            with critical_section(
+                                f"saving inference output for {wsi_path.stem}"
+                            ):
                                 slide_df.to_csv(fh, index=False)
                         pbar.update(1)
                         continue
                 slide_df, _ = register_objects_to_regions(slide_df, annot_df)
-            
-            
-            with slide_csv.open("wb") as fh:     # local cache, auto-upload on close
+
+            with slide_csv.open("wb") as fh:  # local cache, auto-upload on close
                 with critical_section(f"saving inference output for {wsi_path.stem}"):
                     slide_df.to_csv(fh, index=False)
             # print("-" * 40)

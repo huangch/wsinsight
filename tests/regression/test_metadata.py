@@ -14,7 +14,6 @@ import pytest
 from tests.regression.conftest import RegressionCase
 from wsinsight import wsi
 
-
 pytestmark = pytest.mark.regression
 
 
@@ -37,9 +36,9 @@ def test_mpp_matches_expected(case: RegressionCase, caplog):
     )
 
     if case.expects_appmag_fallback:
-        assert any("AppMag" in r.message for r in caplog.records), (
-            f"{case.slide_id}: expected AppMag fallback warning but none was logged"
-        )
+        assert any(
+            "AppMag" in r.message for r in caplog.records
+        ), f"{case.slide_id}: expected AppMag fallback warning but none was logged"
 
 
 def test_appmag_matches_expected(case: RegressionCase):
@@ -47,9 +46,8 @@ def test_appmag_matches_expected(case: RegressionCase):
     if case.expected_appmag is None:
         pytest.skip("expected_appmag not set for this case")
 
-    appmag = (
-        wsi._get_appmag_openslide(str(case.path))
-        or wsi._get_appmag_tiffslide(str(case.path))
+    appmag = wsi._get_appmag_openslide(str(case.path)) or wsi._get_appmag_tiffslide(
+        str(case.path)
     )
     assert appmag is not None, f"{case.slide_id}: AppMag could not be read"
     assert appmag == pytest.approx(case.expected_appmag, abs=0.5)

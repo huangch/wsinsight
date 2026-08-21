@@ -2,9 +2,7 @@
 
 from __future__ import annotations
 
-import os
 import signal
-import threading
 import time
 from concurrent.futures import ThreadPoolExecutor
 
@@ -101,7 +99,9 @@ def test_double_press_inside_critical_section_defers_exit(monkeypatch):
 def test_press_outside_window_resets_count(monkeypatch):
     monkeypatch.setattr(cancel, "_DOUBLE_PRESS_WINDOW_S", 0.05)
     exited = {"called": 0}
-    monkeypatch.setattr(cancel, "_hard_exit", lambda: exited.__setitem__("called", exited["called"] + 1))
+    monkeypatch.setattr(
+        cancel, "_hard_exit", lambda: exited.__setitem__("called", exited["called"] + 1)
+    )
 
     cancel._sigint_handler(signal.SIGINT, None)
     time.sleep(0.1)  # window elapses

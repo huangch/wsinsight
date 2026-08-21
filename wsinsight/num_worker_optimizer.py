@@ -1,6 +1,13 @@
 from __future__ import annotations
-import os, psutil, math, time
-from typing import Optional, Callable
+
+import math
+import os
+import time
+from typing import Callable
+from typing import Optional
+
+import psutil
+
 
 # ---------- small helpers ----------
 def _cpu_count_physical_or_logical() -> int:
@@ -8,23 +15,28 @@ def _cpu_count_physical_or_logical() -> int:
     phys = psutil.cpu_count(logical=False)
     return phys if phys and phys > 0 else (os.cpu_count() or 1)
 
+
 def _ewma(prev: Optional[float], new: float, alpha: float = 0.5) -> float:
     """Compute an exponentially weighted moving average sample."""
     return new if prev is None else (alpha * new + (1 - alpha) * prev)
 
+
 def _cpu_util_sample(sample_interval: float = 0.30) -> float:
     """Return total CPU utilization as fraction [0..1]. One sample."""
     return psutil.cpu_percent(interval=sample_interval) / 100.0
+
 
 def _mem_util_sample() -> tuple[float, int, int]:
     """Return (util_frac, available_bytes, total_bytes)."""
     vm = psutil.virtual_memory()
     return vm.percent / 100.0, vm.available, vm.total
 
+
 def _optional_gpu_util() -> Optional[float]:
     """Return GPU util [0..1] if NVML present; else None (don’t import if missing)."""
     try:
         import pynvml  # type: ignore
+
         pynvml.nvmlInit()
         n = pynvml.nvmlDeviceGetCount()
         if n == 0:
@@ -39,10 +51,10 @@ def _optional_gpu_util() -> Optional[float]:
     except Exception:
         return None
 
+
 # ---------- dynamic footprint probe (optional) ----------
 def _probe_memory_per_worker_bytes(
-    probe_fn: Optional[Callable[[], None]] = None,
-    warmup_seconds: float = 0.1
+    probe_fn: Optional[Callable[[], None]] = None, warmup_seconds: float = 0.1
 ) -> Optional[int]:
     """
     Run a tiny 'representative' unit once to estimate RSS delta as per-worker memory.
@@ -54,7 +66,7 @@ def _probe_memory_per_worker_bytes(
     before = proc.memory_info().rss
     t0 = time.time()
     try:
-        probe_fn()   # do one tile worth of work if you can
+        probe_fn()  # do one tile worth of work if you can
     except Exception:
         pass
     finally:
@@ -67,9 +79,11 @@ def _probe_memory_per_worker_bytes(
     # add safety overhead (fragmentation, temp arrays)
     return int(delta * 1.5) if delta > 0 else None
 
+
 # ---------- public API ----------
 _cpu_ewma: Optional[float] = None
 _mem_ewma: Optional[float] = None
+
 
 def pick_workers_safe(
     target_cpu_util: float = 0.60,
@@ -79,10 +93,12 @@ def pick_workers_safe(
     *,
     memory_per_worker_bytes: Optional[int] = None,
     reserve_mem_bytes: int = 512 * 1024 * 1024,
-    cpu_core_reserve: int = 1,          # leave cores for OS/GPU feeders
+    cpu_core_reserve: int = 1,  # leave cores for OS/GPU feeders
     sample_interval_sec: float = 0.30,
     ewma_alpha: float = 0.5,
-    dynamic_probe_fn: Optional[Callable[[], None]] = None,  # set to estimate footprint once
+    dynamic_probe_fn: Optional[
+        Callable[[], None]
+    ] = None,  # set to estimate footprint once
 ) -> int:
     """
     Choose worker count from both CPU and RAM headroom with smoothing and (optional) dynamic footprint probe.
@@ -134,6 +150,7 @@ def pick_workers_safe(
         return min_workers
 
     return max(min_workers, guess)
+
 
 def throttle_when_busy(
     target_cpu_util: float = 0.80,

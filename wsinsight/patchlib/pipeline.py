@@ -6,30 +6,32 @@ import itertools
 import logging
 import os
 import os.path
-from typing import List, Tuple
+from typing import List
 
-import cv2 as cv
 import geopandas as gpd
 import numpy as np
 import numpy.typing as npt
 import pandas as pd
 import tensorflow as tf
 import tqdm
-from PIL import Image
 from absl import logging as absl_logging
 from csbdeep.utils import normalize
-from shapely.geometry import Polygon, MultiPolygon
+from PIL import Image
+from shapely.geometry import MultiPolygon
+from shapely.geometry import Polygon
 from stardist.models import StarDist2D
 from tifffile import imread
 
-from ..wsi import _validate_wsi_directory, get_avg_mpp, get_wsi_cls
 from ..uri_path import URIPath
-from .io import draw_contours_on_thumbnail, extract_patches_from_slide, save_hdf5
-from .patch import (
-    get_multipolygon_from_binary_arr,
-    get_object_coordinates_within_polygon,
-    get_patch_coordinates_within_polygon,
-)
+from ..wsi import _validate_wsi_directory
+from ..wsi import get_avg_mpp
+from ..wsi import get_wsi_cls
+from .io import draw_contours_on_thumbnail
+from .io import extract_patches_from_slide
+from .io import save_hdf5
+from .patch import get_multipolygon_from_binary_arr
+from .patch import get_object_coordinates_within_polygon
+from .patch import get_patch_coordinates_within_polygon
 from .segment import segment_tissue
 
 os.environ["TF_CPP_MIN_LOG_LEVEL"] = "2"
@@ -59,8 +61,8 @@ def segment_and_patch_one_slide(
     median_filter_size: int = 7,
     binary_threshold: int = 7,
     closing_kernel_size: int = 6,
-    min_object_size_um2: float = 200 ** 2,
-    min_hole_size_um2: float = 190 ** 2,
+    min_object_size_um2: float = 200**2,
+    min_hole_size_um2: float = 190**2,
     overlap: float = 0.0,
     object_based: bool = False,
     object_detection: str | None = None,
@@ -81,7 +83,9 @@ def segment_and_patch_one_slide(
     mask_path = save_dir / MASKS_DIR / f"{slide_prefix}.jpg"
 
     if not overwrite and patch_path.exists() and mask_path.exists():
-        logger.info("Patch output and mask output files already exist (use --overwrite to regenerate)")
+        logger.info(
+            "Patch output and mask output files already exist (use --overwrite to regenerate)"
+        )
         logger.info(f"patch_path={patch_path}")
         logger.info(f"mask_path={mask_path}")
         return None
@@ -112,7 +116,7 @@ def segment_and_patch_one_slide(
 
     thumb_mpp = (mpp * (np.array(slide.dimensions) / thumb.size)).mean()
     logger.info(f"Thumbnail has WxH {thumb.size} and MPP={thumb_mpp}")
-    thumb_mpp_squared: float = thumb_mpp ** 2
+    thumb_mpp_squared: float = thumb_mpp**2
 
     min_object_size_px: int = round(min_object_size_um2 / thumb_mpp_squared)
     min_hole_size_px: int = round(min_hole_size_um2 / thumb_mpp_squared)
@@ -192,21 +196,27 @@ def segment_and_patch_one_slide(
         else:
             qpdet_df = pd.read_csv(slide_det, delimiter="\t")
 
-            xs = np.rint(qpdet_df["Centroid X µm"] / mpp - half_patch_size).astype(np.int32)
-            ys = np.rint(qpdet_df["Centroid Y µm"] / mpp - half_patch_size).astype(np.int32)
+            xs = np.rint(qpdet_df["Centroid X µm"] / mpp - half_patch_size).astype(
+                np.int32
+            )
+            ys = np.rint(qpdet_df["Centroid Y µm"] / mpp - half_patch_size).astype(
+                np.int32
+            )
 
             coords = np.column_stack([xs, ys])
 
-            polygons = np.asarray([
+            polygons = np.asarray(
                 [
-                    [x - half_patch_size, y - half_patch_size],
-                    [x - half_patch_size, y + half_patch_size],
-                    [x + half_patch_size, y + half_patch_size],
-                    [x + half_patch_size, y - half_patch_size],
-                    [x - half_patch_size, y - half_patch_size],
+                    [
+                        [x - half_patch_size, y - half_patch_size],
+                        [x - half_patch_size, y + half_patch_size],
+                        [x + half_patch_size, y + half_patch_size],
+                        [x + half_patch_size, y - half_patch_size],
+                        [x - half_patch_size, y - half_patch_size],
+                    ]
+                    for x, y in zip(xs, ys)
                 ]
-                for x, y in zip(xs, ys)
-            ])
+            )
 
             tile_dim = None
 
@@ -274,7 +284,7 @@ def segment_and_patch_one_slide(
         slide_width, slide_height = slide.dimensions
         half_patch_size = round(patch_size / 2)
 
-        overlap = (2 * halo_size_px / patch_size_px)
+        overlap = 2 * halo_size_px / patch_size_px
 
         coords = get_patch_coordinates_within_polygon(
             slide_width=slide_width,
@@ -295,9 +305,9 @@ def segment_and_patch_one_slide(
             )
         )
 
-        tile_dim = (
-            (tile_centroids_arr - half_patch_size) / step_size
-        ).max(axis=0).astype(np.int32) + 1
+        tile_dim = ((tile_centroids_arr - half_patch_size) / step_size).max(
+            axis=0
+        ).astype(np.int32) + 1
         polygons = None
 
         logger.info(f"Found {len(coords)} patches within tissue")
@@ -383,9 +393,9 @@ def segment_and_patch_one_slide(
             )
         )
 
-        tile_dim = (
-            (tile_centroids_arr - half_patch_size) / step_size
-        ).max(axis=0).astype(np.int32) + 1
+        tile_dim = ((tile_centroids_arr - half_patch_size) / step_size).max(
+            axis=0
+        ).astype(np.int32) + 1
 
         polygons = []
 
@@ -463,8 +473,8 @@ def segment_and_patch_directory_of_slides(
     median_filter_size: int = 7,
     binary_threshold: int = 7,
     closing_kernel_size: int = 6,
-    min_object_size_um2: float = 200 ** 2,
-    min_hole_size_um2: float = 190 ** 2,
+    min_object_size_um2: float = 200**2,
+    min_hole_size_um2: float = 190**2,
     overlap: float = 0.0,
     object_based: bool = False,
     object_detection: str | None = None,
@@ -482,7 +492,9 @@ def segment_and_patch_directory_of_slides(
 
     with tqdm.tqdm(total=len(slide_paths), desc="Slides", position=0) as pbar:
         for i, slide_path in enumerate(slide_paths):
-            logger.info(f"Slide {i+1} of {len(slide_paths)} ({(i+1)/len(slide_paths):.2%})")
+            logger.info(
+                f"Slide {i+1} of {len(slide_paths)} ({(i+1)/len(slide_paths):.2%})"
+            )
             try:
                 segment_and_patch_one_slide(
                     slide_path=slide_path,
@@ -510,7 +522,9 @@ def segment_and_patch_directory_of_slides(
                     overwrite=overwrite,
                 )
             except Exception as e:  # pragma: no cover - logged for operators
-                logger.error(f"Failed to segment and patch slide\n{slide_path}", exc_info=e)
+                logger.error(
+                    f"Failed to segment and patch slide\n{slide_path}", exc_info=e
+                )
             finally:
                 pbar.update(1)
 

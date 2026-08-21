@@ -7,18 +7,15 @@ records the edge-type composition of each edge's local neighborhood.
 
 from __future__ import annotations
 
-import os
-from pathlib import Path
-
 import click
 
-from ..insightlib.ecomp_generation import ecomp_generation, _gpu_available
-from ..uri_path import URIPath, URIPathType
+from ..insightlib.ecomp_generation import _gpu_available
+from ..insightlib.ecomp_generation import ecomp_generation
+from ..uri_path import URIPath
+from ..uri_path import URIPathType
 from ._meta import write_runtime_metadata
-from ._paths import (
-    default_storage_kwargs,
-    ensure_input_directory,
-)
+from ._paths import default_storage_kwargs
+from ._paths import ensure_input_directory
 
 _STORAGE_KWARGS = default_storage_kwargs()
 
@@ -113,7 +110,9 @@ def ecomp(
     ensure_input_directory(wsi_dir, "--wsi-dir")
     ensure_input_directory(results_dir, "--results-dir")
 
-    slide_paths = sorted([p for p in wsi_dir.iterdir() if wsi_dir.scheme == "image-list" or p.is_file()])
+    slide_paths = sorted(
+        [p for p in wsi_dir.iterdir() if wsi_dir.scheme == "image-list" or p.is_file()]
+    )
     if not slide_paths:
         raise click.ClickException(f"No files found in slide directory: {wsi_dir}")
 
@@ -140,9 +139,7 @@ def ecomp(
     )
 
     if failed:
-        click.secho(
-            f"\necomp failed for {len(failed)} slide(s):", fg="yellow"
-        )
+        click.secho(f"\necomp failed for {len(failed)} slide(s):", fg="yellow")
         click.secho("\n".join(failed), fg="yellow")
     else:
         click.secho("\necomp completed successfully.\n", fg="green")

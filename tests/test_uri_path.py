@@ -19,20 +19,19 @@ from __future__ import annotations
 import codecs
 import gc
 import json
-import os
-import tempfile
 from pathlib import Path
 
 import click
 import pytest
 from click.testing import CliRunner
 
-from wsinsight.uri_path import URIPath, URIPathType
-
+from wsinsight.uri_path import URIPath
+from wsinsight.uri_path import URIPathType
 
 # --------------------------------------------------------------------------
 # storage_options normalization
 # --------------------------------------------------------------------------
+
 
 def test_normalize_storage_opts_rejects_malformed_json():
     with pytest.raises(ValueError, match="not valid JSON"):
@@ -60,6 +59,7 @@ def test_normalize_storage_opts_rejects_wrong_type():
 # gs:// (Google Cloud Storage) URI manipulation -- parity with s3://
 # (credential init skipped: these only exercise pure URI string handling)
 # --------------------------------------------------------------------------
+
 
 def test_gs_parent_nested():
     p = URIPath("gs://my-bucket/a/b/c.svs", _skip_validation=True)
@@ -90,6 +90,7 @@ def test_gs_truediv_joins_key():
 # GS_STORAGE_OPTIONS env var parsing (parity with S3_STORAGE_OPTIONS)
 # --------------------------------------------------------------------------
 
+
 def test_gs_storage_options_parsed(monkeypatch):
     from wsinsight.cli._paths import default_storage_kwargs
 
@@ -103,7 +104,9 @@ def test_gs_storage_options_rejects_malformed(monkeypatch):
     from wsinsight.cli._paths import default_storage_kwargs
 
     monkeypatch.setenv("GS_STORAGE_OPTIONS", "{not json}")
-    with pytest.raises(RuntimeError, match="GS_STORAGE_OPTIONS must contain valid JSON"):
+    with pytest.raises(
+        RuntimeError, match="GS_STORAGE_OPTIONS must contain valid JSON"
+    ):
         default_storage_kwargs()
 
 
@@ -118,6 +121,7 @@ def test_gs_storage_options_rejects_non_object(monkeypatch):
 # --------------------------------------------------------------------------
 # Click ParamType
 # --------------------------------------------------------------------------
+
 
 def test_uri_path_type_reports_missing_path_via_click():
     @click.command()
@@ -147,6 +151,7 @@ def test_uri_path_type_accepts_existing(tmp_path: Path):
 # --------------------------------------------------------------------------
 # Cache lifecycle
 # --------------------------------------------------------------------------
+
 
 def test_default_cache_survives_gc(tmp_path: Path):
     """Two URIPaths can share a cache file; GC of one must not nuke it."""
@@ -194,6 +199,7 @@ def test_child_inherits_storage_options(tmp_path: Path):
 # image-list scheme
 # --------------------------------------------------------------------------
 
+
 def test_image_list_handles_bom_blank_and_comments(tmp_path: Path):
     list_path = tmp_path / "slides.txt"
     body = codecs.BOM_UTF8 + b"/data/a.svs\n# comment\n\n  /data/b.svs  \n"
@@ -222,6 +228,7 @@ def test_coerce_image_list_rejects_plain_text_file(tmp_path: Path):
 # Error propagation: bad URI types
 # --------------------------------------------------------------------------
 
+
 def test_uri_path_rejects_non_pathlike():
     with pytest.raises(TypeError, match="uri must be"):
         URIPath(12345)
@@ -230,6 +237,7 @@ def test_uri_path_rejects_non_pathlike():
 # --------------------------------------------------------------------------
 # GDC manifest table cache
 # --------------------------------------------------------------------------
+
 
 def test_manifest_cache_hits_on_repeated_load(tmp_path: Path, monkeypatch):
     mf = tmp_path / "manifest.tsv"
@@ -253,6 +261,7 @@ def test_manifest_cache_hits_on_repeated_load(tmp_path: Path, monkeypatch):
 
 def test_manifest_cache_invalidates_on_mtime_change(tmp_path: Path):
     import time as _time
+
     mf = tmp_path / "manifest.tsv"
     mf.write_text("id\tfilename\nu1\ta.svs\n")
     URIPath._MANIFEST_CACHE.clear()
@@ -265,4 +274,3 @@ def test_manifest_cache_invalidates_on_mtime_change(tmp_path: Path):
     mf.write_text("id\tfilename\nu2\tb.svs\n")
     df2 = URIPath._load_manifest_table(str(mf))
     assert list(df2["filename"]) == ["b.svs"]
-

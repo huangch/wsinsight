@@ -9,16 +9,17 @@ to run on machines without the full TCGA dataset.
 from __future__ import annotations
 
 import os
+
 try:
     import tomllib  # Python 3.11+
 except ModuleNotFoundError:  # pragma: no cover - dev envs on older Python
     import tomli as tomllib  # type: ignore[no-redef]
-from dataclasses import dataclass, field
+from dataclasses import dataclass
+from dataclasses import field
 from pathlib import Path
 from typing import Any
 
 import pytest
-
 
 REGRESSION_DIR = Path(__file__).parent
 REPO_ROOT = REGRESSION_DIR.parents[1]
@@ -64,18 +65,26 @@ def load_cases() -> list[RegressionCase]:
     raw = data.get("case", [])
     cases: list[RegressionCase] = []
     for entry in raw:
-        known = {"slide_id", "path", "expected_appmag", "expected_mpp",
-                 "mpp_atol", "expects_appmag_fallback"}
+        known = {
+            "slide_id",
+            "path",
+            "expected_appmag",
+            "expected_mpp",
+            "mpp_atol",
+            "expects_appmag_fallback",
+        }
         extra = {k: v for k, v in entry.items() if k not in known}
-        cases.append(RegressionCase(
-            slide_id=entry["slide_id"],
-            path=_resolve_path(entry["path"]),
-            expected_appmag=entry.get("expected_appmag"),
-            expected_mpp=entry.get("expected_mpp"),
-            mpp_atol=entry.get("mpp_atol", 0.01),
-            expects_appmag_fallback=entry.get("expects_appmag_fallback", False),
-            extra=extra,
-        ))
+        cases.append(
+            RegressionCase(
+                slide_id=entry["slide_id"],
+                path=_resolve_path(entry["path"]),
+                expected_appmag=entry.get("expected_appmag"),
+                expected_mpp=entry.get("expected_mpp"),
+                mpp_atol=entry.get("mpp_atol", 0.01),
+                expects_appmag_fallback=entry.get("expects_appmag_fallback", False),
+                extra=extra,
+            )
+        )
     return cases
 
 
@@ -91,29 +100,36 @@ def all_cases() -> list[RegressionCase]:
 def pytest_addoption(parser):
     group = parser.getgroup("wsinsight-regression")
     group.addoption(
-        "--run-slow", action="store_true", default=False,
+        "--run-slow",
+        action="store_true",
+        default=False,
         help="Run slow regression tests (full patch / infer pipeline).",
     )
     group.addoption(
-        "--zoo-model", default=None,
+        "--zoo-model",
+        default=None,
         help="Path to a wsinfer-zoo model dir, required by --run-slow.",
     )
     group.addoption(
-        "--patch-output-dir", default=None,
+        "--patch-output-dir",
+        default=None,
         help="Existing wsinsight patch output dir to compare against goldens.",
     )
     group.addoption(
-        "--infer-output-dir", default=None,
+        "--infer-output-dir",
+        default=None,
         help="Existing wsinsight infer output dir to compare against goldens.",
     )
 
 
 def pytest_configure(config):
     config.addinivalue_line(
-        "markers", "regression: WSInsight per-slide regression test.",
+        "markers",
+        "regression: WSInsight per-slide regression test.",
     )
     config.addinivalue_line(
-        "markers", "slow: requires --run-slow or external pre-computed outputs.",
+        "markers",
+        "slow: requires --run-slow or external pre-computed outputs.",
     )
 
 
@@ -127,8 +143,7 @@ def pytest_collection_modifyitems(config, items):
     )
     run_slow = config.getoption("--run-slow")
     have_external = bool(
-        config.getoption("--patch-output-dir")
-        or config.getoption("--infer-output-dir")
+        config.getoption("--patch-output-dir") or config.getoption("--infer-output-dir")
     )
     slow_skip = pytest.mark.skip(
         reason="Slow test; pass --run-slow or --patch-output-dir/--infer-output-dir."

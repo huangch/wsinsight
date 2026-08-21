@@ -53,9 +53,7 @@ def default_storage_kwargs() -> dict[str, object]:
         try:
             parsed = json.loads(raw)
         except json.JSONDecodeError as exc:
-            raise RuntimeError(
-                f"{env_name} must contain valid JSON."
-            ) from exc
+            raise RuntimeError(f"{env_name} must contain valid JSON.") from exc
         if not isinstance(parsed, dict):
             raise RuntimeError(f"{env_name} must be a JSON object.")
         storage.update(parsed)
@@ -68,9 +66,7 @@ def ensure_input_directory(path: URIPath, option_name: str) -> None:
     Use for ``--wsi-dir`` and any other read-only directory inputs.
     """
     if not path.exists():
-        raise click.ClickException(
-            f"{option_name} directory not found: {path}"
-        )
+        raise click.ClickException(f"{option_name} directory not found: {path}")
     if not path.is_dir():
         raise click.ClickException(f"{option_name} must be a directory: {path}")
 

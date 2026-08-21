@@ -184,5 +184,4 @@ select = ["E4", "E7", "E9", "F", "B", "I"]
 unfixable = ["B"]
 
 [tool.ruff.lint.isort]
-force-single-line = true 
-
+force-single-line = true

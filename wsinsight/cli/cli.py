@@ -13,8 +13,6 @@ import click
 
 from ..wsi import set_backend
 from .agg import agg
-from .niche import niche
-from .niche import niche_profile_cmd
 from .ecomp import ecomp
 
 # from .convert_csv_to_sbubmi import tosbu
@@ -23,6 +21,8 @@ from .hplot import hplot
 from .hplot import hplot_finalize_cmd
 from .infer import infer
 from .ncomp import ncomp
+from .niche import niche
+from .niche import niche_profile_cmd
 from .patch import patch
 from .reg import reg
 from .run import run

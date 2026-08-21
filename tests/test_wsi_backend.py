@@ -15,7 +15,7 @@ def test_appmag_lookup_table_values():
     assert wsi._MPP_FROM_APPMAG[40] == pytest.approx(0.25)
     assert wsi._MPP_FROM_APPMAG[20] == pytest.approx(0.50)
     assert wsi._MPP_FROM_APPMAG[10] == pytest.approx(1.00)
-    assert wsi._MPP_FROM_APPMAG[4]  == pytest.approx(2.50)
+    assert wsi._MPP_FROM_APPMAG[4] == pytest.approx(2.50)
 
 
 def _force_all_primary_readers_to_fail(monkeypatch):
@@ -79,6 +79,7 @@ def test_get_avg_mpp_no_appmag_raises(monkeypatch):
 # TIFF ResolutionUnit is NONE but whose spacing lives in the OME-XML).
 # ---------------------------------------------------------------------------
 
+
 def test_mpp_from_ome_xml_default_unit_is_micrometers():
     # No PhysicalSize*Unit -> OME default is micrometers.
     ome = '<Pixels PhysicalSizeX="0.2125" PhysicalSizeY="0.2125" SizeX="10"/>'
@@ -87,14 +88,18 @@ def test_mpp_from_ome_xml_default_unit_is_micrometers():
 
 def test_mpp_from_ome_xml_micron_sign_and_greek_mu():
     for unit in ("\u00b5m", "\u03bcm", "micron"):
-        ome = (f'<Pixels PhysicalSizeX="0.34" PhysicalSizeXUnit="{unit}" '
-               f'PhysicalSizeY="0.34" PhysicalSizeYUnit="{unit}"/>')
+        ome = (
+            f'<Pixels PhysicalSizeX="0.34" PhysicalSizeXUnit="{unit}" '
+            f'PhysicalSizeY="0.34" PhysicalSizeYUnit="{unit}"/>'
+        )
         assert wsi._mpp_from_ome_xml(ome) == pytest.approx((0.34, 0.34))
 
 
 def test_mpp_from_ome_xml_unit_conversion_nm():
-    ome = ('<Pixels PhysicalSizeX="250" PhysicalSizeXUnit="nm" '
-           'PhysicalSizeY="250" PhysicalSizeYUnit="nm"/>')
+    ome = (
+        '<Pixels PhysicalSizeX="250" PhysicalSizeXUnit="nm" '
+        'PhysicalSizeY="250" PhysicalSizeYUnit="nm"/>'
+    )
     assert wsi._mpp_from_ome_xml(ome) == pytest.approx((0.25, 0.25))
 
 
@@ -119,14 +124,19 @@ def test_get_mpp_tifffile_falls_back_to_ome_when_tags_unusable(tmp_path):
     # No ``resolution=`` -> baseline TIFF resolution tags absent/NONE; the real
     # spacing is carried only by the OME-XML PhysicalSize fields.
     tifffile.imwrite(
-        str(path), data, photometric="rgb",
-        metadata={"axes": "YXS",
-                  "PhysicalSizeX": 0.2125, "PhysicalSizeXUnit": "\u00b5m",
-                  "PhysicalSizeY": 0.2125, "PhysicalSizeYUnit": "\u00b5m"},
+        str(path),
+        data,
+        photometric="rgb",
+        metadata={
+            "axes": "YXS",
+            "PhysicalSizeX": 0.2125,
+            "PhysicalSizeXUnit": "\u00b5m",
+            "PhysicalSizeY": 0.2125,
+            "PhysicalSizeYUnit": "\u00b5m",
+        },
     )
     mppx, mppy = wsi._get_mpp_tifffile(str(path))
     assert (mppx, mppy) == pytest.approx((0.2125, 0.2125))
-
 
 
 def test_backend_env_override_tiffslide(monkeypatch):

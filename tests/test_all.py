@@ -10,14 +10,14 @@ import pytest
 
 import wsinsight.write_geojson as write_geojson_module
 import wsinsight.write_omecsv as write_omecsv_module
-from wsinsight.cli.infer import _coerce_number, _csv_to_list
-from wsinsight.write_geojson import (
-    _build_geojson_dict_from_csv,
-    _dataframe_to_geojson_box_fast,
-    _dataframe_to_geojson_polygon_fast,
-    _make_distinct_colors,
-)
-from wsinsight.write_omecsv import make_omecsv, write_omecsvs
+from wsinsight.cli.infer import _coerce_number
+from wsinsight.cli.infer import _csv_to_list
+from wsinsight.write_geojson import _build_geojson_dict_from_csv
+from wsinsight.write_geojson import _dataframe_to_geojson_box_fast
+from wsinsight.write_geojson import _dataframe_to_geojson_polygon_fast
+from wsinsight.write_geojson import _make_distinct_colors
+from wsinsight.write_omecsv import make_omecsv
+from wsinsight.write_omecsv import write_omecsvs
 
 
 class InlineExecutor:
@@ -140,7 +140,9 @@ def test_build_geojson_dict_from_csv_box(tmp_path: Path) -> None:
     assert len(geojson["features"]) == 2
 
 
-def test_write_geojsons_creates_output(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+def test_write_geojsons_creates_output(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     results_dir = tmp_path / "results"
     csv_dir = results_dir / "model-outputs-csv"
     _write_minimal_csv(csv_dir / "slide_a.csv")
@@ -190,7 +192,9 @@ def test_make_omecsv_produces_compressed_file(tmp_path: Path) -> None:
         assert header.startswith("object,secondary_object,polygon")
 
 
-def test_write_omecsvs_runs_inline(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+def test_write_omecsvs_runs_inline(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     results_dir = tmp_path / "results"
     csv_dir = results_dir / "model-outputs-csv"
     csv_paths = [csv_dir / "slide_a.csv", csv_dir / "slide_b.csv"]

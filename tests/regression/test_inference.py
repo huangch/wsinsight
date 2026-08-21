@@ -16,7 +16,6 @@ pd = pytest.importorskip("pandas")
 
 from tests.regression.conftest import RegressionCase
 
-
 pytestmark = [pytest.mark.regression, pytest.mark.slow]
 
 
@@ -67,11 +66,13 @@ def test_inference_csv_matches_golden(case: RegressionCase, request):
         a, e = actual[col], expected[col]
         if np.issubdtype(e.dtype, np.number):
             np.testing.assert_allclose(
-                a.to_numpy(), e.to_numpy(),
-                rtol=NUMERIC_RTOL, atol=NUMERIC_ATOL,
+                a.to_numpy(),
+                e.to_numpy(),
+                rtol=NUMERIC_RTOL,
+                atol=NUMERIC_ATOL,
                 err_msg=f"{case.slide_id}: numeric drift in column {col!r}",
             )
         else:
-            assert (a.fillna("") == e.fillna("")).all(), (
-                f"{case.slide_id}: non-numeric drift in column {col!r}"
-            )
+            assert (
+                a.fillna("") == e.fillna("")
+            ).all(), f"{case.slide_id}: non-numeric drift in column {col!r}"

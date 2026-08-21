@@ -24,11 +24,17 @@ def _subcommands() -> list[tuple[str, click.Command]]:
 
 def _flags(cmd: click.Command) -> list[str]:
     """All long-form option strings declared on a command."""
-    return [opt for param in cmd.params for opt in getattr(param, "opts", [])
-            if opt.startswith("--")]
+    return [
+        opt
+        for param in cmd.params
+        for opt in getattr(param, "opts", [])
+        if opt.startswith("--")
+    ]
 
 
-@pytest.mark.parametrize("name,cmd", _subcommands(), ids=lambda v: v if isinstance(v, str) else "")
+@pytest.mark.parametrize(
+    "name,cmd", _subcommands(), ids=lambda v: v if isinstance(v, str) else ""
+)
 def test_standalone_command_does_not_prefix_its_own_options(name, cmd):
     offenders = [flag for flag in _flags(cmd) if flag.startswith(f"--{name}-")]
     assert not offenders, (

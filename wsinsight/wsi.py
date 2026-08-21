@@ -28,7 +28,7 @@ _MPP_FROM_APPMAG: dict[int, float] = {
     40: 0.25,
     20: 0.50,
     10: 1.00,
-    4:  2.50,
+    4: 2.50,
 }
 
 _allowed_backends = {"openslide", "tiffslide"}
@@ -122,6 +122,7 @@ def get_wsi_cls() -> type[openslide.OpenSlide] | type[tiffslide.TiffSlide]:
 # For typing an object that has a method `read_region`.
 class CanReadRegion(Protocol):
     """Protocol describing objects that expose ``read_region`` like OpenSlide."""
+
     def read_region(
         self, location: tuple[int, int], level: int, size: tuple[int, int]
     ) -> Image.Image:
@@ -308,8 +309,15 @@ def _get_mpp_tifffile(slide_path: str | Path) -> tuple[float, float]:
 # Map OME ``PhysicalSize*Unit`` strings to micrometers. Keys are normalized
 # (both micro-sign U+00B5 and Greek-mu U+03BC folded to ``u``, lower-cased).
 _OME_UNIT_TO_UM: dict[str, float] = {
-    "um": 1.0, "micron": 1.0, "microns": 1.0, "micrometer": 1.0,
-    "micrometre": 1.0, "nm": 1e-3, "mm": 1e3, "cm": 1e4, "m": 1e6,
+    "um": 1.0,
+    "micron": 1.0,
+    "microns": 1.0,
+    "micrometer": 1.0,
+    "micrometre": 1.0,
+    "nm": 1e-3,
+    "mm": 1e3,
+    "cm": 1e4,
+    "m": 1e6,
 }
 
 
@@ -434,12 +442,16 @@ def get_avg_mpp(slide_path: Path | str, default_mpp: float | None = None) -> flo
             logger.warning(
                 "%s: MPP missing — falling back to AppMag=%g (assumed %.3f um/px). "
                 "Verify this matches your scanner.",
-                str(slide_path), appmag, mpp,
+                str(slide_path),
+                appmag,
+                mpp,
             )
             return mpp
         logger.warning(
             "%s: MPP missing and AppMag=%g not in fallback table %s.",
-            str(slide_path), appmag, sorted(_MPP_FROM_APPMAG),
+            str(slide_path),
+            appmag,
+            sorted(_MPP_FROM_APPMAG),
         )
 
     # User-supplied fallback: used only when nothing could be read from the slide.
@@ -447,7 +459,8 @@ def get_avg_mpp(slide_path: Path | str, default_mpp: float | None = None) -> flo
         logger.warning(
             "%s: MPP could not be read from the slide; using the supplied "
             "--spacing-um-px=%g um/px fallback. Verify this matches the scan.",
-            str(slide_path), default_mpp,
+            str(slide_path),
+            default_mpp,
         )
         return float(default_mpp)
 
@@ -457,7 +470,9 @@ def get_avg_mpp(slide_path: Path | str, default_mpp: float | None = None) -> flo
 def _validate_wsi_directory(wsi_dir: str | Path) -> None:
     """Validate that slide stems are unique within ``wsi_dir``."""
     wsi_dir = URIPath(wsi_dir)
-    maybe_slides = [p for p in wsi_dir.iterdir() if wsi_dir.scheme == "image-list" or p.is_file()]
+    maybe_slides = [
+        p for p in wsi_dir.iterdir() if wsi_dir.scheme == "image-list" or p.is_file()
+    ]
     uniq_stems = set(p.stem for p in maybe_slides)
     if len(uniq_stems) != len(maybe_slides):
         raise DuplicateFilePrefixesFound(

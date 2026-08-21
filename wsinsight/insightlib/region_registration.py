@@ -3,15 +3,17 @@
 from __future__ import annotations
 
 import os
+from concurrent.futures import ThreadPoolExecutor
+from concurrent.futures import as_completed
 from math import ceil
-from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import Optional
 
 import numpy as np
 import pandas as pd
 import tqdm as tqdm_module
 
-from ..num_worker_optimizer import pick_workers_safe, throttle_when_busy
+from ..num_worker_optimizer import pick_workers_safe
+from ..num_worker_optimizer import throttle_when_busy
 
 
 def register_objects_to_regions(
@@ -59,7 +61,9 @@ def register_objects_to_regions(
         (fraction of objects that found an enclosing region in [0, 1]).
     """
     if max_workers is None:
-        max_workers = pick_workers_safe(max_workers=(os.cpu_count() or 16) - 8, min_workers=8)
+        max_workers = pick_workers_safe(
+            max_workers=(os.cpu_count() or 16) - 8, min_workers=8
+        )
 
     # 1) object centres (local arrays — never written into slide_df)
     cx_all = (slide_df["minx"] + slide_df["width"] * 0.5).to_numpy()
@@ -81,10 +85,10 @@ def register_objects_to_regions(
     # 3) containment predicate
     def contains(cx_col, cy_col):
         return (
-            (cx_col[:, None] >= ax0[None, :]) &
-            (cx_col[:, None] <= ax1[None, :]) &
-            (cy_col[:, None] >= ay0[None, :]) &
-            (cy_col[:, None] <= ay1[None, :])
+            (cx_col[:, None] >= ax0[None, :])
+            & (cx_col[:, None] <= ax1[None, :])
+            & (cy_col[:, None] >= ay0[None, :])
+            & (cy_col[:, None] <= ay1[None, :])
         )
 
     # 4) adaptive chunk sizing
@@ -93,7 +97,7 @@ def register_objects_to_regions(
     # Rough bytes per point in a worker: boolean mask (n_annots * 1 byte)
     # + a float score matrix view (n_annots * 4 bytes) → ~5 bytes/annot per point
     bytes_per_point = max(1, 5 * n_annots)
-    target_bytes_per_worker = int(mem_budget_mb * 1024 ** 2)
+    target_bytes_per_worker = int(mem_budget_mb * 1024**2)
     # points per chunk so that mask+scores fit in mem budget (with a safety factor)
     points_per_chunk_mem = max(1000, target_bytes_per_worker // bytes_per_point)
     # also ensure enough chunks to keep workers busy
@@ -229,8 +233,12 @@ def register_objects_to_objects(
     # Centroids.
     cx_p = (slide_df["minx"] + slide_df["width"] * 0.5).to_numpy(dtype=np.float64)
     cy_p = (slide_df["miny"] + slide_df["height"] * 0.5).to_numpy(dtype=np.float64)
-    cx_s = (secondary_df["minx"] + secondary_df["width"] * 0.5).to_numpy(dtype=np.float64)
-    cy_s = (secondary_df["miny"] + secondary_df["height"] * 0.5).to_numpy(dtype=np.float64)
+    cx_s = (secondary_df["minx"] + secondary_df["width"] * 0.5).to_numpy(
+        dtype=np.float64
+    )
+    cy_s = (secondary_df["miny"] + secondary_df["height"] * 0.5).to_numpy(
+        dtype=np.float64
+    )
 
     tree = cKDTree(np.stack([cx_s, cy_s], axis=1))
     dists, idxs = tree.query(

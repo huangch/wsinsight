@@ -7,12 +7,12 @@ from __future__ import annotations
 import shutil
 import sys
 import time
-from pathlib import Path
 
 import pytest
 
-from wsinsight.mcp import adapters, jobs, schema
-
+from wsinsight.mcp import adapters
+from wsinsight.mcp import jobs
+from wsinsight.mcp import schema
 
 # -- schema -----------------------------------------------------------------
 
@@ -146,9 +146,7 @@ def test_job_manager_smoke(tmp_path, monkeypatch):
             self._jobs[job_id] = state
         import threading
 
-        threading.Thread(
-            target=self._run_job, args=(state,), daemon=True
-        ).start()
+        threading.Thread(target=self._run_job, args=(state,), daemon=True).start()
         return job_id
 
     monkeypatch.setattr(jobs.JobManager, "submit", fake_submit)
@@ -193,7 +191,8 @@ def test_job_manager_cancel(tmp_path, monkeypatch):
     fake_argv_tail = [str(script)]
 
     def fake_submit(self, command, argv_tail):  # noqa: ARG001
-        import uuid, threading
+        import threading
+        import uuid
 
         job_id = uuid.uuid4().hex[:12]
         argv = [sys.executable] + fake_argv_tail
@@ -236,7 +235,8 @@ def test_job_manager_cancel(tmp_path, monkeypatch):
 
 
 @pytest.mark.skipif(
-    shutil.which is None or "fastmcp" not in sys.modules
+    shutil.which is None
+    or "fastmcp" not in sys.modules
     and __import__("importlib").util.find_spec("fastmcp") is None,
     reason="fastmcp not installed",
 )

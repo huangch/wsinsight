@@ -18,7 +18,7 @@
     "pancreas-tumor-preactresnet34.tcga-paad": {
       "description": "Pancreas tumor",
       "hf_repo_id": "kaczmarj/pancreas-tumor-preactresnet34.tcga-paad",
-      "hf_revision": "main"    
+      "hf_revision": "main"
     },
     "prostate-tumor-resnet34.tcga-prad": {
       "description": "Prostate tumor",
@@ -89,7 +89,7 @@
       "description": "10xGenomics-CRC-CellViT-SAM-H-x40",
       "hf_repo_id": "huangch/10xGenomics-CRC-CellViT-SAM-H-x40",
       "hf_revision": "main"
-    },    
+    },
     "hne_cell_classification": {
       "description": "hne_cell_classification",
       "hf_repo_id": "huangch/hne_cell_classification",

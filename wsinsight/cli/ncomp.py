@@ -10,20 +10,16 @@ rather than per-layer.
 from __future__ import annotations
 
 import math
-import os
 import re
-from pathlib import Path
-from typing import List
 
 import click
 
 from ..insightlib.ncomp_generation import ncomp_generation
-from ..uri_path import URIPath, URIPathType
+from ..uri_path import URIPath
+from ..uri_path import URIPathType
 from ._meta import write_runtime_metadata
-from ._paths import (
-    default_storage_kwargs,
-    ensure_input_directory,
-)
+from ._paths import default_storage_kwargs
+from ._paths import ensure_input_directory
 
 _STORAGE_KWARGS = default_storage_kwargs()
 
@@ -31,6 +27,7 @@ _STORAGE_KWARGS = default_storage_kwargs()
 # ---------------------------------------------------------------------------
 # Shared CLI helpers (mirrored from cli/hplot.py)
 # ---------------------------------------------------------------------------
+
 
 def _coerce_number(token: str) -> int | float | str:
     """Convert CLI token to int/float when possible, otherwise lowercase text."""
@@ -65,6 +62,7 @@ def _csv_to_list(
 # ---------------------------------------------------------------------------
 # Click command
 # ---------------------------------------------------------------------------
+
 
 @click.command()
 @click.option(
@@ -142,7 +140,9 @@ def ncomp(
     ensure_input_directory(wsi_dir, "--wsi-dir")
     ensure_input_directory(results_dir, "--results-dir")
 
-    slide_paths = sorted([p for p in wsi_dir.iterdir() if wsi_dir.scheme == "image-list" or p.is_file()])
+    slide_paths = sorted(
+        [p for p in wsi_dir.iterdir() if wsi_dir.scheme == "image-list" or p.is_file()]
+    )
     if not slide_paths:
         raise click.ClickException(f"No files found in slide directory: {wsi_dir}")
 
@@ -166,9 +166,7 @@ def ncomp(
     )
 
     if failed:
-        click.secho(
-            f"\nncomp failed for {len(failed)} slide(s):", fg="yellow"
-        )
+        click.secho(f"\nncomp failed for {len(failed)} slide(s):", fg="yellow")
         click.secho("\n".join(failed), fg="yellow")
     else:
         click.secho("\nncomp completed successfully.\n", fg="green")
