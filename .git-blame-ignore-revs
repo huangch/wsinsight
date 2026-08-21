@@ -1,0 +1,4 @@
+# Bulk reformat; not a source change. Use with:
+#   git config blame.ignoreRevsFile .git-blame-ignore-revs
+# GitHub honours this file automatically.
+931a8f57347339cd973dad861013b74c725d48b9
