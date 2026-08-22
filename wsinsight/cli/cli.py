@@ -161,6 +161,9 @@ def _describe_param(param: click.Parameter) -> dict[str, Any]:
         "default": default,
         "help": (param.help if isinstance(param, click.Option) else "") or "",
         "multiple": bool(getattr(param, "multiple", False)),
+        # >1 for click tuple types, e.g. type=(int, int): the value must reach
+        # the CLI as that many separate tokens, not one bracketed string.
+        "nargs": int(getattr(param, "nargs", 1) or 1),
         "is_flag": bool(getattr(param, "is_flag", False)),
     }
     if isinstance(param, click.Option):

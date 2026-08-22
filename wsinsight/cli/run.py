@@ -235,17 +235,22 @@ def _csv_to_list(_: click.Context, __: click.Parameter, value: Any) -> list[Any]
 
 def _enumerate_slide_paths(wsi_dir: URIPath) -> list[URIPath]:
     """List slide files once so patch + infer reuse the same ordering."""
+    from ..wsi import is_slide_file
+
     wsi_dir = wsi_dir.coerce_image_list()
     if not wsi_dir.exists():
         raise FileNotFoundError(f"Whole slide image directory not found: {wsi_dir}")
 
+    is_list = wsi_dir.scheme == "image-list"
     slide_paths = sorted(
         [
             path
             for path in tqdm.tqdm(
                 wsi_dir.iterdir(), desc="Count files in slide directory"
             )
-            if wsi_dir.scheme == "image-list" or path.is_file()
+            # An explicit manifest is taken verbatim; a directory is filtered so
+            # sidecar files (e.g. Xenium *_outs.zip) never reach the WSI reader.
+            if is_list or (path.is_file() and is_slide_file(path))
         ]
     )
     return slide_paths

@@ -1091,14 +1091,17 @@ def infer(
         raise click.ClickException(_PATCH_DIR_MISSING_HINT)
 
     if wsi_dir is not None and slide_paths is None:
+        from ..wsi import is_slide_file
+
         wsi_dir = wsi_dir.coerce_image_list()
+        is_list = wsi_dir.scheme == "image-list"
         slide_paths = sorted(
             [
                 p
                 for p in tqdm.tqdm(
                     wsi_dir.iterdir(), desc="Count files in slide directory"
                 )
-                if wsi_dir.scheme == "image-list" or p.is_file()
+                if is_list or (p.is_file() and is_slide_file(p))
             ]
         )
 

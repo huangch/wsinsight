@@ -63,7 +63,13 @@ def list_registered_models() -> list[dict[str, str | None]]:
     Used by ``wsinsight describe`` so downstream GUIs (the QuPath extension)
     can populate a ``--model`` picker with the models this installation can
     actually resolve, rather than guessing from a directory listing.
-    Returns an empty list when no registry is reachable.
+
+    When a model's files already sit beside the registry
+    (``<registry-dir>/<hf_repo_id>/<hf_revision>/``) the absolute ``path`` is
+    reported, so callers can pass ``--zoo-model-dir`` and skip the HuggingFace
+    download entirely. The path is absolute *in the environment that ran
+    describe*, which is why the schema should be generated where wsinsight
+    runs. Returns an empty list when no registry is reachable.
     """
 
     registry_file = resolve_zoo_registry_path()
@@ -72,14 +78,26 @@ def list_registered_models() -> list[dict[str, str | None]]:
     except Exception:  # unreadable/invalid registry must not break `describe`
         return []
 
+    registry_dir = Path(registry_file).resolve().parent if registry_file else None
+
     out: list[dict[str, str | None]] = []
     for name, model in sorted(getattr(registry, "models", {}).items()):
+        repo_id = getattr(model, "hf_repo_id", None)
+        revision = getattr(model, "hf_revision", None)
+        local_path = None
+        if registry_dir is not None and repo_id and revision:
+            candidate = registry_dir / repo_id / revision
+            if (candidate / "config.json").is_file() and (
+                candidate / "torchscript_model.pt"
+            ).is_file():
+                local_path = str(candidate)
         out.append(
             {
                 "name": name,
                 "description": getattr(model, "description", "") or "",
-                "hf_repo_id": getattr(model, "hf_repo_id", None),
-                "hf_revision": getattr(model, "hf_revision", None),
+                "hf_repo_id": repo_id,
+                "hf_revision": revision,
+                "path": local_path,
             }
         )
     return out

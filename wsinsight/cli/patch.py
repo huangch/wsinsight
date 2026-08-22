@@ -607,14 +607,17 @@ def patch(
     #     raise FileNotFoundError(f"no files exist in the slide directory: {wsi_dir}")
 
     if slide_paths is None:
+        from ..wsi import is_slide_file
+
         wsi_dir = wsi_dir.coerce_image_list()
+        is_list = wsi_dir.scheme == "image-list"
         slide_paths = sorted(
             [
                 p
                 for p in tqdm.tqdm(
                     wsi_dir.iterdir(), desc="Count files in slide directory"
                 )
-                if wsi_dir.scheme == "image-list" or p.is_file()
+                if is_list or (p.is_file() and is_slide_file(p))
             ]
         )
 
@@ -711,11 +714,9 @@ def patch(
                 f"directory not found: {wsi_dir}"
             )
 
-        wsi_paths = [
-            p
-            for p in wsi_dir.iterdir()
-            if wsi_dir.scheme == "image-list" or p.is_file()
-        ]
+        from ..wsi import list_slide_paths
+
+        wsi_paths = list_slide_paths(wsi_dir)
 
         if not wsi_paths:
             raise errors.WholeSlideImagesNotFound(wsi_dir)
@@ -777,11 +778,9 @@ def patch(
                 f"directory not found: {wsi_dir}"
             )
 
-        wsi_paths = [
-            p
-            for p in wsi_dir.iterdir()
-            if wsi_dir.scheme == "image-list" or p.is_file()
-        ]
+        from ..wsi import list_slide_paths
+
+        wsi_paths = list_slide_paths(wsi_dir)
 
         if not wsi_paths:
             raise errors.WholeSlideImagesNotFound(wsi_dir)
@@ -839,11 +838,9 @@ def patch(
                 f"directory not found: {wsi_dir}"
             )
 
-        wsi_paths = [
-            p
-            for p in wsi_dir.iterdir()
-            if wsi_dir.scheme == "image-list" or p.is_file()
-        ]
+        from ..wsi import list_slide_paths
+
+        wsi_paths = list_slide_paths(wsi_dir)
 
         if not wsi_paths:
             raise errors.WholeSlideImagesNotFound(wsi_dir)

@@ -213,11 +213,9 @@ def reg(
     if wsi_dir is not None:
         wsi_dir = wsi_dir.coerce_image_list()
         ensure_input_directory(wsi_dir, "--wsi-dir")
-        wsi_paths = [
-            p
-            for p in wsi_dir.iterdir()
-            if wsi_dir.scheme == "image-list" or p.is_file()
-        ]
+        from ..wsi import list_slide_paths
+
+        wsi_paths = list_slide_paths(wsi_dir)
         wsi_by_stem: dict[str, URIPath] | None = {p.stem: p for p in wsi_paths}
         obj_csvs = sorted(obj_csv_dir / p.with_suffix(".csv").name for p in wsi_paths)
     else:
@@ -352,10 +350,10 @@ def reg(
     # Re-enumerate after registration so all (including previously-skipped) CSVs
     # are picked up for export.  Honour --wsi-dir shard when provided.
     if wsi_dir is not None:
+        from ..wsi import list_slide_paths
+
         all_obj_csvs = sorted(
-            obj_csv_dir / p.with_suffix(".csv").name
-            for p in wsi_dir.iterdir()
-            if p.is_file()
+            obj_csv_dir / p.with_suffix(".csv").name for p in list_slide_paths(wsi_dir)
         )
     else:
         all_obj_csvs = sorted(p for p in obj_csv_dir.iterdir() if p.suffix == ".csv")

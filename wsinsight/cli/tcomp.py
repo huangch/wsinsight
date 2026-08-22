@@ -111,9 +111,9 @@ def tcomp(
     ensure_input_directory(wsi_dir, "--wsi-dir")
     ensure_input_directory(results_dir, "--results-dir")
 
-    slide_paths = sorted(
-        [p for p in wsi_dir.iterdir() if wsi_dir.scheme == "image-list" or p.is_file()]
-    )
+    from ..wsi import list_slide_paths
+
+    slide_paths = list_slide_paths(wsi_dir)
     if not slide_paths:
         raise click.ClickException(f"No files found in slide directory: {wsi_dir}")
 

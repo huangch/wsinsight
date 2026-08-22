@@ -467,12 +467,55 @@ def get_avg_mpp(slide_path: Path | str, default_mpp: float | None = None) -> flo
     raise CannotReadSpacing(slide_path)
 
 
+SLIDE_SUFFIXES: frozenset[str] = frozenset(
+    {
+        # OpenSlide: Aperio, generic tiled TIFF, Ventana, Philips
+        ".svs",
+        ".tif",
+        ".tiff",
+        # Hamamatsu
+        ".ndpi",
+        ".vms",
+        ".vmu",
+        # Leica
+        ".scn",
+        # MIRAX
+        ".mrxs",
+        # Sakura
+        ".svslide",
+        # Ventana
+        ".bif",
+        # DICOM (OpenSlide >= 4.0)
+        ".dcm",
+    }
+)
+
+
+def is_slide_file(path) -> bool:
+    """Whether ``path`` looks like a slide OpenSlide or TiffSlide can open.
+
+    Extension-based on purpose: probing every file in a directory would mean
+    opening arbitrary data, and sidecar archives (e.g. Xenium ``*_outs.zip``)
+    sit next to slides in practice.
+    """
+    return str(path).lower().endswith(tuple(SLIDE_SUFFIXES))
+
+
+def list_slide_paths(wsi_dir: "URIPath") -> list:
+    """Slides in ``wsi_dir``, sorted.
+
+    An ``image-list://`` manifest is taken verbatim — the caller named the
+    slides explicitly, so the suffix filter would only second-guess them.
+    """
+    if wsi_dir.scheme == "image-list":
+        return sorted(wsi_dir.iterdir())
+    return sorted(p for p in wsi_dir.iterdir() if p.is_file() and is_slide_file(p))
+
+
 def _validate_wsi_directory(wsi_dir: str | Path) -> None:
     """Validate that slide stems are unique within ``wsi_dir``."""
     wsi_dir = URIPath(wsi_dir)
-    maybe_slides = [
-        p for p in wsi_dir.iterdir() if wsi_dir.scheme == "image-list" or p.is_file()
-    ]
+    maybe_slides = list_slide_paths(wsi_dir)
     uniq_stems = set(p.stem for p in maybe_slides)
     if len(uniq_stems) != len(maybe_slides):
         raise DuplicateFilePrefixesFound(
