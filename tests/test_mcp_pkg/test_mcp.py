@@ -66,7 +66,8 @@ def test_args_to_argv_basic():
     assert argv[0] == "ncomp"
     assert "--wsi-dir" in argv and argv[argv.index("--wsi-dir") + 1] == "/data/wsis"
     assert "--results-dir" in argv
-    assert "--ncomp-k" in argv and argv[argv.index("--ncomp-k") + 1] == "3"
+    # The MCP arg is ncomp_k but the CLI flag is --k, so this is not a plain kebab-casing.
+    assert "--k" in argv and argv[argv.index("--k") + 1] == "3"
     assert "--overwrite" in argv  # bare boolean flag
 
 

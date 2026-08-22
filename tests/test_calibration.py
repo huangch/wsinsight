@@ -158,10 +158,12 @@ def test_calibration_cancels_fixed_workspace_overhead(monkeypatch):
     assert measured == marginal
 
     # For contrast: the single-point estimate this replaced charges the whole
-    # fixed workspace to one batch, overshooting by several-fold.
+    # fixed workspace to one batch, so its per-image figure is inflated by
+    # exactly that constant spread over the batch. Expressed relative to _CAL_B2
+    # rather than as a fixed multiple, which stops holding once the batch grows.
     b2 = HELPERS["_CAL_B2"]
     single_point = (fixed + b2 * marginal) // b2
-    assert single_point > 4 * marginal
+    assert single_point == measured + fixed // b2
 
 
 def test_calibration_is_independent_of_fixed_overhead_size(monkeypatch):

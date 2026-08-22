@@ -16,6 +16,16 @@ from wsinsight.cli.run import _scan_existing_artifacts
 from wsinsight.uri_path import URIPath
 
 
+def _touch(path: URIPath) -> None:
+    """Create an empty file.
+
+    URIPath implements only the slice of the Path API the package needs, and
+    touch() is not part of it; open("wb") is the supported equivalent.
+    """
+    with path.open("wb"):
+        pass
+
+
 class TestSlideStatus:
     """Tests for SlideStatus dataclass properties."""
 
@@ -70,8 +80,8 @@ class TestScanExistingArtifacts:
         patches_dir.mkdir(parents=True, exist_ok=True)
 
         # Create 2 of 3 patches
-        (patches_dir / "slide_0.h5").touch()
-        (patches_dir / "slide_2.h5").touch()
+        _touch(patches_dir / "slide_0.h5")
+        _touch(patches_dir / "slide_2.h5")
 
         slide_paths = [URIPath(f"slide_{i}.svs") for i in range(3)]
         status = _scan_existing_artifacts(slide_paths, results_dir)
@@ -89,10 +99,10 @@ class TestScanExistingArtifacts:
 
         # All patches exist
         for i in range(3):
-            (patches_dir / f"slide_{i}.h5").touch()
+            _touch(patches_dir / f"slide_{i}.h5")
 
         # Only 1 CSV exists
-        (csv_dir / "slide_1.csv").touch()
+        _touch(csv_dir / "slide_1.csv")
 
         slide_paths = [URIPath(f"slide_{i}.svs") for i in range(3)]
         status = _scan_existing_artifacts(slide_paths, results_dir)
@@ -107,9 +117,9 @@ class TestScanExistingArtifacts:
         patches_dir = results_dir / "patches"
         patches_dir.mkdir(parents=True, exist_ok=True)
 
-        (patches_dir / "slide_0.h5").touch()
-        (patches_dir / "slide_1.txt").touch()  # Not an H5
-        (patches_dir / "readme.md").touch()
+        _touch(patches_dir / "slide_0.h5")
+        _touch(patches_dir / "slide_1.txt")  # Not an H5
+        _touch(patches_dir / "readme.md")
 
         slide_paths = [URIPath("slide_0.svs"), URIPath("slide_1.svs")]
         status = _scan_existing_artifacts(slide_paths, results_dir)
@@ -121,9 +131,9 @@ class TestScanExistingArtifacts:
         csv_dir = results_dir / "model-outputs-csv"
         csv_dir.mkdir(parents=True, exist_ok=True)
 
-        (csv_dir / "slide_0.csv").touch()
-        (csv_dir / "slide_1.txt").touch()  # Not a CSV
-        (csv_dir / "metadata.json").touch()
+        _touch(csv_dir / "slide_0.csv")
+        _touch(csv_dir / "slide_1.txt")  # Not a CSV
+        _touch(csv_dir / "metadata.json")
 
         slide_paths = [URIPath("slide_0.svs"), URIPath("slide_1.svs")]
         status = _scan_existing_artifacts(slide_paths, results_dir)
@@ -189,8 +199,8 @@ class TestReconciliationScenarios:
         # Simulate 11 of 12 patches and CSVs
         for i in range(12):
             if i != 5:  # slide_5 is missing
-                (patches_dir / f"slide_{i}.h5").touch()
-                (csv_dir / f"slide_{i}.csv").touch()
+                _touch(patches_dir / f"slide_{i}.h5")
+                _touch(csv_dir / f"slide_{i}.csv")
 
         slide_paths = [URIPath(f"slide_{i}.svs") for i in range(12)]
         status = _scan_existing_artifacts(slide_paths, results_dir)
@@ -213,11 +223,11 @@ class TestReconciliationScenarios:
 
         # All patches exist
         for i in range(5):
-            (patches_dir / f"slide_{i}.h5").touch()
+            _touch(patches_dir / f"slide_{i}.h5")
 
         # Only some CSVs
-        (csv_dir / "slide_0.csv").touch()
-        (csv_dir / "slide_2.csv").touch()
+        _touch(csv_dir / "slide_0.csv")
+        _touch(csv_dir / "slide_2.csv")
 
         slide_paths = [URIPath(f"slide_{i}.svs") for i in range(5)]
         status = _scan_existing_artifacts(slide_paths, results_dir)
@@ -235,8 +245,8 @@ class TestReconciliationScenarios:
         csv_dir.mkdir(parents=True, exist_ok=True)
 
         for i in range(5):
-            (patches_dir / f"slide_{i}.h5").touch()
-            (csv_dir / f"slide_{i}.csv").touch()
+            _touch(patches_dir / f"slide_{i}.h5")
+            _touch(csv_dir / f"slide_{i}.csv")
 
         slide_paths = [URIPath(f"slide_{i}.svs") for i in range(5)]
         status = _scan_existing_artifacts(slide_paths, results_dir)
