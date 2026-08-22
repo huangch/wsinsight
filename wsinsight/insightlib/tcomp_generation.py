@@ -430,7 +430,7 @@ def tcomp_generation(
                 overwrite,
                 graph_cache_dir,
                 (i % num_workers) + 1,
-                no_neighborhood,
+                no_neighborhood=no_neighborhood,
                 display_id=short_ids.get(wsi_path.stem, wsi_path.stem),
             ): wsi_path.stem
             for i, (wsi_path, model_output_csv) in enumerate(jobs)

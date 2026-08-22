@@ -509,7 +509,21 @@ def list_slide_paths(wsi_dir: "URIPath") -> list:
     """
     if wsi_dir.scheme == "image-list":
         return sorted(wsi_dir.iterdir())
-    return sorted(p for p in wsi_dir.iterdir() if p.is_file() and is_slide_file(p))
+    files = [p for p in wsi_dir.iterdir() if p.is_file()]
+    slides = sorted(p for p in files if is_slide_file(p))
+    skipped = sorted(p.name for p in files if not is_slide_file(p))
+    if skipped:
+        # Without this, an unrecognised slide format is indistinguishable from
+        # an empty directory: the caller just sees "no files found".
+        logger.warning(
+            "Ignoring %d file(s) in %s with no recognised slide suffix: %s%s. "
+            "If these are slides, list them explicitly with image-list://",
+            len(skipped),
+            wsi_dir,
+            ", ".join(skipped[:5]),
+            " ..." if len(skipped) > 5 else "",
+        )
+    return slides
 
 
 def _validate_wsi_directory(wsi_dir: str | Path) -> None:
