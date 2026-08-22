@@ -22,11 +22,10 @@ from typing import List
 
 import click
 import tqdm
-import wsinfer_zoo.client
 
 from ..cancel import raise_if_cancelled
 from ..export_helpers import build_export_csvs
-from ..modellib.models import resolve_zoo_registry_path
+from ..modellib.models import registered_model_names
 from ..qupath import make_qupath_project
 from ..uri_path import URIPath
 from ..uri_path import URIPathType
@@ -49,6 +48,10 @@ from .sptx_import import sptx_import as import_command
 from .tcomp import tcomp as tcomp_command
 
 _STORAGE_KWARGS = default_storage_kwargs()
+
+# Empty when the zoo registry is unreachable; --model then accepts free text so
+# that --zoo-model-dir, which needs no registry, still works offline.
+_ZOO_MODEL_NAMES = registered_model_names()
 
 
 # --- Completeness reconciliation helpers -------------------------------------
@@ -472,13 +475,7 @@ def _select_kwargs(values: dict[str, Any], keys: tuple[str, ...]) -> dict[str, A
     "-m",
     "--model",
     "model_name",
-    type=click.Choice(
-        sorted(
-            wsinfer_zoo.client.load_registry(
-                registry_file=resolve_zoo_registry_path(),
-            ).models.keys()
-        )
-    ),
+    type=click.Choice(_ZOO_MODEL_NAMES) if _ZOO_MODEL_NAMES else click.STRING,
     help="Name of the model to use from WSInsight Model Zoo. Mutually exclusive with"
     " --config.",
 )

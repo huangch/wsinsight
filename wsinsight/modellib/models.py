@@ -103,6 +103,23 @@ def list_registered_models() -> list[dict[str, str | None]]:
     return out
 
 
+def registered_model_names() -> list[str]:
+    """Sorted zoo model names, or ``[]`` when no registry can be read.
+
+    Returning empty instead of raising keeps the CLI importable on hosts that
+    cannot reach huggingface.co, so ``--zoo-model-dir`` -- which needs no
+    registry at all -- still works there.
+    """
+
+    try:
+        registry = wsinfer_zoo.client.load_registry(
+            registry_file=resolve_zoo_registry_path()
+        )
+    except Exception:
+        return []
+    return sorted(getattr(registry, "models", {}).keys())
+
+
 def get_registered_model(name: str) -> HFModelTorchScript:
     """Resolve a model name to the corresponding TorchScript handle."""
 

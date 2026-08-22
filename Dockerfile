@@ -76,6 +76,7 @@ WORKDIR /app/wsinsight
 COPY . .
 RUN mv /app/wsinsight/keras /app/
 RUN mv /app/wsinsight/zoo /app/
+RUN mv /app/wsinsight/hoptimus /app/
 
 # ------------------------------------
 # Pre-install heavy ML stack explicitly
@@ -175,7 +176,7 @@ RUN groupadd -g 1000 user && \
     bash -lc 'echo ". /opt/conda/etc/profile.d/conda.sh" >> /home/user/.bashrc' && \
     bash -lc 'echo "conda activate wsinsight" >> /home/user/.bashrc' && \
     mkdir -p /app/hf-cache && \
-    chown -R 1000:1000 /home/user /app/hf-cache /app/zoo /app/keras
+    chown -R 1000:1000 /home/user /app/hf-cache /app/zoo /app/keras /app/hoptimus
 
 # Install the runtime uid/gid-remapping entrypoint.
 RUN install -m 0755 /app/wsinsight/docker-entrypoint.sh /usr/local/bin/docker-entrypoint.sh

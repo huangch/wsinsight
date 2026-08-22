@@ -31,7 +31,7 @@ from .. import errors
 
 # from ..insightlib.niche_generation import niche_generation
 from ..modellib import models
-from ..modellib.models import resolve_zoo_registry_path
+from ..modellib.models import registered_model_names
 from ..modellib.run_inference import run_inference
 
 # QuPath project export relies on optional dependencies; import remains disabled until re-enabled.
@@ -41,6 +41,10 @@ from ._meta import write_runtime_metadata
 from ._paths import default_storage_kwargs
 
 _STORAGE_KWARGS = default_storage_kwargs()
+
+# Empty when the zoo registry is unreachable; --model then accepts free text so
+# that --zoo-model-dir, which needs no registry, still works offline.
+_ZOO_MODEL_NAMES = registered_model_names()
 
 
 # --- System inspection helpers -------------------------------------------------
@@ -479,13 +483,7 @@ def _optional_uri_paths(ctx: click.Context, param: click.Option, value):
     "-m",
     "--model",
     "model_name",
-    type=click.Choice(
-        sorted(
-            wsinfer_zoo.client.load_registry(
-                registry_file=resolve_zoo_registry_path(),
-            ).models.keys()
-        )
-    ),
+    type=click.Choice(_ZOO_MODEL_NAMES) if _ZOO_MODEL_NAMES else click.STRING,
     help="Name of the model to use from WSInsight Model Zoo. Mutually exclusive with"
     " --config.",
 )
