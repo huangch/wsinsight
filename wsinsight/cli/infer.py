@@ -578,7 +578,11 @@ def _optional_uri_paths(ctx: click.Context, param: click.Option, value):
     " non-overlapping patches. A value in (0, 1) will produce overlapping patches."
     " Negative values will add space between patches. A value of -1 would skip"
     " every other patch. A value of 0.5 will provide 50%% of overlap between patches."
-    " Values must be in (-inf, 1).",
+    " Values must be in (-inf, 1). "
+    "[2026-08-23] Values > 0 are rejected when used together with --object-based"
+    ": --object-based emits one row per detected cell, where overlapping tiles"
+    " produce duplicate cell records. Region-segmentation models and tile-level"
+    " exports with object_type='tile' remain unaffected.",
 )
 @click.option(
     "--patch-size-um",
@@ -1054,6 +1058,41 @@ def infer(
     ):
         raise click.ClickException(
             "--object-based doesn't work with variational patch size"
+        )
+
+    # --- 2026-08-23 — overlap vs --object-based guard ---------------------
+    #
+    # ``--patch-overlap-ratio > 0`` shrinks the tile bbox region by that
+    # fraction. That is meaningful for *region-segmentation* models (where
+    # overlapping outputs are merged with a deterministic ``np.maximum``-style
+    # operator) and for tile-level GeoJSON / OME-CSV exports with
+    # ``object_type='tile'``. It is **not safe** for ``--object-based``
+    # (cell-level) models because:
+    #
+    #   * Each overlapping tile emits its own per-cell objects (centroids,
+    #     contours, classification), so duplicate cell records appear in the
+    #     output CSV / polygons.
+    #   * The TileRemapStitcher writer (``tilefuse._SparseCanvas.write``)
+    #     uses naive ``=`` assignment (not ``np.maximum``), so the
+    #     np_logits / tp_logits maps get last-writer-wins on the overlap
+    #     region — the result is DataLoader-ordering-dependent and
+    #     **non-deterministic**.
+    #   * Cell-level stitching relies on the per-model ``halo_size_pixels``
+    #     (set in config.json) for the inner-patch trust region, not on
+    #     user-configured tile-grid overlap.
+    #
+    # Reject the unsafe combo early with a clear pointer to the right
+    # alternative.
+    if patch_overlap_ratio > 0.0 and object_based:
+        raise click.ClickException(
+            "--patch-overlap-ratio > 0 is not supported with --object-based "
+            "(cell-level) models. --patch-overlap-ratio shrinks tile bbox "
+            "for region-segmentation models and tile-level GeoJSON/OME-CSV "
+            "exports with object_type='tile'; --object-based emits one "
+            "row per detected cell, where overlapping tiles produce duplicate "
+            "cell records. Set --patch-overlap-ratio 0 and rely on the "
+            "per-model halo_size_pixels (set in config.json) for cell-level "
+            "stitching."
         )
 
     if patch_overlap_ratio != 0.0:

@@ -451,7 +451,11 @@ def _optional_uri_paths(ctx: click.Context, param: click.Option, value):
     " non-overlapping patches. A value in (0, 1) will produce overlapping patches."
     " Negative values will add space between patches. A value of -1 would skip"
     " every other patch. A value of 0.5 will provide 50%% of overlap between patches."
-    " Values must be in (-inf, 1).",
+    " Values must be in (-inf, 1). "
+    "[2026-08-23] Values > 0 are rejected when used together with --object-based"
+    ": --object-based emits one row per detected cell, where overlapping tiles"
+    " produce duplicate cell records. Region-segmentation models and tile-level"
+    " exports with object_type='tile' remain unaffected.",
 )
 @click.option(
     "--size-um",
@@ -922,6 +926,29 @@ def patch(
     ):
         raise click.ClickException(
             "--object-based doesn't work with variational patch size"
+        )
+
+    # --- 2026-08-23 — overlap vs --object-based guard ---------------------
+    #
+    # Mirrors the same guard in wsinsight/cli/infer.py so that ``wsinsight
+    # patch`` (run as a standalone subcommand) also rejects overlap > 0 with
+    # ``--object-based``.  Without it, ``patch`` would happily write
+    # overlapping tiles into /coords; ``infer`` would then either reject or
+    # silently produce non-deterministic output (whichever runs first).
+    #
+    # NOTE: this subcommand names the flag ``--overlap-ratio`` (no ``patch-``
+    # prefix), unlike ``infer`` which uses ``--patch-overlap-ratio``.  Both
+    # map to the same internal parameter, ``patch_overlap_ratio``.
+    if patch_overlap_ratio > 0.0 and object_based:
+        raise click.ClickException(
+            "--overlap-ratio > 0 is not supported with --object-based "
+            "(cell-level) models. --overlap-ratio shrinks tile bbox "
+            "for region-segmentation models and tile-level GeoJSON/OME-CSV "
+            "exports with object_type='tile'; --object-based emits one "
+            "row per detected cell, where overlapping tiles produce duplicate "
+            "cell records. Set --overlap-ratio 0 and rely on the "
+            "per-model halo_size_pixels (set in config.json) for cell-level "
+            "stitching."
         )
 
     if patch_overlap_ratio != 0.0:
