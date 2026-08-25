@@ -21,7 +21,6 @@ import torch
 import torch.nn.functional as F
 from scipy import ndimage as ndi
 from scipy.ndimage import binary_fill_holes
-from skimage.measure import find_contours
 from skimage.morphology import remove_small_objects
 from skimage.segmentation import watershed
 from tqdm.std import tqdm as Tqdm
@@ -263,57 +262,41 @@ def _proc_np_hv(
     return proced_pred.astype(np.int32)
 
 
-def _drop_collinear(ring: np.ndarray) -> np.ndarray:
-    """Drop vertices lying on a straight edge.
-
-    Marching squares emits one vertex per boundary step, so straight edges
-    carry redundant points. Removing them describes the same polygon.
-    """
-    pts = ring[:-1] if np.array_equal(ring[0], ring[-1]) else ring
-    if pts.shape[0] < 4:
-        return pts
-
-    prev = np.roll(pts, 1, axis=0)
-    nxt = np.roll(pts, -1, axis=0)
-    cross = (pts[:, 0] - prev[:, 0]) * (nxt[:, 1] - pts[:, 1]) - (
-        pts[:, 1] - prev[:, 1]
-    ) * (nxt[:, 0] - pts[:, 0])
-    keep = np.abs(cross) > 1e-9
-    return pts[keep] if int(keep.sum()) >= 3 else pts
-
-
-def _ring_area(ring: np.ndarray) -> float:
-    """Shoelace area of a closed ring."""
-    x = ring[:, 0]
-    y = ring[:, 1]
-    return 0.5 * abs(float(np.dot(x, np.roll(y, -1)) - np.dot(y, np.roll(x, -1))))
-
-
 # ----------------------------- #
 # Existing per-tile measurement #
 # ----------------------------- #
 def _stitching_worker(
     np_tile, hv_tile, tp_tile, interior_y0, interior_x0, interior_slice, min_object_size
 ):
-    labels = _proc_np_hv(np_tile, hv_tile, min_object_size).astype(np.int32)
+    pred_inst_padded = _proc_np_hv(np_tile, hv_tile, min_object_size).astype(np.int32)
     ys, xs = interior_slice
+    pred_inst = pred_inst_padded[ys, xs]
 
-    # Global position of the padded tile. Instances may extend into the halo,
-    # so coordinates are taken from the padded origin, not the interior one.
-    pad_y0 = interior_y0 - ys.start
-    pad_x0 = interior_x0 - xs.start
-
-    max_id = int(labels.max())
+    max_id = int(pred_inst.max())
     if max_id <= 0:
         return [], [], []
 
-    counts = np.bincount(labels.ravel(), minlength=max_id + 1)
+    labels = pred_inst
+    lbl = labels.ravel()
+
+    counts = np.bincount(lbl, minlength=max_id + 1).astype(np.int32)
     counts[0] = 0
     valid_ids = np.nonzero(counts)[0]
     if valid_ids.size == 0:
         return [], [], []
 
     slices = ndi.find_objects(labels, max_label=max_id)
+
+    n_classes = int(tp_tile.shape[2])
+    tp_interior = tp_tile[ys, xs, :]  # (h,w,K)
+    tp_flat = tp_interior.reshape(-1, n_classes).astype(np.float64)
+
+    cls_sums = np.zeros((max_id + 1, n_classes), dtype=np.float64)
+    np.add.at(cls_sums, lbl, tp_flat)
+    cls_sums[0, :] = 0
+    denom = counts.astype(np.float64)
+    denom[denom == 0] = 1.0
+    cls_means = (cls_sums.T / denom).T.astype(np.float32)  # (max_id+1, K)
 
     inst_list: List[np.ndarray] = []
     prob_list: List[np.ndarray] = []
@@ -324,49 +307,27 @@ def _stitching_worker(
         if sl is None:
             continue
         r_sl, c_sl = sl
-        local = labels[r_sl, c_sl] == inst_id
-        rr, cc = np.nonzero(local)
-        if rr.size == 0:
-            continue
+        rmin, rmax = r_sl.start, r_sl.stop
+        cmin, cmax = c_sl.start, c_sl.stop
 
-        # Each nucleus belongs to the single tile whose interior holds its
-        # centroid, and is emitted whole from the padded labels. Cropping to
-        # the interior instead split boundary-crossing nuclei between tiles.
-        cy = r_sl.start + float(rr.mean())
-        cx = c_sl.start + float(cc.mean())
-        if not (ys.start <= cy < ys.stop and xs.start <= cx < xs.stop):
-            continue
-
-        x = c_sl.start + pad_x0
-        y = r_sl.start + pad_y0
-        w = c_sl.stop - c_sl.start
-        h = r_sl.stop - r_sl.start
+        # global bbox
+        x = cmin + interior_x0
+        y = rmin + interior_y0
+        w = cmax - cmin
+        h = rmax - rmin
 
         inst_list.append(np.array([x, y, w, h], dtype=np.int32).reshape(1, -1))
-        prob_list.append(
-            tp_tile[r_sl, c_sl, :][local].astype(np.float32).mean(axis=0).reshape(1, -1)
-        )
+        prob_list.append(cls_means[inst_id].copy().reshape(1, -1))
 
         # polygon
-        # Marching squares at the half-level follows the pixel boundary, so a
-        # 1 px wide part keeps real width and a diagonal bridge resolves into
-        # separate rings. Tracing pixel centres collapsed both into spikes.
-        rings = find_contours(np.pad(local.astype(np.float32), 1), 0.5)
-        rings = [r for r in rings if r.shape[0] >= 4]
-
-        if not rings:
-            # Cannot happen for a labelled instance, but the polygon list must
-            # stay index-aligned with inst_list.
-            poly_list.append(
-                np.array(
-                    [[x, y], [x + w, y], [x + w, y + h], [x, y + h]], dtype=np.float64
-                )
-            )
+        local = (labels[rmin:rmax, cmin:cmax] == inst_id).astype(np.uint8)
+        cnts, _ = cv2.findContours(local, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+        if not cnts:
             continue
-
-        # find_contours yields holes too; the outer boundary encloses the most.
-        best = max(rings, key=_ring_area)
-        poly = _drop_collinear(np.column_stack([best[:, 1] - 1.0, best[:, 0] - 1.0]))
+        cnt = max(cnts, key=cv2.contourArea)  # (M,1,2)
+        poly = cnt.squeeze(1).astype(np.int32)
+        if poly.ndim != 2 or poly.shape[0] < 3:
+            continue
         poly[:, 0] += x
         poly[:, 1] += y
         poly_list.append(poly)
@@ -454,10 +415,7 @@ class TileRemapStitcher:
         slide_height = self.slide_height
         batch_size = np_logits.shape[0]
         slide_patch_size = self.slide_patch_size
-        # slide_halo_size is kept on self for back-compat with external
-        # callers but is no longer used by the writer; see the centred-write
-        # block below for the replacement behaviour (overlap is now exactly
-        # the patchlib-configured halo, no manual offset).
+        slide_halo_size = self.slide_halo_size
         alpha = self.alpha
 
         # Softmax on GPU
@@ -495,35 +453,14 @@ class TileRemapStitcher:
         hv_res_np = hv_res.permute(0, 2, 3, 1).contiguous().cpu().numpy()  # (B,S,S,2)
         tp_res_np = tp_res.permute(0, 2, 3, 1).contiguous().cpu().numpy()  # (B,S,S,K)
 
-        # Coordinates ------------------------------------------------------------
-        # batch_coords[:, :2] is the patch's top-left corner in slide pixels
-        # (set by patchlib — see patchlib/patch.py:251, where centroids are
-        # converted to (minx, miny) before being written to /coords). The
-        # model produces np/hv/tp at full patch resolution, and run_inference
-        # has already interpolated it to slide_patch_size (the patch's
-        # slide-pixel footprint). slide_patch_size on the writer matches the
-        # patchlib step_size when halo_size_px=0, so adjacent tiles abut
-        # contiguously in slide space; when halo>0, slide_patch_size accounts
-        # for the trimmed inner area (patch - 2*halo) so the writer still
-        # covers the patch faithfully.
-        #
-        # The previous 79edc51 commit assumed batch_coords was a tile *centre*
-        # and shifted the write region by -slide_patch_size//2, which sent
-        # every CellViT tile's write origin off the slide (clipped to 0 by
-        # `max(0, x0)`). This restores the original semantics: x0 = top-left
-        # corner of the patch in slide pixels.
-        # batch_coords stores the patch's (minx, miny) top-left in slide pixels
-        # (set by patchlib). The write region therefore starts at the patch's
-        # top-left; no extra offset is applied here. The previous 79edc51
-        # commit added a ``+ slide_halo_size`` shift on top of this corner,
-        # which the 2ea7650 revert intended to remove — but missed this line,
-        # leaving a bare ``slide_halo_size`` reference that NameError'd as
-        # soon as ``accumulate_batch_torch`` was called.
+        # Coordinates
         coords = batch_coords.detach().to("cpu").numpy().astype(np.int32)[:, :2]
+        coords = coords[:, :2] + slide_halo_size
 
         # Tight CPU writes (clip)
         for i in range(batch_size):
-            x0, y0 = int(coords[i, 0]), int(coords[i, 1])
+            x0 = int(coords[i, 0])
+            y0 = int(coords[i, 1])
             x1 = x0 + slide_patch_size
             y1 = y0 + slide_patch_size
 
