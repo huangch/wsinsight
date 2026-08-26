@@ -17,11 +17,21 @@ from typing import Tuple
 from typing import Union
 
 import geopandas as gpd
+import h5py
+import logging
 import numpy as np
 import orjson
 import pandas as pd
 from shapely import from_wkt  # shapely >= 2.0
 from tqdm.auto import tqdm
+import threading as _threading
+from .cli.export import _to_local_path  # local URI-vs-Path resolver
+
+logger = logging.getLogger(__name__)
+_write_csv_to_h5_lock = _threading.Lock()
+# `Lock` is referenced by the legacy (dead) `_build_geojson_dict_from_h5`
+# below; keep an alias so it cannot NameError if anything ever calls it.
+Lock = _write_csv_to_h5_lock
 
 from .cancel import cancellable_as_completed
 from .uri_path import URIPath
@@ -298,27 +308,11 @@ def _build_geojson_dict_from_csv(
       collision risk.  Use this for niche outputs where storing K one-hot
       columns per row would be wasteful.
     """
-    if annotation_shape == "polygon":
-        # Polygon mode: try to source real contours from patches.h5 first,
-        # fall back to bbox CSV path if the H5 polygon group isn't there.
-        slide_stem = _to_local_path(csv).stem
-        h5_path = _to_local_path(results_dir) / "patches" / f"{slide_stem}.h5"
-        if h5_path.exists() and _has_polygon_group(h5_path):
-            return _build_geojson_dict_from_h5(
-                h5_path=h5_path,
-                overlap=overlap,
-                results_dir=results_dir,
-                output_dir=output_dir,
-                prefix=prefix,
-                object_type=object_type,
-                set_classification=set_classification,
-            )
-        logger.warning(
-            "annotation_shape='polygon' requested but %s has no /polygons group; "
-            "falling back to bbox CSV path.",
-            h5_path,
-        )
-    # Read only what we need; memory-map large files
+    # Always load the CSV first -- it is the source of truth for per-cell
+    # probabilities / classification / center coords. The polygon group in
+    # patches.h5 (when present) only carries cell contours (coords+offsets)
+    # and no probability columns, so it must be merged onto the CSV by row
+    # index.
     df = pd.read_csv(
         csv,
         usecols=usecols,
@@ -327,6 +321,44 @@ def _build_geojson_dict_from_csv(
         memory_map=True,
         low_memory=False,
     )
+
+    if annotation_shape == "polygon":
+        # Polygon mode: if patches.h5 has a /polygons group, synthesise a
+        # 'polygon_wkt' column from it (by row index alignment). Missing
+        # contours become NaN in 'polygon_wkt' and the polygon builder drops
+        # them. Falls back to bbox when the group is entirely absent.
+        slide_stem = _to_local_path(csv).stem
+        h5_path = _to_local_path(results_dir) / "patches" / f"{slide_stem}.h5"
+        if h5_path.exists() and _has_polygon_group(h5_path):
+            wkts = _polygon_wkt_column_from_h5(h5_path, len(df))
+            if wkts is not None:
+                df["polygon_wkt"] = wkts
+                n_kept = int(df["polygon_wkt"].notna().sum())
+                logger.info(
+                    "annotation_shape='polygon': synthesised polygon_wkt from "
+                    "%s for %d/%d rows.",
+                    h5_path, n_kept, len(df),
+                )
+                if n_kept < len(df):
+                    logger.warning(
+                        "annotation_shape='polygon': %d CSV rows have no "
+                        "matching H5 polygon (degenerate single-pixel cells).",
+                        int((df['polygon_wkt'].isna()).sum()),
+                    )
+            else:
+                logger.warning(
+                    "annotation_shape='polygon': %s has /polygons group but "
+                    "could not decode it; falling back to bbox path.",
+                    h5_path,
+                )
+        else:
+            logger.warning(
+                "annotation_shape='polygon' requested but %s has no "
+                "/polygons group; falling back to bbox path.",
+                h5_path,
+            )
+            # demote to box at the dispatcher so the right builder runs
+            annotation_shape = "box"
 
     if label_col is not None:
         # ── Label mode ────────────────────────────────────────────────────────
@@ -407,6 +439,54 @@ def _has_polygon_group(h5_path: PathLike) -> bool:
             return ("coords" in g) and ("offsets" in g)
     except Exception:
         return False
+
+
+def _polygon_wkt_column_from_h5(
+    h5_path: Path,
+    n_rows_expected: int,
+) -> Optional[List[Optional[str]]]:
+    """Decode /polygons/{coords,offsets} into a list of WKT strings.
+
+    Reuses the same decoder embedded in `_build_geojson_dict_from_h5`.
+    Returns one entry per cell; cells with fewer than 3 vertices (e.g.
+    a 1-pixel degenerate instance) are returned as ``None`` so that the
+    polygon builder in `_dataframe_to_geojson_polygon_fast` can skip
+    them.
+
+    The list is padded with ``None`` if the H5 polygon count is less than
+    ``n_rows_expected`` (rare; usually a stitch dropped a polygon).
+
+    Returns ``None`` if the H5 group is missing or unreadable, so the
+    caller can decide on a fallback.
+    """
+    try:
+        with _write_csv_to_h5_lock:
+            with h5py.File(_to_local_path(h5_path), "r") as f:
+                if "/polygons" not in f:
+                    return None
+                g = f["/polygons"]
+                if "coords" not in g or "offsets" not in g:
+                    return None
+                coords = np.asarray(g["coords"])         # (K, 2) float32
+                offsets = np.asarray(g["offsets"])       # (M+1,) int64
+        if offsets.ndim != 1 or coords.ndim != 2 or coords.shape[1] != 2:
+            return None
+        n_h5 = int(len(offsets) - 1)
+        n = max(n_h5, int(n_rows_expected))
+        out: List[Optional[str]] = [None] * n
+        for i in range(n_h5):
+            s, e = int(offsets[i]), int(offsets[i + 1])
+            xy = coords[s:e]  # (N_i, 2)
+            if xy.size == 0 or xy.shape[0] < 3:
+                out[i] = None  # degenerate; polygon builder will skip
+                continue
+            if not np.array_equal(xy[0], xy[-1]):
+                xy = np.vstack([xy, xy[0]])
+            ring = ", ".join(f"{float(x)} {float(y)}" for x, y in xy)
+            out[i] = f"POLYGON (({ring}))"
+        return out[: int(n_rows_expected)]
+    except Exception:
+        return None
 
 
 def _build_geojson_dict_from_h5(

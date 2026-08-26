@@ -486,14 +486,17 @@ class TileRemapStitcher:
         padding_size: int = 64,
         pbar: Optional[Tqdm] = None,
         num_workers: Optional[int] = None,
-        tiles_per_task: int = 1,
+        tiles_per_task: int = 4,
     ):
         """
         Queue-based finalize:
-          - No tiles_per_task / inflight_factor
           - num_workers threads pull tiles from a shared queue (auto load balancing)
           - Optional tiles_per_task to reduce queue contention
           - Per-tile progress updates (smooth tqdm)
+
+        tiles_per_task default raised 1 -> 4 on 2026-08-25: queue contention is
+        the dominant per-tile overhead at low tiles-per-task (each tile triggers
+        q.get + q.task_done). Batching 4 tiles per worker pull amortises that.
         """
         H, W = self.slide_height, self.slide_width
         if H <= 0 or W <= 0:
