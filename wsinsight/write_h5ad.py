@@ -71,6 +71,7 @@ def build_anndata_from_df(
     prefix: str = "prob",
     slide_id: str = "",
     object_type: str = "detection",
+    shape: str = "bbox",
 ) -> AnnData:
     """Build an :class:`anndata.AnnData` from one merged per-cell DataFrame."""
     df = df.reset_index(drop=True)
@@ -170,6 +171,7 @@ def write_h5ads(
     object_type: str = "detection",
     overwrite: bool = False,
     show_progress: bool = True,
+    shape: str = "bbox",
 ) -> List[PathLike]:
     """Convert merged per-cell export CSVs to ``.h5ad`` files.
 
@@ -178,6 +180,17 @@ def write_h5ads(
     """
     if not results_dir.exists():
         raise FileNotFoundError(f"results_dir does not exist: {results_dir}")
+
+    # 2026-08-25 TODO: shape='polygon' for h5ad (obs["polygon_wkt"]) is not yet
+    # implemented in this commit. Print a one-line TODO and silently fall back
+    # to bbox (centroid-only in obsm["spatial"]). Future commit should read
+    # patches.h5 /polygons/* and append a polygon_wkt column to obs.
+    if shape != "bbox":
+        print(
+            f"[TODO] write_h5ad: shape='{shape}' not implemented in h5ad; "
+            f"falling back to bbox (obsm['spatial'] centroids only)."
+        )
+        shape = "bbox"
 
     out_root = results_dir / output_dir
     out_root.mkdir(parents=True, exist_ok=True)

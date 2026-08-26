@@ -1119,6 +1119,19 @@ def _select_kwargs(values: dict[str, Any], keys: tuple[str, ...]) -> dict[str, A
     ),
 )
 @click.option(
+    "--export-shape",
+    type=click.Choice(["bbox", "polygon"]),
+    default="bbox",
+    show_default=True,
+    help=(
+        "Geometry written for export-geojson / export-omecsv / export-h5ad. "
+        "'bbox' uses each cell's minx/miny/width/height rectangle (default). "
+        "'polygon' emits the real segmentation contour read from patches.h5 "
+        "/polygons/coords+offsets; OME-CSV / h5ad silently fall back to bbox "
+        "in this commit (TODO: implement polygon emission in those writers)."
+    ),
+)
+@click.option(
     "--stitch-workers",
     default=_DEFAULT_STITCH_WORKERS,
     show_default=True,
@@ -1294,6 +1307,7 @@ def run(
     export_h5ad: bool = False,
     export_workers: int | None = None,
     export_object_type: str = "detection",
+    export_shape: str = "bbox",
 ) -> None:
     """Run both patch extraction and inference workflows for a slide directory.
 
@@ -1476,6 +1490,7 @@ def run(
                     object_type=export_object_type,
                     set_classification=True,
                     overwrite=True,
+                    annotation_shape=export_shape,
                 )
 
             if export_omecsv:
@@ -1497,6 +1512,7 @@ def run(
                     prefix="prob",
                     num_workers=num_export_workers,
                     overwrite=True,
+                    shape=export_shape,
                 )
 
             if export_h5ad:
@@ -1508,6 +1524,7 @@ def run(
                     prefix="prob",
                     object_type=export_object_type,
                     overwrite=True,
+                    shape=export_shape,
                 )
 
             click.echo("\nExport complete.")

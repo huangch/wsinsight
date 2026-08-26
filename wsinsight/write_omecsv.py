@@ -135,6 +135,7 @@ def make_omecsv(
     prefix: str,
     usecols: Optional[List[str]] = None,
     dtype: Optional[Dict] = None,
+    shape: str = "bbox",
 ) -> None:
     """
     Read a CSV of model outputs and write a compressed OME-CSV file (.ome.csv.gz).
@@ -246,6 +247,7 @@ def write_omecsvs(
     overwrite: bool = False,
     usecols: Optional[List[str]] = None,
     dtype: Optional[Dict] = None,
+    shape: str = "bbox",
 ) -> None:
     """
     Convert multiple model-output CSV files into compressed OME-CSV files
@@ -276,6 +278,18 @@ def write_omecsvs(
 
     if not results_dir.exists():
         raise FileNotFoundError(f"results_dir does not exist: {results_dir}")
+
+    # 2026-08-25 TODO: shape='polygon' for OME-CSV is not yet implemented in this
+    # commit. Print a one-line TODO and silently fall back to bbox so the rest
+    # of `wsinsight run --export-omecsv` keeps emitting rectangle polygons as
+    # before. Future commits should add polygon emission by reading patches.h5
+    # /polygons/*.
+    if shape != "bbox":
+        print(
+            f"[TODO] write_omecsv: shape='{shape}' not implemented in OME-CSV; "
+            f"falling back to bbox rectangle polygon."
+        )
+        shape = "bbox"
 
     missing_dirs = sorted(
         {p.parent for p in csvs if not p.parent.exists()}, key=lambda d: str(d)

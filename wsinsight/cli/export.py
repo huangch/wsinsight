@@ -98,6 +98,19 @@ def _to_local_path(p: URIPath | Path) -> Path:
     ),
 )
 @click.option(
+    "--shape",
+    type=click.Choice(["bbox", "polygon"]),
+    default="bbox",
+    show_default=True,
+    help=(
+        "Geometry written for export-geojson / export-omecsv / export-h5ad. "
+        "'bbox' uses each cell's minx/miny/width/height rectangle (default). "
+        "'polygon' emits the real segmentation contour read from patches.h5 "
+        "/polygons/coords+offsets; OME-CSV / h5ad silently fall back to bbox "
+        "in this commit (TODO: implement polygon emission in those writers)."
+    ),
+)
+@click.option(
     "--include",
     "include_sources",
     multiple=True,
@@ -120,6 +133,7 @@ def export(
     export_workers: int,
     overwrite: bool,
     include_sources: tuple[str, ...],
+    shape: str,
 ) -> None:
     """Merge per-cell analytics and export to GeoJSON / OME-CSV / H5AD.
 
@@ -204,6 +218,7 @@ def export(
             object_type=object_type,
             set_classification=True,
             overwrite=overwrite,
+            annotation_shape=shape,
         )
 
     # --- OME-CSV export (per-cell) --------------------------------------------
@@ -228,6 +243,7 @@ def export(
             prefix="prob",
             num_workers=export_workers,
             overwrite=overwrite,
+            shape=shape,
         )
 
     # --- AnnData (.h5ad) export (per-cell) ------------------------------------
@@ -242,6 +258,7 @@ def export(
             prefix="prob",
             object_type=object_type,
             overwrite=overwrite,
+            shape=shape,
         )
 
     # --- Niche region contours (annotation-level polygons) --------------------

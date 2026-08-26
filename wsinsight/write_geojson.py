@@ -278,6 +278,12 @@ def _build_geojson_dict_from_csv(
 ) -> Tuple[PathLike, dict]:
     """Load a model-output CSV and build the GeoJSON dict plus destination.
 
+    When ``annotation_shape='polygon'`` and a sibling ``<csv.stem>.h5`` exists
+    under ``<results_dir>/patches/`` with a ``/polygons/{coords,offsets}``
+    group, this delegates to :func:`_build_geojson_dict_from_h5` for the
+    real cell contour; otherwise ``bbox`` is used as a fallback and a warning is
+    emitted.  ``bbox`` mode goes through the original CSV path.
+
     Two classification modes are supported:
 
     * **Probability mode** (default, ``label_col=None``): looks for columns
@@ -292,6 +298,26 @@ def _build_geojson_dict_from_csv(
       collision risk.  Use this for niche outputs where storing K one-hot
       columns per row would be wasteful.
     """
+    if annotation_shape == "polygon":
+        # Polygon mode: try to source real contours from patches.h5 first,
+        # fall back to bbox CSV path if the H5 polygon group isn't there.
+        slide_stem = _to_local_path(csv).stem
+        h5_path = _to_local_path(results_dir) / "patches" / f"{slide_stem}.h5"
+        if h5_path.exists() and _has_polygon_group(h5_path):
+            return _build_geojson_dict_from_h5(
+                h5_path=h5_path,
+                overlap=overlap,
+                results_dir=results_dir,
+                output_dir=output_dir,
+                prefix=prefix,
+                object_type=object_type,
+                set_classification=set_classification,
+            )
+        logger.warning(
+            "annotation_shape='polygon' requested but %s has no /polygons group; "
+            "falling back to bbox CSV path.",
+            h5_path,
+        )
     # Read only what we need; memory-map large files
     df = pd.read_csv(
         csv,
@@ -364,10 +390,25 @@ def _build_geojson_dict_from_csv(
     return out_path, geojson
 
 
-# NOTE: The following function created GeoJSON directly from HDF5 polygon data to keep
-#       precise cell contours, but that workflow is no longer in use. The implementation
-#       is retained for reference only and is intentionally commented out.
-"""
+# NOTE: With CLI flag --shape polygon (a71bbb9 + follow-ups) the H5 polygon path
+#       is now the active code path when the polygon group is present in
+#       patches.h5; otherwise csv_to_geojson() logs a warning and falls back to
+#       bbox. The legacy `_build_geojson_dict_from_h5` kept below now reads from
+#       /polygons/* and writes a FeatureCollection of True polygons.
+def _has_polygon_group(h5_path: PathLike) -> bool:
+    """Return True iff ``h5_path`` exists and contains ``/polygons/coords`` + ``/polygons/offsets``."""
+    if not _to_local_path(h5_path).exists():
+        return False
+    try:
+        with h5py.File(_to_local_path(h5_path), "r") as f:
+            g = f.get("/polygons")
+            if g is None:
+                return False
+            return ("coords" in g) and ("offsets" in g)
+    except Exception:
+        return False
+
+
 def _build_geojson_dict_from_h5(
     h5_path: Path,
     *,
@@ -454,7 +495,6 @@ def _build_geojson_dict_from_h5(
 
     out_path = results_dir / output_dir / f"{h5_path.stem}.geojson"
     return out_path, geojson
-"""
 
 
 # --------------------------
