@@ -326,37 +326,53 @@ def _build_geojson_dict_from_csv(
         # Polygon mode: if patches.h5 has a /polygons group, synthesise a
         # 'polygon_wkt' column from it (by row index alignment). Missing
         # contours become NaN in 'polygon_wkt' and the polygon builder drops
-        # them. Falls back to bbox when the group is entirely absent.
+        # them. Falls back to bbox when the group is entirely absent OR the
+        # H5 decode fails -- in either case we MUST demote to 'box' below,
+        # otherwise the dispatcher raises KeyError on a missing polygon_wkt.
         slide_stem = _to_local_path(csv).stem
         h5_path = _to_local_path(results_dir) / "patches" / f"{slide_stem}.h5"
-        if h5_path.exists() and _has_polygon_group(h5_path):
-            wkts = _polygon_wkt_column_from_h5(h5_path, len(df))
-            if wkts is not None:
-                df["polygon_wkt"] = wkts
-                n_kept = int(df["polygon_wkt"].notna().sum())
-                logger.info(
-                    "annotation_shape='polygon': synthesised polygon_wkt from "
-                    "%s for %d/%d rows.",
-                    h5_path, n_kept, len(df),
-                )
-                if n_kept < len(df):
+        polygon_ok = False
+        try:
+            polygon_h5_exists = h5_path.exists()
+            polygon_h5_has_group = polygon_h5_exists and _has_polygon_group(h5_path)
+            if polygon_h5_has_group:
+                wkts = _polygon_wkt_column_from_h5(h5_path, len(df))
+                if wkts is not None:
+                    df["polygon_wkt"] = wkts
+                    n_kept = int(df["polygon_wkt"].notna().sum())
+                    logger.info(
+                        "annotation_shape='polygon': synthesised polygon_wkt from "
+                        "%s for %d/%d rows.",
+                        h5_path, n_kept, len(df),
+                    )
+                    if n_kept < len(df):
+                        logger.warning(
+                            "annotation_shape='polygon': %d CSV rows have no "
+                            "matching H5 polygon (degenerate single-pixel cells).",
+                            int((df['polygon_wkt'].isna()).sum()),
+                        )
+                    polygon_ok = True
+                else:
                     logger.warning(
-                        "annotation_shape='polygon': %d CSV rows have no "
-                        "matching H5 polygon (degenerate single-pixel cells).",
-                        int((df['polygon_wkt'].isna()).sum()),
+                        "annotation_shape='polygon': %s has /polygons group but "
+                        "could not decode it; falling back to bbox path.",
+                        h5_path,
                     )
             else:
                 logger.warning(
-                    "annotation_shape='polygon': %s has /polygons group but "
-                    "could not decode it; falling back to bbox path.",
+                    "annotation_shape='polygon' requested but %s has no "
+                    "/polygons group; falling back to bbox path.",
                     h5_path,
                 )
-        else:
+        except Exception as _e:
+            # Belt-and-braces: never let a malformed /polygons group propagate
+            # out of the dispatcher. Fall back to bbox and continue.
             logger.warning(
-                "annotation_shape='polygon' requested but %s has no "
-                "/polygons group; falling back to bbox path.",
-                h5_path,
+                "annotation_shape='polygon': H5 decode via %s raised %s: %s; "
+                "falling back to bbox path.",
+                h5_path, type(_e).__name__, _e,
             )
+        if not polygon_ok:
             # demote to box at the dispatcher so the right builder runs
             annotation_shape = "box"
 
@@ -418,7 +434,7 @@ def _build_geojson_dict_from_csv(
             class_names=class_names,
         )
 
-    out_path = results_dir / output_dir / f"{csv.stem}.geojson"
+    out_path = results_dir / output_dir / f"{_to_local_path(csv).stem}.geojson"
     return out_path, geojson
 
 
