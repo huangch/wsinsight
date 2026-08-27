@@ -408,7 +408,7 @@ def _build_geojson_dict_from_csv(
     prefix: str = "prob",
     object_type: str = "tile",
     set_classification: bool = False,
-    annotation_shape: str = "box",  # "box" or "polygon"
+    annotation_shape: str = "bbox",  # "bbox" or "polygon" ("box" is a legacy alias)
     label_col: Optional[str] = None,
     # CSV read tuning
     usecols: Optional[List[str]] = None,
@@ -452,6 +452,12 @@ def _build_geojson_dict_from_csv(
         low_memory=False,
     )
 
+    if annotation_shape == "box":
+        annotation_shape = "bbox"
+
+    # Bound for every shape, so an unexpected value cannot raise UnboundLocalError.
+    polygon_geom = None
+
     if annotation_shape == "polygon":
         # Polygon mode: if patches.h5 has a /polygons group, decode it straight
         # into a Shapely geometry array (aligned by row index). Cells without a
@@ -461,7 +467,6 @@ def _build_geojson_dict_from_csv(
         slide_stem = _to_local_path(csv).stem
         h5_path = _to_local_path(results_dir) / "patches" / f"{slide_stem}.h5"
         polygon_ok = False
-        polygon_geom = None
         try:
             polygon_h5_exists = h5_path.exists()
             polygon_h5_has_group = polygon_h5_exists and _has_polygon_group(h5_path)
@@ -507,8 +512,8 @@ def _build_geojson_dict_from_csv(
                 _e,
             )
         if not polygon_ok:
-            # demote to box at the dispatcher so the right builder runs
-            annotation_shape = "box"
+            # demote to bbox at the dispatcher so the right builder runs
+            annotation_shape = "bbox"
 
     if label_col is not None:
         # ── Label mode ────────────────────────────────────────────────────────
@@ -541,7 +546,7 @@ def _build_geojson_dict_from_csv(
         class_names = None  # builders derive names from prob_cols + prefix
         color_list = _make_distinct_colors(len(prob_cols))
 
-    if annotation_shape == "box":
+    if annotation_shape == "bbox":
         geojson = _dataframe_to_geojson_box_fast(
             df,
             prob_cols,
@@ -830,7 +835,7 @@ def write_geojsons(
     num_workers=8,
     object_type: str = "tile",
     set_classification: bool = False,
-    annotation_shape: str = "box",  # "box" or "polygon"
+    annotation_shape: str = "bbox",  # "bbox" or "polygon" ("box" is a legacy alias)
     label_col: Optional[str] = None,
     atomic_writes: bool = True,
     overwrite: bool = False,
