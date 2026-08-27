@@ -4,6 +4,8 @@
 from __future__ import annotations
 
 import json
+import logging
+import threading as _threading
 import uuid
 from colorsys import hsv_to_rgb
 
@@ -18,13 +20,13 @@ from typing import Union
 
 import geopandas as gpd
 import h5py
-import logging
 import numpy as np
 import orjson
 import pandas as pd
+import shapely
 from shapely import from_wkt  # shapely >= 2.0
 from tqdm.auto import tqdm
-import threading as _threading
+
 from .cli.export import _to_local_path  # local URI-vs-Path resolver
 
 logger = logging.getLogger(__name__)
@@ -202,6 +204,82 @@ def _dataframe_to_geojson_box_fast(
 # --------------------------
 # POLYGON/WKT path (GeoPandas + Shapely vectorized)
 # --------------------------
+def _sanitize_polygon_rings(
+    df: pd.DataFrame,
+    geom: np.ndarray,
+) -> Tuple[np.ndarray, int, int]:
+    """Repair rings so every feature is a strictly valid polygon.
+
+    JTS-based GeoJSON consumers (e.g. QuPath) run
+    ``GeometryPrecisionReducer`` on import, which raises
+    ``IllegalArgumentException: Reduction failed, possible invalid input``
+    for self-touching rings -- cv2.findContours emits these for cells with
+    a 1-pixel neck, where the contour revisits a vertex ("pinch" contour).
+    GEOS' ``make_valid`` repairs such geometry and is a semantic no-op on
+    already-valid rings.
+
+    Rows that still do not resolve to a polygon -- a null WKT (degenerate
+    single-pixel cell with no stored contour) or a contour that collapses
+    to zero area -- fall back to their bbox rectangle
+    (``minx``/``miny``/``width``/``height``) so no cell is dropped.
+
+    Returns ``(geometries, n_repaired, n_boxed)``.  When nothing is
+    invalid the original ``geom`` array is returned unmodified.
+    """
+    # is_valid() -> False for null AND for self-touching rings
+    bad = np.flatnonzero(~shapely.is_valid(geom))
+    if bad.size == 0:
+        return geom, 0, 0
+
+    wkb = shapely.to_wkb(geom)  # nulls -> b""; only the bad rows are touched
+    fixed_wkb = wkb.copy()
+    have_bbox = all(c in df.columns for c in ("minx", "miny", "width", "height"))
+    minx = miny = w = h = None
+    if have_bbox:
+        minx, miny, w, h = (
+            df[["minx", "miny", "width", "height"]]
+            .to_numpy(dtype=np.float64, copy=False)
+            .T
+        )
+    n_repaired = 0
+    n_boxed = 0
+    for i in bad:
+        g = shapely.from_wkb(wkb[i])
+        replacement = None
+        if g is not None:
+            try:
+                fixed = shapely.make_valid(g)
+            except Exception:
+                fixed = None
+            if fixed is not None and not fixed.is_empty:
+                if fixed.geom_type in ("MultiPolygon", "GeometryCollection"):
+                    k = int(shapely.get_num_geometries(fixed))
+                    parts = [shapely.get_geometry(fixed, j) for j in range(k)]
+                else:
+                    parts = [fixed]
+                polys = [
+                    p
+                    for p in parts
+                    if p is not None and p.geom_type == "Polygon" and not p.is_empty
+                ]
+                # keep the dominant lobe; a pinch splits the cell at the neck
+                if polys:
+                    replacement = max(polys, key=lambda p: p.area)
+        if replacement is None:
+            if not have_bbox:
+                continue  # legacy behaviour: leave the geometry null
+            if not all(np.isfinite(v) for v in (minx[i], miny[i], w[i], h[i])):
+                continue
+            bw = max(float(w[i]), 1.0)
+            bh = max(float(h[i]), 1.0)
+            replacement = shapely.box(minx[i], miny[i], minx[i] + bw, miny[i] + bh)
+            n_boxed += 1
+        else:
+            n_repaired += 1
+        fixed_wkb[i] = shapely.to_wkb(replacement)
+    return shapely.from_wkb(fixed_wkb), n_repaired, n_boxed
+
+
 def _dataframe_to_geojson_polygon_fast(
     df: pd.DataFrame,
     prob_cols: List[str],
@@ -216,6 +294,17 @@ def _dataframe_to_geojson_polygon_fast(
     """Convert Shapely-backed polygon annotations into GeoJSON quickly."""
     # Vectorized WKT → geometry (Shapely 2 ufunc)
     geom = from_wkt(df["polygon_wkt"])
+
+    # Repair self-touching rings (JTS importers, e.g. QuPath, crash on them)
+    # and demote null/degenerate rows to their bbox rectangle.
+    geom, n_repaired, n_boxed = _sanitize_polygon_rings(df, geom)
+    if n_repaired or n_boxed:
+        logger.info(
+            "annotation_shape='polygon': repaired %d self-touching ring(s) "
+            "and wrote %d degenerate cell(s) as bbox rectangle(s).",
+            n_repaired,
+            n_boxed,
+        )
 
     # Properties (copy needed bits; avoid huge extra columns)
     props = df.drop(columns=["polygon_wkt"]).copy()
@@ -290,9 +379,11 @@ def _build_geojson_dict_from_csv(
 
     When ``annotation_shape='polygon'`` and a sibling ``<csv.stem>.h5`` exists
     under ``<results_dir>/patches/`` with a ``/polygons/{coords,offsets}``
-    group, this delegates to :func:`_build_geojson_dict_from_h5` for the
-    real cell contour; otherwise ``bbox`` is used as a fallback and a warning is
-    emitted.  ``bbox`` mode goes through the original CSV path.
+    group, the real cell contour is read from it; otherwise ``bbox`` is used
+    as a fallback and a warning is emitted.  Individual rows without a
+    contour (degenerate single-pixel cells) are written as their bbox
+    rectangle rather than dropped.  ``bbox`` mode goes through the
+    original CSV path.
 
     Two classification modes are supported:
 
@@ -343,13 +434,16 @@ def _build_geojson_dict_from_csv(
                     logger.info(
                         "annotation_shape='polygon': synthesised polygon_wkt from "
                         "%s for %d/%d rows.",
-                        h5_path, n_kept, len(df),
+                        h5_path,
+                        n_kept,
+                        len(df),
                     )
                     if n_kept < len(df):
                         logger.warning(
                             "annotation_shape='polygon': %d CSV rows have no "
-                            "matching H5 polygon (degenerate single-pixel cells).",
-                            int((df['polygon_wkt'].isna()).sum()),
+                            "matching H5 polygon (degenerate single-pixel cells); "
+                            "they are written as bbox rectangles.",
+                            int((df["polygon_wkt"].isna()).sum()),
                         )
                     polygon_ok = True
                 else:
@@ -370,7 +464,9 @@ def _build_geojson_dict_from_csv(
             logger.warning(
                 "annotation_shape='polygon': H5 decode via %s raised %s: %s; "
                 "falling back to bbox path.",
-                h5_path, type(_e).__name__, _e,
+                h5_path,
+                type(_e).__name__,
+                _e,
             )
         if not polygon_ok:
             # demote to box at the dispatcher so the right builder runs
@@ -483,8 +579,8 @@ def _polygon_wkt_column_from_h5(
                 g = f["/polygons"]
                 if "coords" not in g or "offsets" not in g:
                     return None
-                coords = np.asarray(g["coords"])         # (K, 2) float32
-                offsets = np.asarray(g["offsets"])       # (M+1,) int64
+                coords = np.asarray(g["coords"])  # (K, 2) float32
+                offsets = np.asarray(g["offsets"])  # (M+1,) int64
         if offsets.ndim != 1 or coords.ndim != 2 or coords.shape[1] != 2:
             return None
         n_h5 = int(len(offsets) - 1)
@@ -514,11 +610,13 @@ def _build_geojson_dict_from_h5(
     prefix: str = "prob",
     object_type: str = "tile",
     set_classification: bool = False,
-    annotation_shape: str = "polygon",   # HDF5 reader supports polygons (recommended)
+    annotation_shape: str = "polygon",  # HDF5 reader supports polygons (recommended)
     # no usecols/dtype knobs here; HDF5 datasets are already typed
 ) -> Tuple[Path, dict]:
     if annotation_shape != "polygon":
-        raise NotImplementedError("HDF5 builder currently supports annotation_shape='polygon' only.")
+        raise NotImplementedError(
+            "HDF5 builder currently supports annotation_shape='polygon' only."
+        )
 
     # ---- read geometry + per-polygon attributes ----
     with Lock:
@@ -529,10 +627,12 @@ def _build_geojson_dict_from_h5(
             g = f["/polygons"]
 
             if "coords" not in g or "offsets" not in g:
-                raise KeyError("Expected datasets '/polygons/coords' and '/polygons/offsets'.")
+                raise KeyError(
+                    "Expected datasets '/polygons/coords' and '/polygons/offsets'."
+                )
 
-            coords = np.asarray(g["coords"])         # (K, 2) float32
-            offsets = np.asarray(g["offsets"])       # (M+1,) int64
+            coords = np.asarray(g["coords"])  # (K, 2) float32
+            offsets = np.asarray(g["offsets"])  # (M+1,) int64
             if offsets.ndim != 1 or coords.ndim != 2 or coords.shape[1] != 2:
                 raise ValueError("Invalid shapes for coords/offsets in HDF5.")
 
@@ -552,7 +652,9 @@ def _build_geojson_dict_from_h5(
                     prob_cols.append(name)
 
             if not prob_cols:
-                raise KeyError(f"No per-polygon datasets starting with '{prefix}_' in {h5_path}")
+                raise KeyError(
+                    f"No per-polygon datasets starting with '{prefix}_' in {h5_path}"
+                )
 
             # ---- reconstruct polygons into WKT ----
             def poly_wkt(i: int) -> str:

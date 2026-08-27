@@ -823,6 +823,13 @@ def infer(
             and _config_dict["halo_size_pixels"]
             else 0
         )
+        overlap_size_px = (
+            _config_dict["overlap_size_pixels"]
+            if object_based
+            and "overlap_size_pixels" in _config_dict.keys()
+            and _config_dict["overlap_size_pixels"]
+            else 0
+        )
         del _config_dict
 
     elif config is not None:
@@ -862,6 +869,13 @@ def infer(
             if object_based
             and "halo_size_pixels" in _config_dict.keys()
             and _config_dict["halo_size_pixels"]
+            else 0
+        )
+        overlap_size_px = (
+            _config_dict["overlap_size_pixels"]
+            if object_based
+            and "overlap_size_pixels" in _config_dict.keys()
+            and _config_dict["overlap_size_pixels"]
             else 0
         )
         del _config_dict, model_config
@@ -921,6 +935,7 @@ def infer(
         stain_normalization = None
         object_detection = None
         halo_size_px = 0
+        overlap_size_px = 0
 
     elif qupath_geojson_detection_dir is not None:
         wsi_paths = _selected_wsi_paths()
@@ -977,6 +992,7 @@ def infer(
         stain_normalization = None
         object_detection = None
         halo_size_px = 0
+        overlap_size_px = 0
 
     elif qupath_geojson_annotation_dir is not None:
         wsi_paths = _selected_wsi_paths()
@@ -1033,6 +1049,7 @@ def infer(
         stain_normalization = None
         object_detection = None
         halo_size_px = 0
+        overlap_size_px = 0
 
     else:
         raise click.ClickException("Neither of --config and --model was passed")
@@ -1167,6 +1184,7 @@ def infer(
         qupath_name_as_class=qupath_name_as_class,
         model_info=model_obj,
         halo_size_px=halo_size_px,
+        overlap_size_px=overlap_size_px,
         batch_size=batch_size,
         num_workers=num_workers,
         # speedup=speedup,

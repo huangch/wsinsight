@@ -191,6 +191,11 @@ unfixable = ["B"]
 "wsinsight/insightlib/niche_generation.py" = ["E402"]
 # `import cv2` sits next to the cv2.setNumThreads(1) call it exists for.
 "wsinsight/modellib/tilefuse.py" = ["E402"]
+# Same thread-limiting env block as tilefuse.py: it has to run before numpy,
+# torch and cv2 are imported.
+"wsinsight/modellib/tilefuse2/stitcher.py" = ["E402"]
+# Imports sit below the module-level `Lock` alias they are ordered against.
+"wsinsight/write_geojson.py" = ["E402"]
 
 [tool.ruff.lint.isort]
 force-single-line = true

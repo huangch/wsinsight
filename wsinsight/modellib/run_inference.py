@@ -26,6 +26,7 @@ import tqdm
 import wsinfer_zoo.client
 
 from wsinsight.modellib.tilefuse import TileRemapStitcher
+from wsinsight.modellib.tilefuse2 import TileRemapStitcherV2
 
 from .. import errors
 from ..cancel import critical_section
@@ -261,6 +262,7 @@ def run_inference(
     qupath_name_as_class: bool,
     model_info: wsinfer_zoo.client.HFModelTorchScript | LocalModelTorchScript,
     halo_size_px: int = 46,
+    overlap_size_px: int = 0,
     batch_size: int | None = None,
     num_workers: int = 4,
     # speedup: bool = False,
@@ -517,11 +519,16 @@ def run_inference(
                 stain_normalization_batch_imgs, _ = next(
                     iter(stain_normalization_loader)
                 )
-                stain_normalization_batch_imgs = (
-                    stain_normalization_batch_imgs.numpy()
-                    .transpose((0, 2, 3, 1))
-                    .reshape(-1, 3)
-                )
+                # Macenko needs RGB as the last axis of an *image*; a flat
+                # (pixels, 3) table is read as a 3-px-wide 1-channel image and
+                # dies in np.cross.  Stacking patches row-wise is safe because
+                # the estimator only looks at the pixel cloud.
+                _snb = stain_normalization_batch_imgs.numpy().transpose(
+                    (0, 2, 3, 1)
+                )  # (B, H, W, 3)
+                stain_normalization_batch_imgs = _snb.reshape(
+                    -1, _snb.shape[2], 3
+                )  # (B*H, W, 3)
                 W_est = htk.preprocessing.color_deconvolution.rgb_separate_stains_macenko_pca(
                     stain_normalization_batch_imgs + EPSILON, I_0
                 )
@@ -580,9 +587,6 @@ def run_inference(
             )
             slide_patch_size = int(
                 round(model_output_size_px * model_info.config.spacing_um_px / mpp)
-            )
-            slide_halo_size = int(
-                round(halo_size_px * model_info.config.spacing_um_px / mpp)
             )
 
             # Store the coordinates and model probabiltiies of each patch in this slide.
@@ -761,17 +765,44 @@ def run_inference(
                 # reset.
                 _oom_retries_at_current = 0
                 while True:
-                    stitcher = TileRemapStitcher(
-                        n_classes=len(model_info.config.class_names),
-                        slide_width=slide_width,
-                        slide_height=slide_height,
-                        slide_patch_size=slide_patch_size,
-                        slide_halo_size=slide_halo_size,
-                        slide_mpp=mpp,
-                        model_mpp=model_info.config.spacing_um_px,
-                        min_object_size=20,
-                        device=device,
-                    )
+                    if os.environ.get("WSINSIGHT_STITCHER", "v2") == "v1":
+                        # A/B baseline only; removed once v2 is validated.
+                        stitcher = TileRemapStitcher(
+                            n_classes=len(model_info.config.class_names),
+                            slide_width=slide_width,
+                            slide_height=slide_height,
+                            slide_patch_size=slide_patch_size,
+                            slide_halo_size=int(
+                                round(
+                                    halo_size_px * model_info.config.spacing_um_px / mpp
+                                )
+                            ),
+                            slide_mpp=mpp,
+                            model_mpp=model_info.config.spacing_um_px,
+                            min_object_size=20,
+                            device=device,
+                            slide_overlap_size=int(
+                                round(
+                                    overlap_size_px
+                                    * model_info.config.spacing_um_px
+                                    / mpp
+                                )
+                            ),
+                        )
+                    else:
+                        stitcher = TileRemapStitcherV2(
+                            n_classes=len(model_info.config.class_names),
+                            slide_width=slide_width,
+                            slide_height=slide_height,
+                            slide_patch_size=slide_patch_size,
+                            slide_mpp=mpp,
+                            model_mpp=model_info.config.spacing_um_px,
+                            patch_size_pixels=model_info.config.patch_size_pixels,
+                            halo_size_pixels=halo_size_px,
+                            overlap_size_pixels=overlap_size_px,
+                            min_object_size=20,
+                            device=device,
+                        )
                     # Re-estimate batch ceiling NOW that the stitcher is on GPU.
                     # The initial calibration measured VRAM before stitcher
                     # allocation; re-reading available VRAM here gives the true

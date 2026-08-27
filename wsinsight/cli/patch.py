@@ -669,6 +669,13 @@ def patch(
             and _config_dict["halo_size_pixels"]
             else 0
         )
+        overlap_size_px = (
+            _config_dict["overlap_size_pixels"]
+            if object_based
+            and "overlap_size_pixels" in _config_dict.keys()
+            and _config_dict["overlap_size_pixels"]
+            else 0
+        )
         del _config_dict
 
     elif config is not None:
@@ -706,6 +713,13 @@ def patch(
             if object_based
             and "halo_size_pixels" in _config_dict.keys()
             and _config_dict["halo_size_pixels"]
+            else 0
+        )
+        overlap_size_px = (
+            _config_dict["overlap_size_pixels"]
+            if object_based
+            and "overlap_size_pixels" in _config_dict.keys()
+            and _config_dict["overlap_size_pixels"]
             else 0
         )
         del _config_dict, model_config
@@ -773,6 +787,7 @@ def patch(
         stardist_normalization_pmin = None
         stardist_normalization_pmax = None
         halo_size_px = 0
+        overlap_size_px = 0
 
     elif qupath_geojson_detection_dir is not None:
         if not wsi_dir.exists():
@@ -833,6 +848,7 @@ def patch(
         stardist_normalization_pmin = None
         stardist_normalization_pmax = None
         halo_size_px = 0
+        overlap_size_px = 0
 
     elif qupath_geojson_annotation_dir is not None:
         if not wsi_dir.exists():
@@ -893,6 +909,7 @@ def patch(
         stardist_normalization_pmin = None
         stardist_normalization_pmax = None
         halo_size_px = 0
+        overlap_size_px = 0
 
     else:
         raise click.ClickException("Neither of --config and --model was passed")
@@ -985,6 +1002,7 @@ def patch(
         patch_size_px=model_obj.config.patch_size_pixels,
         patch_spacing_um_px=model_obj.config.spacing_um_px,
         halo_size_px=halo_size_px,
+        overlap_size_px=overlap_size_px,
         histoqc_dir=histoqc_dir,
         thumbsize=seg_thumbsize,
         median_filter_size=seg_median_filter_size,

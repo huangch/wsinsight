@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import multiprocessing as mp
 import os
+import traceback
 
 import click
 
@@ -33,8 +34,16 @@ def main() -> None:
     except (click.Abort, KeyboardInterrupt):
         click.secho("\nWSInsight: aborted by user.", fg="yellow", err=True)
         raise SystemExit(130) from None
-    except Exception as e:
-        click.secho(f"WSInsight failed. Error message:\n{e}", fg="yellow")
+    except Exception:
+        # Print the full Python traceback so the user can diagnose without
+        # re-running with --stack-trace.  ``traceback.format_exc()`` walks
+        # ``sys.exc_info()`` for the currently-handled exception.
+        click.secho(
+            f"WSInsight failed. Traceback:\n{traceback.format_exc()}",
+            fg="yellow",
+            err=True,
+        )
+        raise SystemExit(1) from None
 
 
 if __name__ == "__main__":

@@ -56,6 +56,7 @@ def segment_and_patch_one_slide(
     patch_size_px: int,
     patch_spacing_um_px: float,
     halo_size_px: int = 0,
+    overlap_size_px: int = 0,
     histoqc_dir: str | URIPath | None = None,
     thumbsize: tuple[int, int] = (2048, 2048),
     median_filter_size: int = 7,
@@ -284,7 +285,10 @@ def segment_and_patch_one_slide(
         slide_width, slide_height = slide.dimensions
         half_patch_size = round(patch_size / 2)
 
-        overlap = 2 * halo_size_px / patch_size_px
+        # Both margins are context-only, so the kept region is
+        # patch - 2*halo - overlap; that is exactly the tilefuse2 bucket, which
+        # makes the patch grid and the stitching grid one and the same.
+        overlap = (2 * halo_size_px + overlap_size_px) / patch_size_px
 
         coords = get_patch_coordinates_within_polygon(
             slide_width=slide_width,
@@ -468,6 +472,7 @@ def segment_and_patch_directory_of_slides(
     patch_size_px: int,
     patch_spacing_um_px: float,
     halo_size_px: int = 0,
+    overlap_size_px: int = 0,
     histoqc_dir: str | URIPath | None = None,
     thumbsize: tuple[int, int] = (2048, 2048),
     median_filter_size: int = 7,
@@ -505,6 +510,7 @@ def segment_and_patch_directory_of_slides(
                     patch_size_px=patch_size_px,
                     patch_spacing_um_px=patch_spacing_um_px,
                     halo_size_px=halo_size_px,
+                    overlap_size_px=overlap_size_px,
                     histoqc_dir=histoqc_dir,
                     thumbsize=thumbsize,
                     median_filter_size=median_filter_size,
