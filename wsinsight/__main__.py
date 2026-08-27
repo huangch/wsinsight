@@ -4,12 +4,12 @@ from __future__ import annotations
 
 import multiprocessing as mp
 import os
-import traceback
 
 import click
 
 from .cancel import install_sigint_handler
 from .cli.cli import cli
+from .errors import format_cli_error
 
 
 def main() -> None:
@@ -34,15 +34,8 @@ def main() -> None:
     except (click.Abort, KeyboardInterrupt):
         click.secho("\nWSInsight: aborted by user.", fg="yellow", err=True)
         raise SystemExit(130) from None
-    except Exception:
-        # Print the full Python traceback so the user can diagnose without
-        # re-running with --stack-trace.  ``traceback.format_exc()`` walks
-        # ``sys.exc_info()`` for the currently-handled exception.
-        click.secho(
-            f"WSInsight failed. Traceback:\n{traceback.format_exc()}",
-            fg="yellow",
-            err=True,
-        )
+    except Exception as exc:
+        click.secho(format_cli_error(exc), fg="yellow", err=True)
         raise SystemExit(1) from None
 
 
