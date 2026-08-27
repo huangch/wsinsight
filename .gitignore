@@ -67,3 +67,19 @@ wsinsight/_version.py
 # (pytorch_model.bin is multi-GB). Regenerate via the download script —
 # the artefact does not belong in the repo.
 hoptimus/
+
+# Shell/editor dotfiles that the dev container mounts at the repo root. They
+# belong to the user's home, not to this project, and .gitconfig/.mcp.json can
+# carry credentials — "Stage All Changes" picks them up otherwise.
+/.bash_profile
+/.bashrc
+/.gitconfig
+/.profile
+/.ripgreprc
+/.zprofile
+/.zshrc
+/.idea
+/.mcp.json
+
+# Local reference copy of the pre-tilefuse2 stitcher, kept for A/B runs only.
+/wsinsight/modellib/tilefuse_baseline_912ff81.py
