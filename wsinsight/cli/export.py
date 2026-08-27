@@ -100,14 +100,16 @@ def _to_local_path(p: URIPath | Path) -> Path:
 @click.option(
     "--shape",
     type=click.Choice(["bbox", "polygon"]),
-    default="bbox",
+    default="polygon",
     show_default=True,
     help=(
         "Geometry written for export-geojson / export-omecsv / export-h5ad. "
-        "'bbox' uses each cell's minx/miny/width/height rectangle (default). "
         "'polygon' emits the real segmentation contour read from patches.h5 "
-        "/polygons/coords+offsets; OME-CSV / h5ad silently fall back to bbox "
-        "in this commit (TODO: implement polygon emission in those writers)."
+        "/polygons/coords+offsets, falling back to the bbox rectangle for "
+        "cells with no usable contour. 'bbox' uses each cell's "
+        "minx/miny/width/height rectangle. OME-CSV / h5ad silently fall back "
+        "to bbox in this commit (TODO: implement polygon emission in those "
+        "writers)."
     ),
 )
 @click.option(

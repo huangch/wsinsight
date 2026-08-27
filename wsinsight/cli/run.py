@@ -1121,14 +1121,16 @@ def _select_kwargs(values: dict[str, Any], keys: tuple[str, ...]) -> dict[str, A
 @click.option(
     "--export-shape",
     type=click.Choice(["bbox", "polygon"]),
-    default="bbox",
+    default="polygon",
     show_default=True,
     help=(
         "Geometry written for export-geojson / export-omecsv / export-h5ad. "
-        "'bbox' uses each cell's minx/miny/width/height rectangle (default). "
         "'polygon' emits the real segmentation contour read from patches.h5 "
-        "/polygons/coords+offsets; OME-CSV / h5ad silently fall back to bbox "
-        "in this commit (TODO: implement polygon emission in those writers)."
+        "/polygons/coords+offsets, falling back to the bbox rectangle for "
+        "cells with no usable contour. 'bbox' uses each cell's "
+        "minx/miny/width/height rectangle. OME-CSV / h5ad silently fall back "
+        "to bbox in this commit (TODO: implement polygon emission in those "
+        "writers)."
     ),
 )
 @click.option(
@@ -1307,7 +1309,7 @@ def run(
     export_h5ad: bool = False,
     export_workers: int | None = None,
     export_object_type: str = "detection",
-    export_shape: str = "bbox",
+    export_shape: str = "polygon",
 ) -> None:
     """Run both patch extraction and inference workflows for a slide directory.
 
