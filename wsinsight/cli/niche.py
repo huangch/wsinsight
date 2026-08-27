@@ -447,7 +447,7 @@ def niche(
                     num_workers=num_workers,
                     object_type="detection",
                     set_classification=True,
-                    annotation_shape="box",
+                    annotation_shape="bbox",
                     overwrite=overwrite,
                 )
             else:

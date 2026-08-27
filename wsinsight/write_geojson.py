@@ -408,7 +408,7 @@ def _build_geojson_dict_from_csv(
     prefix: str = "prob",
     object_type: str = "tile",
     set_classification: bool = False,
-    annotation_shape: str = "bbox",  # "bbox" or "polygon" ("box" is a legacy alias)
+    annotation_shape: str = "bbox",  # "bbox" or "polygon"
     label_col: Optional[str] = None,
     # CSV read tuning
     usecols: Optional[List[str]] = None,
@@ -451,9 +451,6 @@ def _build_geojson_dict_from_csv(
         memory_map=True,
         low_memory=False,
     )
-
-    if annotation_shape == "box":
-        annotation_shape = "bbox"
 
     # Bound for every shape, so an unexpected value cannot raise UnboundLocalError.
     polygon_geom = None
@@ -557,7 +554,7 @@ def _build_geojson_dict_from_csv(
             color_list=color_list,
             class_names=class_names,
         )
-    else:
+    elif annotation_shape == "polygon":
         if polygon_geom is None:
             raise KeyError(
                 "polygon geometries are required for annotation_shape='polygon'"
@@ -571,6 +568,10 @@ def _build_geojson_dict_from_csv(
             set_classification=set_classification,
             color_list=color_list,
             class_names=class_names,
+        )
+    else:
+        raise ValueError(
+            "annotation_shape must be 'bbox' or 'polygon', " f"got {annotation_shape!r}"
         )
 
     out_path = results_dir / output_dir / f"{_to_local_path(csv).stem}.geojson"
@@ -835,7 +836,7 @@ def write_geojsons(
     num_workers=8,
     object_type: str = "tile",
     set_classification: bool = False,
-    annotation_shape: str = "bbox",  # "bbox" or "polygon" ("box" is a legacy alias)
+    annotation_shape: str = "bbox",  # "bbox" or "polygon"
     label_col: Optional[str] = None,
     atomic_writes: bool = True,
     overwrite: bool = False,

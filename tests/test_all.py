@@ -132,7 +132,7 @@ def test_build_geojson_dict_from_csv_box(tmp_path: Path) -> None:
         prefix="prob",
         object_type="tile",
         set_classification=True,
-        annotation_shape="box",
+        annotation_shape="bbox",
     )
 
     assert out_path == results_dir / "geojson" / "sample.geojson"
