@@ -61,3 +61,11 @@ wsinfer-zoo>=0.6.2
 
 # MCP server (wsinsight-mcp entry point)
 fastmcp>=2.0
+
+# --- dev extras (mirrors pyproject.toml [project.optional-dependencies].dev) ---
+# Install with: pip install -r requirements.txt -r requirements-dev.txt
+# or via conda-setup.sh: bash conda-setup.sh wsi -d
+pytest>=7
+pytest-cov
+ruff
+pre_commit>=3

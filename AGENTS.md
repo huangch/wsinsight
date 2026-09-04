@@ -6,7 +6,7 @@ Whole-slide-image (WSI) inference pipeline: `wsinsight` CLI (click) → cell det
 
 - **Never use system `python`** — it is Python 2.7. Always use a conda env.
 - Conda base: `/opt/anaconda3` (base env only by default; no `wsinsight` env on this host yet).
-- Create env: `bash ./conda-setup.sh -n wsinsight --mcp` (the `-m`/`--mcp` flag installs fastmcp; it is **not** installed by default to avoid jaraco version-scanning issues).
+- Create env: `bash ./conda-setup.sh wsinsight --mcp` (the `-m`/`--mcp` flag installs fastmcp; it is **not** installed by default to avoid jaraco version-scanning issues). Add `-d`/`--dev` to also install pytest/pytest-cov/ruff/pre_commit for running the test suite; add `-r`/`--reset` to nuke and recreate the env. Run `./conda-setup.sh --help` for the full CLI.
 - Or run everything in Docker: `wsinsight:latest` (see below) — this is the primary runtime.
 - Known install workarounds live in `conda-setup.sh` (histomicstk `--no-deps`, explicit `large-image`, pyvips SSL fallback, `PIP_CACHE_DIR=/tmp` for NAS inode quotas). Don't "fix" them.
 

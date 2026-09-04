@@ -51,6 +51,19 @@ RUN conda --version && \
 RUN conda update -n base --yes --override-channels -c conda-forge conda && \
     conda create -y --override-channels -n wsinsight -c conda-forge python=3.11 gdal=3.11.3 pip "setuptools<67" && \
     conda clean -afy
+# ============================================================================
+# Build-time policy (do NOT relax without updating the other Dockerfiles too):
+#   1. NEVER `pip install -e .` in a container. Editable installs pin the
+#      runtime to the source tree at BUILD time, which defeats layer caching
+#      and produces a container whose Python imports the COPY'd tree rather
+#      than a proper wheel. For local dev loops use `conda-setup.sh [-d]`
+#      instead — that script is the only place that should install editable.
+#   2. NEVER `pip install .[dev]` here. The [dev] extra (pytest, pytest-cov,
+#      ruff, pre_commit) belongs to `conda-setup.sh -d`, not production images.
+#      Shipping test runners in the runtime image bloats it and adds attack
+#      surface. Runtime-time extras like [mcp] ARE allowed.
+# ============================================================================
+
 RUN python -m pip install --upgrade pip
 
 # ------------------------------------
@@ -81,7 +94,7 @@ RUN mv /app/wsinsight/hoptimus /app/
 # ------------------------------------
 # Pre-install heavy ML stack explicitly
 # Torch + TF are in pyproject.toml but pre-installing ensures they land even
-# if the full dep walk of pip install -e . hits a constraint conflict.
+# if the full dep walk of pip install . hits a constraint conflict.
 # ------------------------------------
 RUN pip install --retries 10 -c /app/wsinsight/constraints.txt "numpy<2" \
     torch torchvision torch-geometric tensorflow keras stardist nvidia-ml-py \
@@ -119,8 +132,10 @@ RUN set -eu; \
 # Install remaining wsinsight dependencies (via pyproject.toml)
 # torch/tf/pyvips/large-image above are already satisfied — pip skips them.
 # histomicstk is NOT in pyproject.toml (girder-client hardpin); installed below.
+# Install the package itself NON-editably so the container imports the wheel,
+# not the COPY'd source tree (see policy comment at the top of the file).
 # ------------------------------------
-RUN pip install --retries 10 -c /app/wsinsight/constraints.txt -e "/app/wsinsight"
+RUN pip install --retries 10 -c /app/wsinsight/constraints.txt "/app/wsinsight"
 # pynvml conflicts with nvidia-ml-py; removal is best-effort only.
 RUN pip uninstall -y pynvml || true
 RUN pip install --retries 10 -c /app/wsinsight/constraints.txt fastmcp

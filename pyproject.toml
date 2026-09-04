@@ -136,6 +136,16 @@ docs = [
 mcp = [
   "fastmcp>=3.4.5",
 ]
+# Test runner + linters for the post-install smoke test in conda-setup.sh and
+# for editor / CI integrations. NOT installed by default; opt-in via
+# `pip install wsinsight[dev]` or `bash conda-setup.sh wsi -d`.
+# Pinned floor matches the sister repos (sptxinsight, hplot).
+dev = [
+  "pytest>=7",
+  "pytest-cov",
+  "ruff",            # pyproject already declares [tool.ruff]; keep config + runner in sync
+  "pre_commit>=3",
+]
 
 [project.urls]
 Homepage = "https://wsinsight.readthedocs.io"
