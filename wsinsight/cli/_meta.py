@@ -108,7 +108,8 @@ def get_runtime_metadata(
     runtime: dict[str, Any] = {
         "version": __version__,
         "working_dir": os.getcwd(),
-        "args": " ".join(sys.argv),
+        # A list, not a joined string: values containing spaces stay unambiguous.
+        "args": list(sys.argv),
         "python_executable": sys.executable,
         "python_version": platform.python_version(),
         "in_container": _inside_container(),

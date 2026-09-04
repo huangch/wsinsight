@@ -9,6 +9,7 @@ import math
 import os
 import platform
 import re
+import shlex
 import shutil
 import subprocess
 import sys
@@ -122,16 +123,19 @@ def _get_timestamp() -> str:
 
 
 def _print_command_line_arguments(params: dict) -> None:
-    """Print Click parameters, abbreviating long sequences for readability."""
-    print("\nCommand line arguments")
-    print("----------------------")
+    """Print the exact invocation, then the values this stage derived from it."""
+    print("\nCommand line")
+    print("------------")
+    print(shlex.join(sys.argv))
+    print("\nParameters in effect for this stage")
+    print("-----------------------------------")
     for key, value in params.items():
         if isinstance(value, (list, tuple)) and len(value) > 5:
             preview = ", ".join(repr(v) for v in list(value)[:3])
             print(f"{key} = [<{len(value)} items>: {preview}, ...]")
         else:
             print(f"{key} = {value}")
-    print("----------------------\n")
+    print("-----------------------------------\n")
 
 
 def _print_system_info() -> None:
@@ -253,7 +257,8 @@ def _get_info_for_save(
         "runtime": {
             "version": __version__,
             "working_dir": os.getcwd(),
-            "args": " ".join(sys.argv),
+            # A list, not a joined string: values containing spaces stay unambiguous.
+            "args": list(sys.argv),
             "python_executable": sys.executable,
             "python_version": platform.python_version(),
             "in_container": _inside_container(),

@@ -20,14 +20,18 @@ Whole-slide-image (WSI) inference pipeline: `wsinsight` CLI (click) → cell det
 ## MCP server (`wsinsight-mcp`)
 
 - Entry point `wsinsight.mcp.__main__:main`; extra `mcp = ["fastmcp>=2.0"]`. stdio by default (works with VS Code Copilot); `--http HOST:PORT` (default 8765), `--experimental`, `--max-concurrent`.
-- Tools are auto-registered from the **bundled** `wsinsight/cli/cli_schema.json` (14 commands, `schema_version: 1`). The live generator is `wsinsight describe` — the bundle is NOT regenerated at runtime. If you change CLI params, regenerate the bundle and keep `tests/test_mcp_pkg/test_mcp.py` parity passing (it is command-level only, not param-freshness).
+- Tools are auto-registered from the **bundled** `wsinsight/cli/cli_schema.json` (14 commands, `schema_version: 1`). The live generator is `wsinsight schema` — the bundle is NOT regenerated at runtime. If you change CLI params, regenerate the bundle and keep `tests/test_mcp_pkg/test_mcp.py` parity passing (it is command-level only, not param-freshness).
 - By default only STABLE commands are exposed: `run, patch, infer, ncomp, export, reg`. `--experimental` adds: `hplot, hplot-finalize, ecomp, tcomp, niche, niche-profile, agg, import`.
 - Long-running commands (`run, patch, infer, ncomp, hplot, ecomp, tcomp, niche, agg`) return a `job_id`; clients poll `job_status`/`job_logs`/`cancel_job`.
+- The server reports `wsinsight.__version__` in its MCP `serverInfo`; without an explicit `version=` FastMCP would report its own.
 - Adapter (`wsinsight/mcp/adapters.py`) translates snake_case args → kebab-case `--flags` only. **No positional args are supported** — keep all CLI params flag-based.
 
 ## Commands (14)
 
-`run` (main pipeline), `patch`, `export`, `infer`, `ncomp`, `reg`, `hplot`, `hplot-finalize`, `ecomp`, `tcomp`, `niche`, `niche-profile`, `agg`, `import`. CLI source: `wsinsight/cli/cli.py`. Most require `--wsi-dir` + `--results-dir`.
+`run` (main pipeline), `patch`, `export`, `infer`, `ncomp`, `reg`, `hplot`, `hplot-finalize`, `ecomp`, `tcomp`, `niche`, `niche-profile`, `agg`, `import`. CLI source: `wsinsight/cli/cli.py`. All require `--results-dir`.
+
+- `--wsi-dir` belongs only to the stages that read slide pixels: `run`, `patch`, `infer`, `reg`, `import`. The analysis stages (`ncomp`, `ecomp`, `tcomp`, `agg`, `hplot`, `niche`, `export`, `hplot-finalize`, `niche-profile`) **reject** it and derive the slide list from `patches/` under `--results-dir`.
+- `--spacing-um-px` on `run`/`patch` **overrides** the slide metadata (`0` = use metadata, error if the slide has none). `patch` records the spacing in `patches/<slide>.h5`; downstream stages read it back via `insight_helpers.build_slide_mpp_lookup`, so one flag governs the pipeline. `reg`'s same-named option is a fallback instead — don't unify them without checking `tests/test_spacing_contract.py`.
 
 ## Tests & CI
 

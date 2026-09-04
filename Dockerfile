@@ -84,7 +84,8 @@ RUN mv /app/wsinsight/hoptimus /app/
 # if the full dep walk of pip install -e . hits a constraint conflict.
 # ------------------------------------
 RUN pip install --retries 10 -c /app/wsinsight/constraints.txt "numpy<2" \
-    torch torchvision torch-geometric tensorflow keras stardist nvidia-ml-py
+    torch torchvision torch-geometric tensorflow keras stardist nvidia-ml-py \
+    nvidia-cuda-nvcc-cu12
 # pynvml conflicts with nvidia-ml-py; removal is best-effort only.
 RUN pip uninstall -y pynvml || true
 

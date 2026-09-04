@@ -23,6 +23,7 @@ from typing import Any  # , Callable
 from typing import Dict  # , Callable
 from typing import Iterable  # , Callable
 from typing import List  # , Callable
+from typing import Mapping  # , Callable
 from typing import Optional  # , Callable
 from typing import Sequence  # , Callable
 from typing import Tuple  # , Callable
@@ -2287,6 +2288,21 @@ def _niche_cellular_worker(args):
     return str(cell_csv), "ok"
 
 
+def _resolve_mpp(wsi_path, slide_mpp_lookup=None) -> float:
+    """Prefer the spacing the patch stage recorded over re-reading the slide.
+
+    Keeps niche consistent with the other stages, and honours a
+    ``--spacing-um-px`` override that the slide's own metadata does not carry.
+    """
+    if slide_mpp_lookup:
+        mpp = slide_mpp_lookup.get(Path(wsi_path).stem) or slide_mpp_lookup.get(
+            str(wsi_path)
+        )
+        if mpp is not None:
+            return float(mpp)
+    return get_avg_mpp(wsi_path)
+
+
 def _niche_annotation_worker(args):
     """Background worker: write one slide's annotation-level niche CSV (Phase 5)."""
     (
@@ -2298,12 +2314,13 @@ def _niche_annotation_worker(args):
         niche_clustering_k,
         max_cell_radius_um,
         overwrite,
+        slide_mpp_lookup,
     ) = args
     niche_csv = Path(niche_csv)
     if not overwrite and niche_csv.exists():
         return str(niche_csv), "skip"
 
-    mpp = get_avg_mpp(wsi_path)
+    mpp = _resolve_mpp(wsi_path, slide_mpp_lookup)
     niche_detection_df = pd.read_csv(cell_csv)
     valid_mask = np.zeros(len(niche_detection_df), dtype=bool)
     valid_mask[np.asarray(kept_idx, dtype=int)] = True
@@ -2332,6 +2349,7 @@ def niche_generation(
     class_order: Optional[List[str]] = None,
     k_hops: int = 2,
     alpha: float = 1.0,
+    slide_mpp_lookup: Optional[Mapping[str, float]] = None,
     # H-Optimus switch & params
     use_hoptimus: bool = False,
     hoptimus_only: bool = False,
@@ -2557,7 +2575,7 @@ def niche_generation(
             if use_hoptimus and patch_datasets is not None and i < len(patch_datasets):
                 ds = patch_datasets[i]
             df = pd.read_csv(csv_path)
-            mpp = get_avg_mpp(wsi_path)
+            mpp = _resolve_mpp(wsi_path, slide_mpp_lookup)
             s = prepare_slide_graph(
                 df,
                 mpp_um_per_px=mpp,
@@ -2786,6 +2804,7 @@ def niche_generation(
                     niche_clustering_k,
                     max_cell_radius_um,
                     overwrite,
+                    slide_mpp_lookup,
                 )
             )
         _p5_workers = pick_workers_safe(max_workers=os.cpu_count() - 2, min_workers=2)

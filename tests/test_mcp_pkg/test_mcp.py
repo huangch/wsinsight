@@ -38,15 +38,14 @@ def test_command_to_input_schema_has_required_and_properties():
     ncomp = cmds["ncomp"]
     isch = schema.command_to_input_schema(ncomp)
     assert isch["type"] == "object"
-    assert "wsi_dir" in isch["properties"]
     assert "results_dir" in isch["properties"]
     # ncomp_k is a non-required int with default 2.
     k = isch["properties"]["ncomp_k"]
     assert k["type"] == "integer"
     assert k.get("default") == 2
-    # Required list contains both wsi_dir and results_dir.
-    assert "wsi_dir" in isch["required"]
+    # A required CLI param is reported as required; an optional one is not.
     assert "results_dir" in isch["required"]
+    assert "ncomp_k" not in isch["required"]
 
 
 # -- adapters ---------------------------------------------------------------
@@ -57,15 +56,14 @@ def test_args_to_argv_basic():
     argv = adapters.args_to_argv(
         cmds["ncomp"],
         {
-            "wsi_dir": "/data/wsis",
             "results_dir": "/data/results",
             "ncomp_k": 3,
             "overwrite": True,
         },
     )
     assert argv[0] == "ncomp"
-    assert "--wsi-dir" in argv and argv[argv.index("--wsi-dir") + 1] == "/data/wsis"
     assert "--results-dir" in argv
+    assert argv[argv.index("--results-dir") + 1] == "/data/results"
     # The MCP arg is ncomp_k but the CLI flag is --k, so this is not a plain kebab-casing.
     assert "--k" in argv and argv[argv.index("--k") + 1] == "3"
     assert "--overwrite" in argv  # bare boolean flag
@@ -76,7 +74,6 @@ def test_args_to_argv_skips_falsy_boolean():
     argv = adapters.args_to_argv(
         cmds["ncomp"],
         {
-            "wsi_dir": "/x",
             "results_dir": "/y",
             "overwrite": False,
         },

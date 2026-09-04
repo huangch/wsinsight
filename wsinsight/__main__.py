@@ -19,7 +19,7 @@ def main() -> None:
     os.environ.setdefault("MKL_NUM_THREADS", "1")
     os.environ.setdefault("NUMEXPR_NUM_THREADS", "1")
     mp.set_start_method("spawn", force=True)
-    # Keep lightweight commands (for example `--help` / `describe`) usable in
+    # Keep lightweight commands (for example `--help` / `schema`) usable in
     # environments where heavy ML deps are not installed yet.
     try:
         import torch

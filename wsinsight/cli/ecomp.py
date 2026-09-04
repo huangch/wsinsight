@@ -11,26 +11,18 @@ import click
 
 from ..insightlib.ecomp_generation import _gpu_available
 from ..insightlib.ecomp_generation import ecomp_generation
+from ..insightlib.insight_helpers import build_slide_mpp_lookup
 from ..uri_path import URIPath
 from ..uri_path import URIPathType
 from ._meta import write_runtime_metadata
 from ._paths import default_storage_kwargs
 from ._paths import ensure_input_directory
+from ._paths import list_analysis_slides
 
 _STORAGE_KWARGS = default_storage_kwargs()
 
 
 @click.command()
-@click.option(
-    "-i",
-    "--wsi-dir",
-    type=URIPathType(exists=True, **_STORAGE_KWARGS),
-    required=True,
-    help=(
-        "Directory containing whole slide images.  Used only to enumerate slides "
-        "and to resolve µm-per-pixel spacing; images are not fully read during ecomp."
-    ),
-)
 @click.option(
     "-o",
     "--results-dir",
@@ -87,7 +79,6 @@ _STORAGE_KWARGS = default_storage_kwargs()
 )
 def ecomp(
     *,
-    wsi_dir: URIPath,
     results_dir: URIPath,
     ecomp_max_edge: float = 25.0,
     ecomp_k: int = 2,
@@ -106,15 +97,8 @@ def ecomp(
       ecomp-outputs-csv/<slide_id>.csv   per-edge neighborhood composition
     """
 
-    wsi_dir = wsi_dir.coerce_image_list()
-    ensure_input_directory(wsi_dir, "--wsi-dir")
     ensure_input_directory(results_dir, "--results-dir")
-
-    from ..wsi import list_slide_paths
-
-    slide_paths = list_slide_paths(wsi_dir)
-    if not slide_paths:
-        raise click.ClickException(f"No files found in slide directory: {wsi_dir}")
+    slide_paths = list_analysis_slides(results_dir)
 
     model_output_dir = results_dir / "model-outputs-csv"
     if not model_output_dir.exists():
@@ -128,12 +112,13 @@ def ecomp(
     click.secho(f"ecomp backend: {backend}", fg="cyan")
 
     failed = ecomp_generation(
-        wsi_dir=wsi_dir,
+        wsi_dir=None,
         slide_paths=slide_paths,
         results_dir=results_dir,
         max_edge_um=ecomp_max_edge,
         ecomp_k=ecomp_k,
         num_workers=num_workers,
+        slide_mpp_lookup=build_slide_mpp_lookup(results_dir),
         overwrite=overwrite,
         no_neighborhood=no_neighborhood,
     )

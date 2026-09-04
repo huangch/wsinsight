@@ -499,6 +499,22 @@ Merged per-cell CSV produced by `build_export_csvs()` (called programmatically v
 
 ## Key Parameters
 
+### Pixel Spacing and Slide Inputs
+
+ Option           | Applies to                | Description
+------------------|---------------------------|--------------------------------
+ `--spacing-um-px` | `run`, `patch`           | `0` (default) reads the spacing from the slide metadata and fails if the slide carries none. Any value above `0` **overrides** the metadata, for slides whose recorded spacing is wrong or missing.
+ `-i / --wsi-dir`  | `run`, `patch`, `infer`, `reg`, `import` | Slide directory. Only the stages that read slide pixels take one.
+
+`patch` records the spacing it used in `patches/<slide>.h5`. The analysis
+stages — `ncomp`, `ecomp`, `tcomp`, `agg`, `hplot`, `niche` — read the slide
+list and spacing back from there, so one `--spacing-um-px` governs the whole
+pipeline and those commands take no `--wsi-dir` at all (as `export`,
+`hplot-finalize` and `niche-profile` never have).
+
+> `reg` has its own `--spacing-um-px`, which is a fallback: there the slide
+> metadata still wins when `--wsi-dir` is supplied.
+
 ### Neighborhood Composition (`--ncomp-*` options in `run` and `wsinsight ncomp`)
 
  Option                          | Default | Description
@@ -601,7 +617,6 @@ See `tmux-multi-gpu.sh` in the repository root for a ready-to-use script.
 
 ```bash
 wsinsight ncomp \
-  --wsi-dir slides/ \
   --results-dir results/ \
   --k 2
 ```
@@ -636,7 +651,7 @@ to run unless you opt in with:
 export WSINSIGHT_EXPERIMENTAL=1
 ```
 
-`wsinsight describe` always emits the full schema so downstream tools (the
+`wsinsight schema` always emits the full schema so downstream tools (the
 QuPath extension, etc.) can discover every command; only invocation is gated.
 
 ### Experimental commands
@@ -771,14 +786,14 @@ wsinsight run \
 Run niche analysis on existing inference outputs:
 
 ```bash
-wsinsight niche --wsi-dir slides/ --results-dir results/
+wsinsight niche --results-dir results/
 ```
 
 Run H-plot on existing inference outputs:
 
 ```bash
 wsinsight hplot \
-  --wsi-dir slides/ --results-dir results/ \
+  --results-dir results/ \
   --base-types tumor --target-types lymphocyte \
   --range-min -5 --range-max 5
 ```
@@ -788,11 +803,11 @@ their member-cell fraction across tumour layers:
 
 ```bash
 wsinsight agg \
-  --wsi-dir slides/ --results-dir results/ \
+  --results-dir results/ \
   --name tls --types t_cell,b_cell
 
 wsinsight hplot \
-  --wsi-dir slides/ --results-dir results/ \
+  --results-dir results/ \
   --base-types tumor --target-types tls \
   --target-by aggregate \
   --range-min -5 --range-max 5

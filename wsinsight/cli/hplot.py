@@ -15,11 +15,13 @@ from tqdm import tqdm
 
 from ..insightlib.hplot_generation import hplot_finalize
 from ..insightlib.hplot_generation import hplot_generation
+from ..insightlib.insight_helpers import build_slide_mpp_lookup
 from ..uri_path import URIPath
 from ..uri_path import URIPathType
 from ._meta import write_runtime_metadata
 from ._paths import default_storage_kwargs
 from ._paths import ensure_input_directory
+from ._paths import list_analysis_slides
 
 _STORAGE_KWARGS = default_storage_kwargs()
 
@@ -105,13 +107,6 @@ def _validate_types(
 
 
 @click.command()
-@click.option(
-    "-i",
-    "--wsi-dir",
-    type=URIPathType(exists=True, **_STORAGE_KWARGS),
-    required=True,
-    help="Directory containing whole slide images. This directory can *only* contain whole slide images.",
-)
 @click.option(
     "-o",
     "--results-dir",
@@ -217,7 +212,6 @@ def _validate_types(
 )
 def hplot(
     *,
-    wsi_dir: URIPath,
     results_dir: URIPath,
     hplot_max_neighbor_distance: float = 25.0,
     hplot_base_types: List | None = None,
@@ -235,15 +229,8 @@ def hplot(
 ) -> None:
     """Run H-Plot analysis on inference outputs held inside ``results_dir``."""
 
-    wsi_dir = wsi_dir.coerce_image_list()
-    ensure_input_directory(wsi_dir, "--wsi-dir")
     ensure_input_directory(results_dir, "--results-dir")
-
-    from ..wsi import list_slide_paths
-
-    slide_paths = list_slide_paths(wsi_dir)
-    if not slide_paths:
-        raise click.ClickException(f"no files exist in the slide directory: {wsi_dir}")
+    slide_paths = list_analysis_slides(results_dir)
 
     niche_involved = (base_by == "niche") or (target_by == "niche")
     # niche one-hot columns live in niche-outputs-csv/cells/, a superset of
@@ -292,9 +279,10 @@ def hplot(
 
     click.secho("\nRunning H-Plot generation.\n", fg="green")
     failed_hplot_generation = hplot_generation(
-        wsi_dir=wsi_dir,
+        wsi_dir=None,
         slide_paths=slide_paths,
         results_dir=results_dir,
+        slide_mpp_lookup=build_slide_mpp_lookup(results_dir),
         base_type_list=base_type_list,
         target_type_list=target_type_list,
         base_by=base_by,

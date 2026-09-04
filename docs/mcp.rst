@@ -11,6 +11,11 @@ integration, custom agents). The server is built on
 tool per stable WSInsight subcommand from the single source of truth at
 ``wsinsight/cli/cli_schema.json``.
 
+The server reports the installed ``wsinsight`` version in its MCP
+``serverInfo``, so a client can pin a run to a release; regenerate the bundled
+schema with ``wsinsight schema --output wsinsight/cli/cli_schema.json`` after
+changing any CLI option.
+
 Human-in-the-loop architecture
 ------------------------------
 

@@ -13,6 +13,7 @@ import math
 import os
 import platform
 import re
+import shlex
 import shutil
 import subprocess
 import sys
@@ -79,16 +80,19 @@ def _get_timestamp() -> str:
 
 
 def _print_command_line_arguments(params: dict) -> None:
-    """Print Click parameters, abbreviating long sequences for readability."""
-    print("\nCommand line arguments")
-    print("----------------------")
+    """Print the exact invocation, then the values this stage derived from it."""
+    print("\nCommand line")
+    print("------------")
+    print(shlex.join(sys.argv))
+    print("\nParameters in effect for this stage")
+    print("-----------------------------------")
     for key, value in params.items():
         if isinstance(value, (list, tuple)) and len(value) > 5:
             preview = ", ".join(repr(v) for v in list(value)[:3])
             print(f"{key} = [<{len(value)} items>: {preview}, ...]")
         else:
             print(f"{key} = {value}")
-    print("----------------------\n")
+    print("-----------------------------------\n")
 
 
 def _print_system_info() -> None:
@@ -210,7 +214,8 @@ def _get_info_for_save(
         "runtime": {
             "version": __version__,
             "working_dir": os.getcwd(),
-            "args": " ".join(sys.argv),
+            # A list, not a joined string: values containing spaces stay unambiguous.
+            "args": list(sys.argv),
             "python_executable": sys.executable,
             "python_version": platform.python_version(),
             "in_container": _inside_container(),
@@ -477,9 +482,10 @@ def _optional_uri_paths(ctx: click.Context, param: click.Option, value):
     "--spacing-um-px",
     default=0.0,
     type=click.FloatRange(min=0.0),
-    help="Fallback slide resolution in micrometres-per-pixel (MPP), used ONLY for"
-    " slides whose MPP cannot be read from the WSI metadata. Slide metadata is"
-    " always preferred. The default of 0 disables the fallback.",
+    help="Slide resolution in micrometres-per-pixel (MPP). The default of 0 reads"
+    " the MPP from the WSI metadata, and fails if the slide carries none. Any"
+    " other value overrides the metadata, for slides whose recorded spacing is"
+    " wrong or missing.",
 )
 @click.option(
     "--overwrite",
@@ -519,7 +525,7 @@ def patch(
     patch_size_px: int = 0,
     spacing_um_px: float = 0.0,
     overwrite: bool = False,
-) -> None:
+) -> list[str]:
     """Segment tissue and generate patch coordinates for a WSI directory.
 
     The command validates slide availability, loads either a registered model,
@@ -992,7 +998,7 @@ def patch(
 
     click.secho("\nFinding patch coordinates...\n", fg="green")
 
-    segment_and_patch_directory_of_slides(
+    failed = segment_and_patch_directory_of_slides(
         wsi_dir=wsi_dir,
         slide_paths=slide_paths,
         save_dir=results_dir,
@@ -1042,4 +1048,20 @@ def patch(
         },
     )
 
+    if failed:
+        # Stale patches from an earlier run can satisfy the directory check above,
+        # so a total failure has to be raised on its own.
+        if len(failed) == len(slide_paths):
+            raise click.ClickException(
+                "Segmentation failed for every slide; see the errors above. "
+                f"Failed: {', '.join(failed)}"
+            )
+        click.secho(
+            f"\nWSInsight-patch finished, but {len(failed)} of {len(slide_paths)} "
+            f"slide(s) failed segmentation: {', '.join(failed)}\n",
+            fg="red",
+        )
+        return failed
+
     click.secho("\nWSInsight-patch tasks are all finished.\n", fg="green")
+    return []

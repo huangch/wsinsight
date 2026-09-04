@@ -92,7 +92,7 @@ def segment_and_patch_one_slide(
         return None
 
     slide = get_wsi_cls()(slide_path)
-    mpp = get_avg_mpp(slide_path, default_mpp=spacing_um_px)
+    mpp = get_avg_mpp(slide_path, override_mpp=spacing_um_px)
     slide_width, slide_height = slide.dimensions
     logger.info(f"Slide has WxH {slide.dimensions} and MPP={mpp}")
 
@@ -488,13 +488,18 @@ def segment_and_patch_directory_of_slides(
     cache_image_patches: bool = False,
     spacing_um_px: float | None = None,
     overwrite: bool = False,
-) -> None:
-    """Batch segment and patch a directory of slides."""
+) -> list[str]:
+    """Batch segment and patch a directory of slides.
+
+    Returns the stems of the slides that raised. One bad slide must not abandon
+    a cohort, so the loop continues and the caller decides what to do.
+    """
 
     wsi_dir = URIPath(wsi_dir)
 
     _validate_wsi_directory(wsi_dir)
 
+    failed: list[str] = []
     with tqdm.tqdm(total=len(slide_paths), desc="Slides", position=0) as pbar:
         for i, slide_path in enumerate(slide_paths):
             logger.info(
@@ -528,10 +533,11 @@ def segment_and_patch_directory_of_slides(
                     overwrite=overwrite,
                 )
             except Exception as e:  # pragma: no cover - logged for operators
+                failed.append(URIPath(slide_path).stem)
                 logger.error(
                     f"Failed to segment and patch slide\n{slide_path}", exc_info=e
                 )
             finally:
                 pbar.update(1)
 
-    return None
+    return failed

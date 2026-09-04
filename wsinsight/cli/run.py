@@ -38,6 +38,7 @@ from .agg import agg as agg_command
 from .ecomp import ecomp as ecomp_command
 from .hplot import hplot as hplot_command
 from .infer import DEFAULT_STITCH_WORKERS as _DEFAULT_STITCH_WORKERS
+from .infer import _print_command_line_arguments
 from .infer import infer as infer_command
 from .ncomp import ncomp as ncomp_command
 from .niche import _DEFAULT_LEIDEN_RESOLUTIONS as _NICHE_DEFAULT_LEIDEN
@@ -274,6 +275,7 @@ _PATCH_PARAM_NAMES: tuple[str, ...] = (
     "model_name",
     "config",
     "model_path",
+    "zoo_model_dir",
     "cache_image_patches",
     "histoqc_dir",
     "seg_thumbsize",
@@ -304,6 +306,7 @@ _INFER_PARAM_NAMES: tuple[str, ...] = (
     "model_name",
     "config",
     "model_path",
+    "zoo_model_dir",
     "batch_size",
     "num_workers",
     "pin_memory",
@@ -316,7 +319,6 @@ _INFER_PARAM_NAMES: tuple[str, ...] = (
 )
 
 _HPLOT_PARAM_NAMES: tuple[str, ...] = (
-    "wsi_dir",
     "results_dir",
     "hplot_max_neighbor_distance",
     "hplot_base_types",
@@ -332,7 +334,6 @@ _HPLOT_PARAM_NAMES: tuple[str, ...] = (
 )
 
 _NCOMP_PARAM_NAMES: tuple[str, ...] = (
-    "wsi_dir",
     "results_dir",
     "ncomp_max_neighbor_distance",
     "ncomp_k",
@@ -341,7 +342,6 @@ _NCOMP_PARAM_NAMES: tuple[str, ...] = (
 )
 
 _ECOMP_PARAM_NAMES: tuple[str, ...] = (
-    "wsi_dir",
     "results_dir",
     "ecomp_max_edge",
     "ecomp_k",
@@ -350,7 +350,6 @@ _ECOMP_PARAM_NAMES: tuple[str, ...] = (
 )
 
 _TCOMP_PARAM_NAMES: tuple[str, ...] = (
-    "wsi_dir",
     "results_dir",
     "tcomp_max_edge",
     "tcomp_k",
@@ -359,7 +358,6 @@ _TCOMP_PARAM_NAMES: tuple[str, ...] = (
 )
 
 _NICHE_PARAM_NAMES: tuple[str, ...] = (
-    "wsi_dir",
     "results_dir",
     "niche_hoptimus",
     "niche_hoptimus_only",
@@ -380,7 +378,6 @@ _NICHE_PARAM_NAMES: tuple[str, ...] = (
 )
 
 _AGG_PARAM_NAMES: tuple[str, ...] = (
-    "wsi_dir",
     "results_dir",
     "agg_name",
     "agg_types",
@@ -635,9 +632,10 @@ def _select_kwargs(values: dict[str, Any], keys: tuple[str, ...]) -> dict[str, A
     "--spacing-um-px",
     default=0.0,
     type=click.FloatRange(min=0.0),
-    help="Fallback slide resolution in micrometres-per-pixel (MPP), used ONLY for"
-    " slides whose MPP cannot be read from the WSI metadata. Slide metadata is"
-    " always preferred. The default of 0 disables the fallback.",
+    help="Slide resolution in micrometres-per-pixel (MPP). The default of 0 reads"
+    " the MPP from the WSI metadata, and fails if the slide carries none. Any"
+    " other value overrides the metadata, for slides whose recorded spacing is"
+    " wrong or missing.",
 )
 # @click.option(
 #     "--patch-overlap-median-filter-size",
@@ -1348,6 +1346,15 @@ def run(
     slide_paths = _enumerate_slide_paths(wsi_dir)
     params["slide_paths"] = slide_paths
 
+    # The expansion above exists to fail fast; hand the stages the shorthand as
+    # typed and let them expand it, so what they report back is what was asked
+    # for. Forwarding both forms would trip their mutual-exclusion check.
+    if zoo_model_dir is not None:
+        params["config"] = None
+        params["model_path"] = None
+
+    _print_command_line_arguments(params)
+
     # --- Preflight reconciliation: check existing artifacts ------------------
     status = _scan_existing_artifacts(slide_paths, results_dir)
     _log_reconciliation_summary(status, stage="pre-patch")
@@ -1362,8 +1369,10 @@ def run(
         patch_params["slide_paths"] = [
             p for p in slide_paths if p.stem in slides_needing_patch
         ]
-        ctx.invoke(patch_command, **_select_kwargs(patch_params, _PATCH_PARAM_NAMES))
-        status.patched_this_run = slides_needing_patch.copy()
+        failed_patch = ctx.invoke(
+            patch_command, **_select_kwargs(patch_params, _PATCH_PARAM_NAMES)
+        )
+        status.patched_this_run = slides_needing_patch - set(failed_patch or [])
     else:
         click.echo("\nAll slides already have patches — skipping patch stage.\n")
     raise_if_cancelled()

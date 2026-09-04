@@ -509,14 +509,19 @@ the requested cell types.  The Delaunay triangulation is cached in
 
 Required options:
 
-* ``-i / --wsi-dir`` — slide directory (used for slide enumeration; images are not
-  opened).
 * ``-o / --results-dir`` — directory containing a ``model-outputs-csv/`` subfolder from
   a prior object-based inference run.
 * ``--base-types`` — comma-separated base cell type(s) that define tumour clusters
   (e.g. ``tumor``).
 * ``--target-types`` — comma-separated target cell type(s) for the layer-wise
   proportion computation (e.g. ``lymphocyte``).
+
+Optional:
+
+* ``--overwrite`` — recompute slides whose outputs already exist.
+
+This command takes no ``--wsi-dir``: the slide list and µm-per-pixel spacing come
+from ``patches/`` under ``--results-dir``.
 
 Tuning options:
 
@@ -540,7 +545,6 @@ Tuning options:
 Example::
 
     wsinsight hplot \
-        --wsi-dir slides/ \
         --results-dir results/ \
         --base-types tumor \
         --target-types lymphocyte \
@@ -599,10 +603,11 @@ The same analysis can be run inline via ``wsinsight run --ncomp``.
 
 Required options:
 
-* ``-i / --wsi-dir`` — slide directory (used for slide enumeration and µm-per-pixel
-  spacing; images are not fully read).
 * ``-o / --results-dir`` — directory containing a ``model-outputs-csv/`` subfolder from
   a prior inference run.
+
+This command takes no ``--wsi-dir``: the slide list and µm-per-pixel spacing come
+from ``patches/`` under ``--results-dir``.
 
 Tuning options:
 
@@ -614,7 +619,6 @@ Tuning options:
 Example::
 
     wsinsight ncomp \
-        --wsi-dir slides/ \
         --results-dir results/ \
         --k 2 \
         --num-workers 16
@@ -636,10 +640,12 @@ The same analysis can be run inline via ``wsinsight run --niche``.
 
 Required options:
 
-* ``-i / --wsi-dir`` — slide directory (used for slide enumeration and µm-per-pixel
-  spacing; images are read only when ``--hoptimus`` is set).
 * ``-o / --results-dir`` — directory containing a ``model-outputs-csv/`` subfolder from
   a prior inference run.
+
+This command takes no ``--wsi-dir``: the slide list and µm-per-pixel spacing come
+from ``patches/`` under ``--results-dir``.  With ``--hoptimus`` the slides are
+read from the paths recorded there.
 
 .. note::
 
@@ -693,7 +699,6 @@ Tuning options:
 Example::
 
     wsinsight niche \
-        --wsi-dir slides/ \
         --results-dir results/ \
         --hoptimus \
         --clusters 10

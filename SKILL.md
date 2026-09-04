@@ -195,7 +195,7 @@ wsinsight
 ├── ncomp             Node-level (cell) composition + Delaunay graph cache
 ├── export            Merge analytics → GeoJSON / OME-CSV
 ├── tosbu             Convert patch predictions → Stony Brook viewer .txt/.json
-└── describe          Emit a machine-readable JSON schema of every subcommand
+└── schema            Emit a machine-readable JSON schema of every subcommand
 ```
 
 > Additional subcommands — `hplot`, `hplot-finalize`, `ecomp`, `tcomp`, `niche`,
@@ -230,6 +230,31 @@ wsinsight
 | `--backend`    | Slide reading backend               |
 | `--log-level`  | Logging verbosity                   |
 | `--version`    | Print version and exit              |
+
+### 4.2.1 Pixel Spacing (MPP)
+
+`patch` and `run` accept `--spacing-um-px`:
+
+| Value            | Behaviour                                                        |
+| ---------------- | ---------------------------------------------------------------- |
+| `0` (default)    | Read the MPP from the slide metadata; error if the slide has none |
+| any value `> 0`  | **Override** the metadata with this value, with a warning         |
+
+`patch` records the spacing it used in `patches/<slide>.h5`, and the analysis
+commands (`ncomp`, `ecomp`, `tcomp`, `agg`, `hplot`, `niche`) read it back from
+there. One `--spacing-um-px` therefore governs the whole pipeline; they only
+re-open the slide when that record is missing.
+
+> `reg` has its own `--spacing-um-px` with different, fallback-only semantics.
+
+### 4.2.2 Which Commands Take `--wsi-dir`
+
+Only the stages that read slide pixels: `patch`, `run`, and `import`.
+
+`ncomp`, `ecomp`, `tcomp`, `agg`, `hplot` and `niche` work from `--results-dir`
+alone — cells come from `model-outputs-csv/` and the slide list and spacing from
+`patches/`. They **reject** `--wsi-dir`, as `export`, `hplot-finalize` and
+`niche-profile` always have.
 
 ### 4.3 `wsinsight run` — Full Pipeline
 
@@ -360,7 +385,6 @@ Builds (or reuses) a Delaunay cell graph per slide under
 
 ```bash
 wsinsight ncomp \
-  --wsi-dir <WSI_DIR> \
   --results-dir <RESULTS_DIR> \
   [--k 2] [--max-neighbor-distance 25.0] \
   [--num-workers 8] [--overwrite]
@@ -369,7 +393,7 @@ wsinsight ncomp \
 Defaults: 25 µm edge filter, 2-hop neighborhood radius, 8 concurrent slides.
 Outputs go to `ncomp-outputs-csv/<slide>.csv`. The `graphs/<slide>.h5` cache
 is keyed by a SHA-256 hash of the cell-center coordinates, so `ncomp` reruns
-are idempotent and safe to resume.
+are idempotent and safe to resume. There is no `--wsi-dir` (see §4.2.2).
 
 ### 4.7 `wsinsight export` — Merge & Export
 
@@ -414,15 +438,15 @@ restricts the run to slides whose stem appears under that directory.
 GeoJSON / OME-CSV exports for the registered tables land in dedicated
 subfolders.
 
-### 4.9 `wsinsight describe` — Machine-readable CLI Schema
+### 4.9 `wsinsight schema` — Machine-readable CLI Schema
 
 Emits a JSON description of every subcommand, its options, types, defaults,
 and flag forms. Intended for downstream tooling (e.g. the QuPath extension)
 that needs to render forms without hard-coding the CLI.
 
 ```bash
-wsinsight describe                         # stdout
-wsinsight describe --output schema.json    # file
+wsinsight schema                         # stdout
+wsinsight schema --output schema.json    # file
 ```
 
 ---
@@ -669,7 +693,7 @@ wsinsight patch --wsi-dir slides/ --results-dir results/ --model breast-tumor-re
 wsinsight infer --results-dir results/ --model breast-tumor-resnet34.tcga-brca --batch-size 32
 
 # Step 3: Composition analytics (builds graphs/<slide>.h5 on first run)
-wsinsight ncomp --wsi-dir slides/ --results-dir results/
+wsinsight ncomp --results-dir results/
 
 # Step 4: Export
 wsinsight export --results-dir results/ --geojson --omecsv
@@ -1161,7 +1185,7 @@ wsinsight infer --help
 wsinsight ncomp --help
 wsinsight reg --help
 wsinsight export --help
-wsinsight describe --help
+wsinsight schema --help
 
 # 3. Python imports work
 python -c "import wsinsight; print(wsinsight.__version__)"

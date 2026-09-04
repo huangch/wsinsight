@@ -15,6 +15,84 @@ import pandas as pd
 from scipy.spatial import Delaunay
 
 
+def read_patch_slide_records(
+    results_dir: Any,
+) -> List[Tuple[str, str | None, float | None]]:
+    """Return ``(stem, slide_path, slide_mpp)`` for every patch HDF5 on disk.
+
+    The patch stage records what it actually processed, which is the only
+    account of a ``--spacing-um-px`` override and of the slides' real paths.
+
+    Missing or unreadable files are skipped rather than raised: callers treat an
+    empty result as "fall back to reading the slides".
+    """
+    import h5py
+
+    from ..wsi import URIPath
+
+    records: List[Tuple[str, str | None, float | None]] = []
+    patches_dir = URIPath(results_dir) / "patches"
+    try:
+        if not patches_dir.exists():
+            return records
+        h5_files = sorted(
+            (p for p in patches_dir.iterdir() if p.name.endswith(".h5")),
+            key=lambda p: p.name,
+        )
+    except Exception:  # noqa: BLE001 - an unreadable results dir is not fatal
+        return records
+
+    for h5_path in h5_files:
+        try:
+            with h5_path.open("rb") as fh:
+                with h5py.File(fh, "r") as f:
+                    attrs = f["slide"].attrs
+                    slide_path = attrs.get("slide_path")
+                    mpp = attrs.get("slide_mpp")
+                    records.append(
+                        (
+                            h5_path.stem,
+                            str(slide_path) if slide_path else None,
+                            float(mpp) if mpp is not None else None,
+                        )
+                    )
+        except Exception:  # noqa: BLE001 - one bad file must not blind the rest
+            continue
+    return records
+
+
+def build_slide_mpp_lookup(results_dir: Any) -> Dict[str, float]:
+    """Map slide stem and slide path to the MPP the patch stage actually used.
+
+    Downstream stages convert micrometres to pixels, so they must use the same
+    spacing the patches were cut at. Re-reading the WSI would miss a
+    ``--spacing-um-px`` override, and costs an extra open per slide.
+    """
+    lookup: Dict[str, float] = {}
+    for stem, slide_path, mpp in read_patch_slide_records(results_dir):
+        if mpp is None:
+            continue
+        lookup[stem] = mpp
+        if slide_path:
+            lookup[slide_path] = mpp
+    return lookup
+
+
+def list_slides_from_patches(results_dir: Any) -> List[Any]:
+    """Slide paths as recorded by the patch stage, for enumerating work.
+
+    Lets the analysis stages run without ``--wsi-dir``: they only need the
+    slide's name and spacing, both of which the patch stage already wrote down.
+    """
+    from ..wsi import URIPath
+
+    return [
+        URIPath(slide_path)
+        for _stem, slide_path, _mpp in read_patch_slide_records(results_dir)
+        if slide_path
+    ]
+
+
 def make_short_ids(stems: List[str]) -> dict:
     """
     Strip the longest common prefix and suffix (snapped to '_' word-boundaries)

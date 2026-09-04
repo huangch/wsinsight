@@ -43,6 +43,7 @@ except ImportError as exc:  # pragma: no cover - import-time guard
 
 from pydantic import Field
 
+from wsinsight import __version__
 from wsinsight.mcp.adapters import args_to_argv
 from wsinsight.mcp.jobs import JobManager
 from wsinsight.mcp.schema import (
@@ -214,7 +215,9 @@ def build_server(
     server_name: str = "wsinsight",
 ) -> "FastMCP":
     """Build and return a configured (but not-yet-running) :class:`FastMCP` server."""
-    mcp = FastMCP(server_name)
+    # Without an explicit version FastMCP reports its own, so clients pinning a
+    # run to a wsinsight release would record the fastmcp version instead.
+    mcp = FastMCP(server_name, version=__version__)
     jobs = JobManager(max_concurrent=max_concurrent, experimental=experimental)
 
     # 1. Per-subcommand tools.

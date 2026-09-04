@@ -58,6 +58,9 @@ dependencies = [
   "tensorflow",
   "keras",
   "stardist",
+  # TensorFlow JIT-compiles StarDist's GPU kernels through XLA, which needs
+  # ptxas + libdevice. Only published for linux/x86_64.
+  "nvidia-cuda-nvcc-cu12 ; sys_platform == 'linux' and platform_machine == 'x86_64'",
   "nvidia-ml-py",
 
   # Storage / cloud
@@ -191,6 +194,8 @@ unfixable = ["B"]
 "wsinsight/insightlib/niche_generation.py" = ["E402"]
 # `import cv2` sits next to the cv2.setNumThreads(1) call it exists for.
 "wsinsight/modellib/tilefuse.py" = ["E402"]
+# Frozen copy of tilefuse.py kept for benchmarking, with the same cv2 import.
+"wsinsight/modellib/tilefuse_baseline_912ff81.py" = ["E402"]
 # Same thread-limiting env block as tilefuse.py: it has to run before numpy,
 # torch and cv2 are imported.
 "wsinsight/modellib/tilefuse2/stitcher.py" = ["E402"]

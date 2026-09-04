@@ -13,7 +13,7 @@ Command reference
    future releases.  They are hidden from ``wsinsight --help`` and refuse to
    run unless the environment variable ``WSINSIGHT_EXPERIMENTAL=1`` is set.
    ``ncomp`` is **not** gated.
-   ``wsinsight describe`` always emits the full schema so downstream tools
+   ``wsinsight schema`` always emits the full schema so downstream tools
    (the QuPath extension) can discover every command; only invocation is
    gated.
 
@@ -75,6 +75,31 @@ used by ``wsinsight import``. ``sample_id`` carries a stable id alongside each
 spatial-transcriptomics sample (transcriptomics exports often reuse filenames),
 and ``transform_dir`` supplies the per-sample ST2WSI registration folder when
 importing ``xenium-h5ad`` inputs.
+
+Pixel spacing
+-------------
+
+``patch`` and ``run`` take ``--spacing-um-px``.  The default of ``0`` reads the
+spacing from the slide metadata and fails if the slide carries none; any value
+above ``0`` **overrides** the metadata, for slides whose recorded spacing is
+wrong or missing.
+
+``patch`` writes the spacing it used into ``patches/<slide>.h5``, and the
+analysis commands read it back from there, so a single ``--spacing-um-px``
+governs the whole pipeline.  They fall back to opening the slide only when that
+record is missing.
+
+Because those commands need a slide's name and spacing rather than its pixels,
+they take no ``--wsi-dir`` at all: ``ncomp``, ``ecomp``, ``tcomp``, ``agg``,
+``hplot`` and ``niche`` derive the slide list from ``patches/`` under
+``--results-dir``, the same way ``export`` and ``hplot-finalize`` always have.
+Only ``patch``, ``run`` and ``import`` read slides and therefore take
+``--wsi-dir``.
+
+.. note::
+
+   ``reg`` has its own ``--spacing-um-px`` with fallback-only semantics: there
+   the WSI metadata still wins when ``--wsi-dir`` is supplied.
 
 Experimental commands
 ---------------------
@@ -616,7 +641,6 @@ Run inference + H-plot + ncomp + niche + export in a single command::
 Run H-plot on existing inference outputs::
 
     wsinsight hplot \
-      --wsi-dir slides/ \
       --results-dir results/ \
       --base-types tumor \
       --target-types lymphocyte \
@@ -630,7 +654,6 @@ Aggregate H-plot results after parallel per-slide runs::
 Run neighborhood composition on existing inference outputs::
 
     wsinsight ncomp \
-      --wsi-dir slides/ \
       --results-dir results/ \
       --k 2
 

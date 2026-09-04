@@ -21,11 +21,13 @@ from tqdm import tqdm
 
 from ..insightlib.agg_generation import agg_generation
 from ..insightlib.agg_generation import membership_column
+from ..insightlib.insight_helpers import build_slide_mpp_lookup
 from ..uri_path import URIPath
 from ..uri_path import URIPathType
 from ._meta import write_runtime_metadata
 from ._paths import default_storage_kwargs
 from ._paths import ensure_input_directory
+from ._paths import list_analysis_slides
 
 _STORAGE_KWARGS = default_storage_kwargs()
 
@@ -101,16 +103,6 @@ _NAME_RE = re.compile(r"^[a-z0-9_]+$")
 
 
 @click.command()
-@click.option(
-    "-i",
-    "--wsi-dir",
-    type=URIPathType(exists=True, **_STORAGE_KWARGS),
-    required=True,
-    help=(
-        "Directory containing whole slide images.  Used only to enumerate slides "
-        "and resolve µm-per-pixel spacing; images are not fully read during agg."
-    ),
-)
 @click.option(
     "-o",
     "--results-dir",
@@ -196,7 +188,6 @@ _NAME_RE = re.compile(r"^[a-z0-9_]+$")
 )
 def agg(
     *,
-    wsi_dir: URIPath,
     results_dir: URIPath,
     agg_name: str,
     agg_types: List,
@@ -227,15 +218,8 @@ def agg(
     if not agg_type_list:
         raise click.ClickException("--types must list at least one cell type.")
 
-    wsi_dir = wsi_dir.coerce_image_list()
-    ensure_input_directory(wsi_dir, "--wsi-dir")
     ensure_input_directory(results_dir, "--results-dir")
-
-    from ..wsi import list_slide_paths
-
-    slide_paths = list_slide_paths(wsi_dir)
-    if not slide_paths:
-        raise click.ClickException(f"No files found in slide directory: {wsi_dir}")
+    slide_paths = list_analysis_slides(results_dir)
 
     model_output_dir = results_dir / "model-outputs-csv"
     if not model_output_dir.exists():
@@ -272,7 +256,7 @@ def agg(
     click.secho(f"\nRunning aggregate (agg) analysis for '{name}'.\n", fg="green")
 
     failed = agg_generation(
-        wsi_dir=wsi_dir,
+        wsi_dir=None,
         slide_paths=slide_paths,
         results_dir=results_dir,
         name=name,
@@ -283,6 +267,7 @@ def agg(
         R=agg_r,
         min_size=agg_min_size,
         num_workers=num_workers,
+        slide_mpp_lookup=build_slide_mpp_lookup(results_dir),
         overwrite=overwrite,
     )
 

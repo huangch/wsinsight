@@ -1,7 +1,7 @@
 """Schema-driven generation of MCP tool definitions from the WSInsight CLI.
 
 The single source of truth is :file:`wsinsight/cli/cli_schema.json`,
-produced by ``wsinsight describe``. This module loads it, classifies
+produced by ``wsinsight schema``. This module loads it, classifies
 commands as stable / experimental and short / long-running, and converts
 each Click parameter into a JSON-schema property suitable for use as an
 MCP tool input schema.

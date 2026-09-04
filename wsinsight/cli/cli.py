@@ -87,7 +87,7 @@ def cli(
         set_backend(backend)
 
     # Block invocation of experimental subcommands unless opted in. They remain
-    # registered so `wsinsight describe` emits a full schema for the QuPath
+    # registered so `wsinsight schema` emits a full schema for the QuPath
     # extension, but cannot be executed without WSINSIGHT_EXPERIMENTAL=1.
     sub = ctx.invoked_subcommand
     if sub in _EXPERIMENTAL_COMMANDS and not _experimental_enabled():
@@ -114,7 +114,7 @@ cli.add_command(agg)
 cli.add_command(sptx_import)
 
 # Hide experimental commands from --help unless WSINSIGHT_EXPERIMENTAL is set.
-# They remain registered so `describe` can emit the full schema; invocation is
+# They remain registered so `schema` can emit the full schema; invocation is
 # blocked in the group callback above.
 if not _experimental_enabled():
     for _name in _EXPERIMENTAL_COMMANDS:
@@ -207,7 +207,7 @@ def _package_version() -> str:
         return "unknown"
 
 
-@cli.command(name="describe")
+@cli.command(name="schema")
 @click.option(
     "--output",
     "output_path",
@@ -215,7 +215,7 @@ def _package_version() -> str:
     default=None,
     help="Write the schema JSON to this file instead of stdout.",
 )
-def describe_cmd(output_path: str | None) -> None:
+def schema_cmd(output_path: str | None) -> None:
     """Emit a machine-readable JSON schema of every wsinsight subcommand.
 
     Intended for downstream tools (e.g. the QuPath extension) that want to
@@ -232,7 +232,7 @@ def describe_cmd(output_path: str | None) -> None:
         "models": list_registered_models(),
     }
     for name, cmd in cli.commands.items():
-        if name == "describe":
+        if name == "schema":
             continue
         schema["commands"][name] = _describe_command(name, cmd)
     payload = json.dumps(schema, indent=2, sort_keys=True)

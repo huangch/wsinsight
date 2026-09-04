@@ -19,6 +19,7 @@ from ..uri_path import URIPathType
 from ._meta import write_runtime_metadata
 from ._paths import default_storage_kwargs
 from ._paths import ensure_input_directory
+from ._paths import list_analysis_slides
 
 _STORAGE_KWARGS = default_storage_kwargs()
 
@@ -66,17 +67,6 @@ def _num_cpus() -> int:
 
 
 @click.command()
-@click.option(
-    "-i",
-    "--wsi-dir",
-    type=URIPathType(exists=True, **_STORAGE_KWARGS),
-    required=True,
-    help=(
-        "Directory containing whole slide images.  Used for slide enumeration "
-        "and um-per-pixel resolution; images are read only when --hoptimus "
-        "is set."
-    ),
-)
 @click.option(
     "-o",
     "--results-dir",
@@ -330,7 +320,6 @@ def _num_cpus() -> int:
 )
 def niche(
     *,
-    wsi_dir: URIPath,
     results_dir: URIPath,
     niche_hoptimus: bool = False,
     niche_hoptimus_only: bool = False,
@@ -369,15 +358,8 @@ def niche(
       niche-outputs-geojson/niches/           GeoJSON niche region annotations
     """
 
-    wsi_dir = wsi_dir.coerce_image_list()
-    ensure_input_directory(wsi_dir, "--wsi-dir")
     ensure_input_directory(results_dir, "--results-dir")
-
-    from ..wsi import list_slide_paths
-
-    slide_paths = list_slide_paths(wsi_dir)
-    if not slide_paths:
-        raise click.ClickException(f"No files found in slide directory: {wsi_dir}")
+    slide_paths = list_analysis_slides(results_dir)
 
     model_output_dir = results_dir / "model-outputs-csv"
     if not model_output_dir.exists():
@@ -392,6 +374,7 @@ def niche(
         raise click.UsageError("--hoptimus-only requires --hoptimus.")
 
     try:
+        from ..insightlib.insight_helpers import build_slide_mpp_lookup
         from ..insightlib.niche_generation import niche_generation
     except Exception as exc:  # noqa: BLE001
         raise click.ClickException(
@@ -400,13 +383,14 @@ def niche(
         ) from exc
 
     niche_generation(
-        wsi_dir=wsi_dir,
+        wsi_dir=None,
         wsi_paths=slide_paths,
         results_dir=results_dir,
         max_edge_len_um=niche_max_edge_len_um,
         max_cell_radius_um=niche_max_cell_radius_um,
         k_hops=niche_k_hops,
         alpha=niche_alpha,
+        slide_mpp_lookup=build_slide_mpp_lookup(results_dir),
         use_hoptimus=niche_hoptimus,
         hoptimus_only=niche_hoptimus_only,
         hoptimus_model_dir=niche_hoptimus_model_dir,

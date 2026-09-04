@@ -60,7 +60,7 @@ def resolve_zoo_registry_path() -> Path | None:
 def list_registered_models() -> list[dict[str, str | None]]:
     """Return the zoo registry entries visible in this environment.
 
-    Used by ``wsinsight describe`` so downstream GUIs (the QuPath extension)
+    Used by ``wsinsight schema`` so downstream GUIs (the QuPath extension)
     can populate a ``--model`` picker with the models this installation can
     actually resolve, rather than guessing from a directory listing.
 
@@ -68,14 +68,14 @@ def list_registered_models() -> list[dict[str, str | None]]:
     (``<registry-dir>/<hf_repo_id>/<hf_revision>/``) the absolute ``path`` is
     reported, so callers can pass ``--zoo-model-dir`` and skip the HuggingFace
     download entirely. The path is absolute *in the environment that ran
-    describe*, which is why the schema should be generated where wsinsight
+    schema*, which is why the schema should be generated where wsinsight
     runs. Returns an empty list when no registry is reachable.
     """
 
     registry_file = resolve_zoo_registry_path()
     try:
         registry = wsinfer_zoo.client.load_registry(registry_file=registry_file)
-    except Exception:  # unreadable/invalid registry must not break `describe`
+    except Exception:  # unreadable/invalid registry must not break `schema`
         return []
 
     registry_dir = Path(registry_file).resolve().parent if registry_file else None

@@ -71,6 +71,27 @@ def ensure_input_directory(path: URIPath, option_name: str) -> None:
         raise click.ClickException(f"{option_name} must be a directory: {path}")
 
 
+def list_analysis_slides(results_dir: URIPath) -> list[URIPath]:
+    """Return the slides an analysis stage should process.
+
+    These stages read cells from ``model-outputs-csv/`` and spacing from
+    ``patches/``, never the slide pixels, so they take no slide directory: the
+    scope is whatever ``wsinsight patch`` recorded under ``results_dir``.
+    """
+    # Imported lazily: the analysis helpers pull in numpy/pandas/scipy, which
+    # every CLI would otherwise pay for at startup.
+    from ..insightlib.insight_helpers import list_slides_from_patches
+
+    slide_paths = list_slides_from_patches(results_dir)
+    if not slide_paths:
+        raise click.ClickException(
+            f"No slides could be recovered from {results_dir}/patches. "
+            "Run `wsinsight patch` (or `wsinsight run`) against this results "
+            "directory first."
+        )
+    return slide_paths
+
+
 def ensure_output_directory(path: URIPath, option_name: str) -> None:
     """Ensure ``path`` is a writable directory, creating it if needed.
 
