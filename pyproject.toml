@@ -134,7 +134,7 @@ docs = [
   "sphinx-copybutton",
 ]
 mcp = [
-  "fastmcp>=3.4.5",
+  "fastmcp>=4.0,<5",
 ]
 # Test runner + linters for the post-install smoke test in conda-setup.sh and
 # for editor / CI integrations. NOT installed by default; opt-in via
