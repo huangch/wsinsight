@@ -60,7 +60,8 @@ python -m pip install -c constraints.txt "numpy<2"
 
 # 4. Heavy ML stacks
 python -m pip install -c constraints.txt \
-  torch torchvision torch-geometric tensorflow keras stardist nvidia-ml-py
+  torch torchvision torch-geometric tensorflow keras stardist nvidia-ml-py \
+  nvidia-cuda-nvcc-cu12
 
 # 5. HistomicsTK (external wheel host)
 python -m pip install \
@@ -173,7 +174,8 @@ air-gapped networks the first variable is mandatory.
 | `S3_STORAGE_OPTIONS`           | If S3    | JSON passed to `s3fs` / `fsspec` for AWS credentials (e.g. `'{"profile":"saml"}'`).      |
 | `GS_STORAGE_OPTIONS`           | If GCS   | JSON passed to `gcsfs` / `fsspec` for Google Cloud Storage (`gs://`). Optional: defaults to Application Default Credentials; override e.g. `'{"token":"/path/sa.json"}'`. |
 | `WSINSIGHT_REMOTE_CACHE_DIR`   | No       | Local cache dir for remote assets. Default: `~/.cache/wsinsight`.                        |
-| `KERAS_HOME`                   | No       | Override Keras config/weights directory.                                                  |
+| `KERAS_HOME`                   | No       | Override Keras config/weights directory. Point it at the folder *containing* `models/`; csbdeep appends `models/StarDist2D/<name>` itself. |
+| `SSL_CERT_FILE`                | Conditional | CA bundle for StarDist's weight download. Behind a TLS-inspecting proxy, Python's bundled `certifi` lacks the corporate root and the fetch fails with `CERTIFICATE_VERIFY_FAILED`; the system bundle (e.g. `/etc/pki/tls/certs/ca-bundle.crt`) usually has it. |
 | `CUDA_VISIBLE_DEVICES`         | No       | Pin to specific GPU(s) (e.g. `0` or `0,1`).                                             |
 | `WSINSIGHT_EXPERIMENTAL`       | No       | Set to `1` to unlock experimental subcommands (`hplot`, `hplot-finalize`, `ecomp`, `tcomp`, `niche`, `niche-profile`, `agg`, `import`). Not needed for normal use. |
 
@@ -194,9 +196,12 @@ wsinsight
 ├── reg               Post-hoc region registration
 ├── ncomp             Node-level (cell) composition + Delaunay graph cache
 ├── export            Merge analytics → GeoJSON / OME-CSV
-├── tosbu             Convert patch predictions → Stony Brook viewer .txt/.json
 └── schema            Emit a machine-readable JSON schema of every subcommand
 ```
+
+`WSINSIGHT_EXPERIMENTAL=1` adds `hplot`, `hplot-finalize`, `ecomp`, `tcomp`,
+`niche`, `niche-profile`, `agg` and `import`. `wsinsight schema` lists whatever
+the running build actually exposes.
 
 > Additional subcommands — `hplot`, `hplot-finalize`, `ecomp`, `tcomp`, `niche`,
 > `niche-profile`, `agg`, `import` — are gated as **experimental**. They are hidden from `--help`
@@ -255,6 +260,27 @@ Only the stages that read slide pixels: `patch`, `run`, and `import`.
 alone — cells come from `model-outputs-csv/` and the slide list and spacing from
 `patches/`. They **reject** `--wsi-dir`, as `export`, `hplot-finalize` and
 `niche-profile` always have.
+
+### 4.2.3 What Each Stage Prints
+
+Every stage prints two blocks:
+
+```
+Command line
+------------
+wsinsight run --zoo-model-dir /zoo/my-model/main --spacing-um-px 0.5 ...
+
+Parameters in effect for this stage
+-----------------------------------
+spacing_um_px = 0.5
+...
+```
+
+The first is the invocation as typed, shell-quoted so it can be copied and
+re-run. The second is what that stage resolved, which is not always the same:
+`run` chains `patch` and `infer` with arguments it has already validated. Both
+land in `<command>_metadata_<ts>.json` too, as `runtime.args` (a list, so a path
+containing spaces stays unambiguous) and `params`.
 
 ### 4.3 `wsinsight run` — Full Pipeline
 
@@ -359,6 +385,15 @@ Creates `masks/` and `patches/` under `--results-dir`. Honors all
 `--seg-*`, `--patch-*`, `--qupath-*`, `--histoqc-dir`, `--region-inference-dir`,
 and `--cache-image-patches` options listed in §4.3 (the `patch` and `infer`
 stages share the same surface as `run`). Writes `patch_metadata_<ts>.json`.
+
+A slide whose segmentation raises is reported and skipped, and the run
+continues; the failures are listed at the end. When **every** slide fails the
+command exits non-zero, so a chained `run` stops instead of inferring on
+whatever patches an earlier run happened to leave behind:
+
+```
+Error: Segmentation failed for every slide; see the errors above. Failed: <slide>
+```
 
 ### 4.5 `wsinsight infer` — Model Inference
 
