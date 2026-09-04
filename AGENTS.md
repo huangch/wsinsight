@@ -19,7 +19,7 @@ Whole-slide-image (WSI) inference pipeline: `wsinsight` CLI (click) → cell det
 
 ## MCP server (`wsinsight-mcp`)
 
-- Entry point `wsinsight.mcp.__main__:main`; extra `mcp = ["fastmcp>=2.0"]`. stdio by default (works with VS Code Copilot); `--http HOST:PORT` (default 8765), `--experimental`, `--max-concurrent`.
+- Entry point `wsinsight.mcp.__main__:main`; extra `mcp = ["fastmcp>=4.0,<5"]`. stdio by default (works with VS Code Copilot); `--http HOST:PORT` (default 8765), `--experimental`, `--max-concurrent`.
 - Tools are auto-registered from the **bundled** `wsinsight/cli/cli_schema.json` (14 commands, `schema_version: 1`). The live generator is `wsinsight schema` — the bundle is NOT regenerated at runtime. If you change CLI params, regenerate the bundle and keep `tests/test_mcp_pkg/test_mcp.py` parity passing (it is command-level only, not param-freshness).
 - By default only STABLE commands are exposed: `run, patch, infer, ncomp, export, reg`. `--experimental` adds: `hplot, hplot-finalize, ecomp, tcomp, niche, niche-profile, agg, import`.
 - Long-running commands (`run, patch, infer, ncomp, hplot, ecomp, tcomp, niche, agg`) return a `job_id`; clients poll `job_status`/`job_logs`/`cancel_job`.

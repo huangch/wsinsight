@@ -5,7 +5,7 @@ exposes the WSInsight CLI to MCP-compatible clients (Claude Desktop, the
 VS Code Copilot MCP integration, custom agents, …) over **stdio** or
 **Streamable HTTP**.
 
-The server is built on [`fastmcp`](https://gofastmcp.com/) ≥ 2.0 and
+The server is built on [`fastmcp`](https://gofastmcp.com/) ≥ 4.0 and
 auto-generates one MCP tool per stable WSInsight subcommand from the
 single source of truth at
 [`wsinsight/cli/cli_schema.json`](../cli/cli_schema.json).

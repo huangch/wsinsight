@@ -7,7 +7,7 @@ WSInsight ships an optional `Model Context Protocol
 <https://modelcontextprotocol.io/>`_ server that exposes the same CLI
 surface to MCP-aware clients (Claude Desktop, the VS Code Copilot MCP
 integration, custom agents). The server is built on
-`fastmcp <https://gofastmcp.com/>`_ ≥ 2.0 and auto-generates one MCP
+`fastmcp <https://gofastmcp.com/>`_ ≥ 4.0 and auto-generates one MCP
 tool per stable WSInsight subcommand from the single source of truth at
 ``wsinsight/cli/cli_schema.json``.
 

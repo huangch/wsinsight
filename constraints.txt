@@ -59,7 +59,7 @@ hf-xet==1.1.10
 histomicstk==1.4.0
 hplot @ git+https://github.com/huangch/hplot.git@faa3d6ab03e92f962d02369e588bc35ccf203f9f
 huggingface-hub==0.35.3
-idna==3.11
+idna==3.19
 igraph==0.11.9
 imagecodecs==2025.8.2
 imagecodecs-numcodecs==2025.3.30
@@ -132,8 +132,13 @@ protobuf==6.32.1
 google-auth-oauthlib==1.4.0
 oauthlib==3.3.1
 requests-oauthlib==2.0.0
-fastmcp>=4.0,<5
-fastmcp-slim>=4.0,<5
+# Exact pins: this is the lockfile. The >=4.0,<5 range lives in pyproject.toml.
+# fastmcp 4 is required for mcp>=2.0 (fastmcp 3.x caps at mcp<2.0).
+fastmcp==4.0.2
+fastmcp-slim==4.0.2
+# hermes-agent pins mcp==2.0.0 exactly; match it so the shared conda env
+# does not thrash between 2.0.0 and 2.1.1. fastmcp 4 accepts mcp>=2.0,<3.
+mcp==2.0.0
 jaraco.classes==3.4.0
 jaraco.context==6.1.2
 jaraco.functools==4.6.0
