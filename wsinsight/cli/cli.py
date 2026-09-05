@@ -215,26 +215,46 @@ def _package_version() -> str:
     default=None,
     help="Write the schema JSON to this file instead of stdout.",
 )
-def schema_cmd(output_path: str | None) -> None:
+@click.option(
+    "--models-only",
+    is_flag=True,
+    default=False,
+    help="Emit only the model zoo: the active registry path and its entries, "
+    "omitting the (much larger) command surface.",
+)
+def schema_cmd(output_path: str | None, models_only: bool) -> None:
     """Emit a machine-readable JSON schema of every wsinsight subcommand.
 
     Intended for downstream tools (e.g. the QuPath extension) that want to
     auto-generate forms without hard-coding the CLI surface. The output is a
     JSON object with a ``commands`` dict keyed by subcommand name, plus a
     ``models`` list describing the zoo entries this installation can resolve.
+
+    With ``--models-only`` the ``commands`` block is omitted and the registry
+    actually in use is reported, which answers "which zoo am I resolving
+    against?" without the caller parsing a ~130 kB document.
     """
     from ..modellib.models import list_registered_models
+    from ..modellib.models import resolve_zoo_registry_path
 
     schema: dict[str, Any] = {
         "schema_version": 1,
         "wsinsight_version": _package_version(),
-        "commands": {},
         "models": list_registered_models(),
     }
-    for name, cmd in cli.commands.items():
-        if name == "schema":
-            continue
-        schema["commands"][name] = _describe_command(name, cmd)
+    if models_only:
+        registry = resolve_zoo_registry_path()
+        schema["registry_path"] = str(registry) if registry else None
+        # The lookup may land on a symlink; weights are resolved beside the target.
+        schema["registry_resolved"] = (
+            str(Path(registry).resolve()) if registry else None
+        )
+    else:
+        schema["commands"] = {}
+        for name, cmd in cli.commands.items():
+            if name == "schema":
+                continue
+            schema["commands"][name] = _describe_command(name, cmd)
     payload = json.dumps(schema, indent=2, sort_keys=True)
     if output_path:
         Path(output_path).write_text(payload + "\n", encoding="utf-8")

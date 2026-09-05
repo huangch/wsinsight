@@ -26,76 +26,22 @@ GeoJSON / OME-CSV.
 
 ---
 
-## 2. Fetch & Install
+## 2. Assumed Install
 
-### 2.1 Prerequisites
+Assume one of these already exists, and verify with `wsinsight --help` before
+anything else. Installing is the fallback, not the normal path: only when that
+verification fails **and** Docker is unavailable do you run `conda-setup.sh`.
+This is the precedence the §10 decision guide follows.
 
-| Requirement       | Why                                                      |
-| ----------------- | -------------------------------------------------------- |
-| conda (or mamba)  | GDAL must be installed via conda — pip wheels do not ship the C library |
-| CUDA toolkit      | GPU inference (PyTorch, TensorFlow, CellViT models)      |
-| Git               | Clone the repository                                     |
-| Python 3.11       | Minimum supported version                                |
+| Path                 | Command                                                          |
+| -------------------- | ---------------------------------------------------------------- |
+| Docker (preferred)   | `docker pull huangchtw/wsinsight:latest`                          |
+| Conda                | `bash ./conda-setup.sh <ENV_NAME> [-m\|--mcp] [-d\|--dev] [-r\|--reset]` |
 
-### 2.2 Full Reproducible Install (Recommended)
+`conda-setup.sh` is the maintained recipe; do not hand-assemble a conda
+environment from a list of `pip install` lines.
 
-Run the following commands verbatim.  Every `pip install` line honours
-`constraints.txt` so dependency versions are locked and reproducible.
-
-```bash
-# 1. Clone
-git clone https://github.com/huangch/wsinsight.git
-cd wsinsight
-
-# 2. Create conda environment with GDAL
-source "$(conda info --base)/etc/profile.d/conda.sh"
-conda deactivate 2>/dev/null || true
-conda env remove -n wsinsight -y 2>/dev/null || true
-conda create -n wsinsight python=3.11 gdal=3.11.3 "setuptools<67" -c conda-forge -y
-conda activate wsinsight
-python -m pip install --upgrade pip
-
-# 3. Pin numpy < 2 (stardist requirement)
-python -m pip install -c constraints.txt "numpy<2"
-
-# 4. Heavy ML stacks
-python -m pip install -c constraints.txt \
-  torch torchvision torch-geometric tensorflow keras stardist nvidia-ml-py \
-  nvidia-cuda-nvcc-cu12
-
-# 5. HistomicsTK (external wheel host)
-python -m pip install \
-  --trusted-host github.com \
-  --trusted-host raw.githubusercontent.com \
-  --trusted-host girder.github.io \
-  --find-links https://girder.github.io/large_image_wheels \
-  -c constraints.txt "numpy<2" pyvips histomicstk
-
-# 6. Remaining dependencies
-python -m pip install -c constraints.txt "numpy<2" \
-  scikit-learn shapely geopandas pyproj rasterio pyogrio \
-  openslide-python wsidicom paquo "wsinfer-zoo>=0.6.2" \
-  igraph leidenalg s3fs boto3 platformdirs timm \
-  tiffslide imagecodecs opencv-python-headless orjson click
-
-# 7. Install WSInsight (editable)
-python -m pip install -c constraints.txt --no-build-isolation -e .
-
-# 8. Verify numpy stayed below 2.0
-python -c "import numpy; v=numpy.__version__; assert int(v.split('.')[0]) < 2, f'numpy {v} >= 2'"
-```
-
-### 2.3 Quick Install (Existing Environment)
-
-If GDAL, CUDA, and compatible numpy are already available:
-
-```bash
-git clone https://github.com/huangch/wsinsight.git
-cd wsinsight
-pip install -e .
-```
-
-### 2.4 Docker (no local installation required)
+### 2.1 Docker (no local installation required)
 
 A prebuilt GPU-enabled image based on `nvidia/cuda:12.8.0-cudnn-devel-ubuntu22.04`
 is published to Docker Hub.  All dependencies (conda, GDAL, PyTorch, TensorFlow,
@@ -107,59 +53,77 @@ except Docker and the NVIDIA Container Toolkit**.
 docker pull huangchtw/wsinsight:latest
 ```
 
-**Option A — helper script** (`docker-run.sh`):
+### 2.2 Running via `docker run`
+
+Invoke `docker run` directly. The canonical form is:
 
 ```bash
-# Interactive shell — all GPUs
-bash docker-run.sh /path/to/data
-
-# Interactive shell — pin to GPU 2
-bash docker-run.sh /path/to/data 2
-
-# Direct command — all GPUs (no interactive shell)
-bash docker-run.sh /path/to/data "" wsinsight run \
-  --wsi-dir /workspace/slides --results-dir /workspace/results \
-  --model breast-tumor-resnet34.tcga-brca
-
-# Direct command — GPU 2
-bash docker-run.sh /path/to/data 2 wsinsight run \
-  --wsi-dir /workspace/slides --results-dir /workspace/results \
-  --model breast-tumor-resnet34.tcga-brca
-```
-
-When a command is provided after the GPU argument, the container executes it
-and exits.  When no command is given, you land in `/workspace` with the conda
-`wsinsight` environment already activated.
-
-**Option B — manual `docker run`**:
-
-```bash
-docker run --rm -it \
-  --gpus all --shm-size=32g \
-  --user $(id -u):$(id -g) \
-  -v /path/to/slides:/slides \
-  -v /path/to/results:/results \
+docker run --rm -i \
+  --gpus all \
+  --shm-size=32g \
+  --init \
+  -e HOST_UID -e HOST_GID \
+  -e TMPDIR=/tmp \
+  -v /path/to/data:/workspace \
+  -v wsinsight-hf-cache:/app/hf-cache \
   huangchtw/wsinsight:latest \
-  bash -lc 'wsinsight run --wsi-dir /slides --results-dir /results --model breast-tumor-resnet34.tcga-brca'
+  bash -lc 'wsinsight run --wsi-dir /workspace/slides --results-dir /workspace/results \
+            --zoo-model-dir /workspace/zoo/<hf_repo_id>/<hf_revision>'
 ```
 
-`--shm-size=32g` is recommended for multi-worker dataloaders (PyTorch uses
-`/dev/shm` for shared memory).  The image bakes in `WSINSIGHT_ZOO_REGISTRY_PATH`
-and `KERAS_HOME` so the CLI works without any environment setup.
+Every flag is load-bearing:
 
-**Building from source** (maintainers only):
+| Flag | Why it is there |
+| ---- | ---------------- |
+| `--gpus all` | All GPUs. Pin one with `--gpus device=2`. |
+| `--shm-size=32g` | PyTorch DataLoader workers use `/dev/shm`; the 64 MB default causes worker crashes. |
+| `--init` | Reaps zombie children so a cancelled run does not leave orphans. |
+| `-e HOST_UID -e HOST_GID` | Forwarded **only when set** in your shell. Controls the uid the entrypoint drops to. |
+| `-e TMPDIR=/tmp` | PyTorch creates temp dirs at import; point it at `/workspace/.tmp` when the container's `/tmp` is small. |
+| `-v <data>:/workspace` | Must be `/workspace` — the entrypoint stats that exact path to decide the uid. |
+| `-v wsinsight-hf-cache:/app/hf-cache` | Named volume; persists downloaded weights between runs. |
+| `bash -lc '<cmd>'` | The login shell activates the conda env. Omit it entirely for an interactive shell. |
+
+Use `-it` for an interactive session, but **`-i` alone when running
+non-interactively** — `-t` fails without a TTY, which is the usual case for an
+agent or CI job.
+
+**Interactive shell, all GPUs**
 
 ```bash
-bash docker-build-push.sh   # builds + tags + pushes huangchtw/wsinsight:latest
+docker run --rm -it --gpus all --shm-size=32g --init \
+  -e HOST_UID -e HOST_GID -e TMPDIR=/tmp \
+  -v /path/to/data:/workspace -v wsinsight-hf-cache:/app/hf-cache \
+  huangchtw/wsinsight:latest
 ```
 
-### 2.5 Smoke Test
+**One command on GPU 2, scratch redirected onto the mount**
 
 ```bash
-wsinsight --help
+docker run --rm -i --gpus device=2 --shm-size=32g --init \
+  -e HOST_UID -e HOST_GID -e TMPDIR=/workspace/.tmp \
+  -v /path/to/data:/workspace -v wsinsight-hf-cache:/app/hf-cache \
+  huangchtw/wsinsight:latest \
+  bash -lc 'wsinsight run -i /workspace/slides -o /workspace/results \
+            -z /workspace/zoo/huangch/CellViT-SAM-H-x40/main'
 ```
 
-Expected: the top-level Click help listing all sub-commands without errors.
+**Writing files you own**
+
+```bash
+export HOST_UID=$(id -u) HOST_GID=$(id -g)
+```
+
+Do **not** pass `--user`. The image starts as root by design: the entrypoint
+resolves a target uid from `HOST_UID`/`HOST_GID`, else from the owner of
+`/workspace`, else `1000`, then drops privileges with `setpriv`. Starting
+non-root makes the entrypoint bail out of that logic
+(`if [ "$(id -u)" -ne 0 ]`). If `/workspace` is root-owned and the two
+variables are unset, the session runs as root and new files will be root-owned.
+
+The image bakes in `WSINSIGHT_ZOO_REGISTRY_PATH` and `KERAS_HOME`, so the CLI
+works inside the container with no environment setup. Refresh it with
+`docker pull huangchtw/wsinsight:latest`.
 
 ---
 
@@ -176,6 +140,7 @@ air-gapped networks the first variable is mandatory.
 | `WSINSIGHT_REMOTE_CACHE_DIR`   | No       | Local cache dir for remote assets. Default: `~/.cache/wsinsight`.                        |
 | `KERAS_HOME`                   | No       | Override Keras config/weights directory. Point it at the folder *containing* `models/`; csbdeep appends `models/StarDist2D/<name>` itself. |
 | `SSL_CERT_FILE`                | Conditional | CA bundle for StarDist's weight download. Behind a TLS-inspecting proxy, Python's bundled `certifi` lacks the corporate root and the fetch fails with `CERTIFICATE_VERIFY_FAILED`; the system bundle (e.g. `/etc/pki/tls/certs/ca-bundle.crt`) usually has it. |
+| `HF_HUB_OFFLINE`               | Conditional | Set to `1` to stop `huggingface_hub` making any network call. Needed behind a TLS-inspecting proxy, where even an already-downloaded model triggers a HEAD request that fails on the injected certificate. Does **not** by itself make locally-stored weights load — see §5.1. |
 | `CUDA_VISIBLE_DEVICES`         | No       | Pin to specific GPU(s) (e.g. `0` or `0,1`).                                             |
 | `WSINSIGHT_EXPERIMENTAL`       | No       | Set to `1` to unlock experimental subcommands (`hplot`, `hplot-finalize`, `ecomp`, `tcomp`, `niche`, `niche-profile`, `agg`, `import`). Not needed for normal use. |
 
@@ -190,7 +155,7 @@ networks); optional otherwise.
 
 ```text
 wsinsight
-├── run               One-shot: patch → infer → (optional ncomp) → export
+├── run               PRIMARY — one-shot: patch → infer → (optional ncomp) → export
 ├── patch             Tissue segmentation + patch extraction → HDF5
 ├── infer             Model inference on cached patches → CSV
 ├── reg               Post-hoc region registration
@@ -284,6 +249,10 @@ containing spaces stays unambiguous) and `params`.
 
 ### 4.3 `wsinsight run` — Full Pipeline
 
+**Start here. `run` is the primary command and covers almost every task.** It
+drives the whole workflow end to end; use `patch`, `infer`, `ncomp` or `export`
+on their own only to re-run a single stage against results that already exist.
+
 The one-shot orchestrator. Delegates to `patch`, `infer`, and optionally
 `ncomp` + `export` in sequence.
 
@@ -297,6 +266,18 @@ wsinsight run \
   [--ncomp] \
   [--export-geojson] [--export-omecsv]
 ```
+
+**Choosing the model flag.** Use `--model/-m` only when the weights still have
+to be downloaded. When the model folder is already on disk, pass
+`--zoo-model-dir/-z` with the path to that folder — `-m` always routes through
+the HuggingFace Hub, even for a model the registry lists locally:
+
+```bash
+wsinsight run -i <WSI_DIR> -o <RESULTS_DIR> \
+  -z /path/to/zoo/<hf_repo_id>/<hf_revision>
+```
+
+See §5.1 for how to find that path and why `-m` fails without network access.
 
 **Stable options:**
 
@@ -328,25 +309,25 @@ wsinsight run \
 | `--seg-closing-kernel-size`     | int       | Binary-closing kernel (default 6).                                                           |
 | `--seg-min-object-size-um2`     | float     | Min retained tissue object area in µm² (default 40000).                                      |
 | `--seg-min-hole-size-um2`       | float     | Min retained hole area in µm² (default 36100).                                               |
-| `--overlap-ratio`         | float     | Patch overlap ratio (default 0.0 = non-overlapping).                                         |
-| `--size-um`               | float     | Patch side length in µm (default 0 → use model default).                                     |
-| `--size-px`               | float     | Patch side length in px (default 0 → use model default).                                     |
+| `--patch-overlap-ratio`         | float     | Patch overlap ratio (default 0.0 = non-overlapping).                                         |
+| `--patch-size-um`               | float     | Patch side length in µm (default 0 → use model default).                                     |
+| `--patch-size-px`               | float     | Patch side length in px (default 0 → use model default).                                     |
 | `--ncomp`                       | flag      | Run node-level cell composition after inference.                                             |
-| `--max-neighbor-distance` | float     | Max Delaunay edge length (µm) for ncomp (default 25.0).                                      |
-| `--k`                     | int       | k-hop radius for ncomp (default 2).                                                          |
+| `--ncomp-max-neighbor-distance` | float     | Max Delaunay edge length (µm) for ncomp (default 25.0).                                      |
+| `--ncomp-k`                     | int       | k-hop radius for ncomp (default 2).                                                          |
 | `--export-geojson`              | flag      | After analytics merge per-cell tables → `export-geojson/`.                                   |
 | `--export-omecsv`               | flag      | Same, → `export-omecsv/`.                                                                    |
 | `--export-workers`              | int       | Worker processes for GeoJSON/OME-CSV export (default: auto).                                 |
 | `--export-object-type`          | choice    | Object type written to GeoJSON/OME-CSV: `detection` (default) or `annotation`.               |
 | `--stitch-workers`              | int       | Thread pool size for TileFuse object-based detection stitching (default: `min(8, CPU // 2)`).|
-| `--agg`                         | flag      | Run density-gated aggregate detection after inference (requires `--name` + `--types`).|
-| `--name`                    | string    | Product label for the aggregate run (e.g. `tls`); namespaces every artifact.                 |
-| `--types`                   | string    | Comma-separated ingredient cell types (e.g. `t_cell,b_cell`).                                |
-| `--max-neighbor-distance`   | float     | Max Delaunay edge length (µm) for the aggregate gate (default 25.0).                          |
-| `--k`                       | int       | k-hop radius for the density gate (default 2).                                               |
-| `--n`                       | int       | Minimum neighborhood size for membership (default 8).                                        |
-| `--r`                       | float     | Minimum ingredient-type fraction for membership (default 0.5).                               |
-| `--min-size`                | int       | Drop aggregates with fewer than this many cells (default 10).                                |
+| `--agg`                         | flag      | Run density-gated aggregate detection after inference (requires `--agg-name` + `--agg-types`).|
+| `--agg-name`                    | string    | Product label for the aggregate run (e.g. `tls`); namespaces every artifact.                 |
+| `--agg-types`                   | string    | Comma-separated ingredient cell types (e.g. `t_cell,b_cell`).                                |
+| `--agg-max-neighbor-distance`   | float     | Max Delaunay edge length (µm) for the aggregate gate (default 25.0).                          |
+| `--agg-k`                       | int       | k-hop radius for the density gate (default 2).                                               |
+| `--agg-n`                       | int       | Minimum neighborhood size for membership (default 8).                                        |
+| `--agg-r`                       | float     | Minimum ingredient-type fraction for membership (default 0.5).                               |
+| `--agg-min-size`                | int       | Drop aggregates with fewer than this many cells (default 10).                                |
 | `--overwrite`                   | flag      | Recompute existing outputs across every stage.                                               |
 
 Every option in the table above is stable and safe to emit.
@@ -382,9 +363,12 @@ wsinsight patch \
 ```
 
 Creates `masks/` and `patches/` under `--results-dir`. Honors all
-`--seg-*`, `--patch-*`, `--qupath-*`, `--histoqc-dir`, `--region-inference-dir`,
+`--seg-*`, `--qupath-*`, `--histoqc-dir`, `--region-inference-dir`,
 and `--cache-image-patches` options listed in §4.3 (the `patch` and `infer`
-stages share the same surface as `run`). Writes `patch_metadata_<ts>.json`.
+stages share the same surface as `run`). The patch-sizing flags are exactly
+three; on `patch` they carry no prefix: `--overlap-ratio`, `--size-um`,
+`--size-px` (on `run` and `infer` the same three are `--patch-overlap-ratio`,
+`--patch-size-um`, `--patch-size-px`). Writes `patch_metadata_<ts>.json`.
 
 A slide whose segmentation raises is reported and skipped, and the run
 continues; the failures are listed at the end. When **every** slide fails the
@@ -407,7 +391,8 @@ wsinsight infer \
 
 Reads from `patches/`, writes to `model-outputs-csv/` plus
 `infer_metadata_<ts>.json`. Accepts the same `--region-inference-dir`,
-`--qupath-*`, and `--patch-*` options as `run`. `--stitch-workers` controls
+`--qupath-*`, and patch-sizing (`--patch-overlap-ratio`, `--patch-size-um`,
+`--patch-size-px`) options as `run`. `--stitch-workers` controls
 the TileFuse thread pool used to assemble object-based detections.
 `--no-pin-memory` disables pinned (page-locked) memory for DataLoaders,
 which helps in memory-constrained environments where workers are killed
@@ -482,7 +467,27 @@ that needs to render forms without hard-coding the CLI.
 ```bash
 wsinsight schema                         # stdout
 wsinsight schema --output schema.json    # file
+wsinsight schema --models-only           # zoo only, no command surface
 ```
+
+**`--models-only`** drops the `commands` block and adds the registry actually
+in use — the answer to "which zoo am I resolving against?" without parsing a
+~130 kB document (the trimmed form is ~6 kB):
+
+```json
+{
+  "schema_version": 1,
+  "wsinsight_version": "...",
+  "registry_path": "/home/<user>/.wsinfer-zoo/wsinfer-zoo-registry.json",
+  "registry_resolved": "/path/to/zoo/wsinsight-zoo-registry.json",
+  "models": [ { "name": "...", "path": "...", ... } ]
+}
+```
+
+`registry_path` is where the lookup landed; `registry_resolved` follows any
+symlink, and its directory is the root the local weight paths are resolved
+against. The two differ whenever the default
+`~/.wsinfer-zoo/wsinfer-zoo-registry.json` is a link to a fuller registry.
 
 ---
 
@@ -492,10 +497,10 @@ Models can be specified in four mutually exclusive ways:
 
 | Method                 | Flag(s)                    | When to Use                                              |
 | ---------------------- | -------------------------- | -------------------------------------------------------- |
-| Registry name          | `--model <name>`           | Registered WSInfer Zoo / WSInsight model                 |
+| Zoo directory          | `--zoo-model-dir` / `-z`   | **Preferred when the weights are already on disk** — loads directly, no Hub call |
+| Registry name          | `--model` / `-m`           | Registered model whose weights still need downloading    |
 | Custom config + weights| `--config` + `--model-path`| Bring-your-own TorchScript model                         |
-| Zoo directory          | `--zoo-model-dir`          | Folder with `config.json` + `torchscript_model.pt`       |
-| List registered models | `wsinfer-zoo ls`           | Discover available model names                           |
+| List registered models | `wsinsight schema`         | Discover model names *and* their local paths (`wsinfer-zoo ls` contacts the Hub) |
 
 ### Available Models in the Bundled WSInsight Zoo
 
@@ -526,6 +531,51 @@ respected with a deprecation warning).
 
 Any additional WSInfer Zoo model can be added by extending the registry JSON
 or by passing `--config` + `--model-path` (or `--zoo-model-dir`).
+
+### 5.1 Loading Weights Without Network Access
+
+`--model <name>` **always resolves through `huggingface_hub`**, even when the
+registry entry points at a directory that already holds the weights.
+`WSINSIGHT_ZOO_REGISTRY_PATH` only makes the name *valid*; it does not change
+where the weights are loaded from. On a host that cannot reach
+`huggingface.co`:
+
+| Attempt | Result |
+| ------- | ------ |
+| `--model <name>` | `SSLError` / connection failure while locating the file on the Hub |
+| `--model <name>` + `HF_HUB_OFFLINE=1` | `LocalEntryNotFoundError` — the Hub cache under `HF_HOME` is searched, not the registry directory |
+| `--zoo-model-dir <dir>` | Loads straight from disk; the Hub is never contacted |
+
+Use `--zoo-model-dir`. It takes the directory holding `config.json` and
+`torchscript_model.pt`, which sits beside the registry as
+`<registry-dir>/<hf_repo_id>/<hf_revision>/`:
+
+```bash
+wsinsight run -i ./slides -o ./results \
+  -z /path/to/zoo/<hf_repo_id>/<hf_revision>
+```
+
+`wsinsight schema` reports the resolved directory of every model already present
+on disk, so the right value can be looked up programmatically:
+
+```bash
+wsinsight schema --models-only | python -c "
+import json, sys
+for m in json.load(sys.stdin)['models']:
+    if m['path']:
+        print(m['name'], m['path'])
+"
+```
+
+Prefer this over `wsinfer-zoo ls`, which contacts the Hub.
+
+**Registry discovery without an environment variable.** With
+`WSINSIGHT_ZOO_REGISTRY_PATH` unset, resolution falls back to
+`~/.wsinfer-zoo/wsinfer-zoo-registry.json`. Pointing that path at a fuller
+registry makes every caller agree on the model list — including subprocesses
+that never inherit the variable. A symlink works: the path is `resolve()`d, so
+the weights root follows the link target rather than the symlink's own
+directory.
 
 ---
 
@@ -767,347 +817,7 @@ print(df_export.columns.tolist())
 
 ---
 
-## 8. Acquiring a TCGA Slide Manifest via GDC API
-
-The NCI Genomic Data Commons (GDC) hosts all TCGA, TARGET, and other NCI
-program data.  Its REST API can return **manifest files** directly — no
-`gdc-client` binary is needed.  The manifest is a TSV listing slide UUIDs and
-filenames; WSInsight then downloads the actual slides on demand during
-inference via the GDC data endpoint (`https://api.gdc.cancer.gov/data/{uuid}`)
-with automatic retries and MD5 verification.
-
-### 8.1 Generating a Manifest
-
-POST to `https://api.gdc.cancer.gov/files` with `return_type=manifest`:
-
-```bash
-curl --request POST \
-  --header "Content-Type: application/json" \
-  --data '{
-    "filters": {
-        "op": "and",
-        "content": [
-            {
-                "op": "=",
-                "content": {
-                    "field": "cases.project.project_id",
-                    "value": "TCGA-BRCA"
-                }
-            },
-            {
-                "op": "=",
-                "content": {
-                    "field": "data_type",
-                    "value": "Slide Image"
-                }
-            },
-            {
-                "op": "=",
-                "content": {
-                    "field": "experimental_strategy",
-                    "value": "Diagnostic Slide"
-                }
-            }
-        ]
-    },
-    "return_type": "manifest",
-    "size": "99999"
-  }' \
-  'https://api.gdc.cancer.gov/files' \
-  > tcga-brca-dx-manifest.tsv
-```
-
-**Key parameters:**
-
-| Parameter       | Value              | Purpose                                          |
-| --------------- | ------------------ | ------------------------------------------------ |
-| `return_type`   | `manifest`         | Returns TSV manifest instead of JSON metadata    |
-| `size`          | `99999`            | Max results (default is 10 — always override)    |
-| `filters`       | JSON object        | GDC filter syntax (see below)                    |
-
-### 8.2 Filter Fields for Slide Images
-
-| Field                            | Values                                              | Notes                                   |
-| -------------------------------- | --------------------------------------------------- | --------------------------------------- |
-| `cases.project.project_id`       | `TCGA-BRCA`, `TCGA-LUAD`, etc.                     | Required — selects the cohort           |
-| `data_type`                      | `Slide Image`                                       | Required — filters to WSI files         |
-| `experimental_strategy`          | `Diagnostic Slide` or `Tissue Slide`                | Diagnostic = formalin-fixed; Tissue = frozen section |
-| `data_format`                    | `SVS`                                               | Optional — all TCGA slides are SVS      |
-| `cases.submitter_id`             | `TCGA-A7-A0CE`, ...                                | Optional — filter to specific cases     |
-
-Filters use the GDC query DSL with operators: `=`, `!=`, `in`, `and`, `or`.
-Nested filters are combined with `"op": "and"` at the top level.
-
-### 8.3 Common TCGA Project IDs
-
-| Cancer Type                  | Project ID    |
-| ---------------------------- | ------------- |
-| Breast invasive carcinoma    | `TCGA-BRCA`   |
-| Lung adenocarcinoma          | `TCGA-LUAD`   |
-| Lung squamous cell carcinoma | `TCGA-LUSC`   |
-| Prostate adenocarcinoma      | `TCGA-PRAD`   |
-| Pancreatic adenocarcinoma    | `TCGA-PAAD`   |
-| Colon adenocarcinoma         | `TCGA-COAD`   |
-| Rectum adenocarcinoma        | `TCGA-READ`   |
-| Glioblastoma multiforme      | `TCGA-GBM`    |
-| Ovarian serous cystadenocarcinoma | `TCGA-OV` |
-| Uterine corpus endometrial   | `TCGA-UCEC`   |
-| Kidney renal clear cell      | `TCGA-KIRC`   |
-| Head and neck squamous cell  | `TCGA-HNSC`   |
-| Liver hepatocellular         | `TCGA-LIHC`   |
-| Stomach adenocarcinoma       | `TCGA-STAD`   |
-| Bladder urothelial           | `TCGA-BLCA`   |
-| Skin cutaneous melanoma      | `TCGA-SKCM`   |
-
-### 8.4 Manifest Format
-
-The GDC API returns a TSV with these columns:
-
-```text
-id	filename	md5	size	state
-UUID-1	TCGA-A7-A0CE-01Z-00-DX1.svs	abc123...	234567890	released
-UUID-2	TCGA-A7-A13E-01Z-00-DX1.svs	def456...	345678901	released
-```
-
-WSInsight's `URIPath` reads this natively — it looks for `id`/`file_id` and
-`filename`/`file_name` columns, plus optional `md5` for checksum verification.
-
-### 8.5 Access Control
-
-- **TCGA diagnostic and tissue slides are open-access** — no token needed.
-- For controlled-access data (e.g. some TARGET projects), obtain an
-  authentication token from the [GDC Data Portal](https://portal.gdc.cancer.gov/).
-  There is no CLI flag for the token; pass it programmatically via the `token`
-  (or `token_path`) keyword argument on `URIPath`.  For typical TCGA workflows
-  this is not required.
-
-### 8.6 Combining Filters
-
-To select only specific cases within a project, use `"op": "in"`:
-
-```bash
-curl --request POST \
-  --header "Content-Type: application/json" \
-  --data '{
-    "filters": {
-        "op": "and",
-        "content": [
-            {
-                "op": "in",
-                "content": {
-                    "field": "cases.submitter_id",
-                    "value": ["TCGA-A7-A0CE", "TCGA-A7-A13E", "TCGA-BH-A0B3"]
-                }
-            },
-            {
-                "op": "=",
-                "content": {
-                    "field": "data_type",
-                    "value": "Slide Image"
-                }
-            },
-            {
-                "op": "=",
-                "content": {
-                    "field": "experimental_strategy",
-                    "value": "Diagnostic Slide"
-                }
-            }
-        ]
-    },
-    "return_type": "manifest",
-    "size": "99999"
-  }' \
-  'https://api.gdc.cancer.gov/files' \
-  > tcga-brca-subset-manifest.tsv
-```
-
-### 8.7 End-to-End Example
-
-```bash
-# 1. Download manifest for all TCGA-BRCA diagnostic slides
-curl --request POST \
-  --header "Content-Type: application/json" \
-  --data '{
-    "filters": {
-        "op": "and",
-        "content": [
-            {"op": "=", "content": {"field": "cases.project.project_id", "value": "TCGA-BRCA"}},
-            {"op": "=", "content": {"field": "data_type", "value": "Slide Image"}},
-            {"op": "=", "content": {"field": "experimental_strategy", "value": "Diagnostic Slide"}}
-        ]
-    },
-    "return_type": "manifest",
-    "size": "99999"
-  }' \
-  'https://api.gdc.cancer.gov/files' \
-  > tcga-brca-dx-manifest.tsv
-
-# 2. Verify slide count (header + data lines)
-wc -l tcga-brca-dx-manifest.tsv
-
-# 3. Run WSInsight on the manifest
-wsinsight run \
-  --wsi-dir "gdc-manifest://$(pwd)/tcga-brca-dx-manifest.tsv" \
-  --results-dir results-brca/ \
-  --model breast-tumor-resnet34.tcga-brca \
-  --batch-size 32
-```
-
-WSInsight downloads each slide on demand via `https://api.gdc.cancer.gov/data/{uuid}`,
-caches it locally under the directory set by `WSINSIGHT_REMOTE_CACHE_DIR`
-(defaults to `~/.cache/wsinsight` via `platformdirs.user_cache_dir`), and
-processes it.
-
----
-
-## 9. Acquiring TCGA Clinical & Molecular Data
-
-WSInsight produces per-slide morphological outputs.  Linking them to clinical
-endpoints (survival, treatment, subtypes) requires external clinical tables.
-TCGA slide filenames encode the patient barcode:
-
-```text
-TCGA-A7-A0CE-01Z-00-DX1.svs
-└─── patient ───┘
-```
-
-Extract the first 12 characters (`TCGA-A7-A0CE`) as the join key.
-
-### 9.1 GDC `/cases` API — Demographics, Staging & Treatment
-
-```bash
-curl 'https://api.gdc.cancer.gov/cases?filters={"op":"=","content":{"field":"cases.project.project_id","value":"TCGA-BRCA"}}&expand=diagnoses,diagnoses.treatments,demographic&size=99999&format=TSV' \
-  > tcga-brca-clinical.tsv
-```
-
-Fields returned via `expand=`:
-
-| Expand path              | Key fields                                                                                     |
-| ------------------------ | ---------------------------------------------------------------------------------------------- |
-| `demographic`            | `vital_status`, `days_to_death`, `days_to_birth`, `gender`, `race`, `ethnicity`                |
-| `diagnoses`              | `ajcc_pathologic_stage`, `ajcc_pathologic_t/n/m`, `primary_diagnosis`, `age_at_diagnosis`, `days_to_last_follow_up`, `days_to_recurrence`, `progression_or_recurrence`, `tumor_grade` |
-| `diagnoses.treatments`   | `treatment_type` (Surgery / Radiation / Pharmaceutical), `therapeutic_agents`, `treatment_intent_type` (Adjuvant / First-Line) |
-
-Join key: `submitter_id` in the TSV (e.g. `TCGA-A7-A0CE`).
-
-### 9.2 Curated Survival — Liu et al. 2018 (Recommended)
-
-The GDC raw fields (`days_to_death`, `days_to_last_follow_up`) require manual
-curation.  **Liu et al.** already did this for all 33 TCGA cancer types:
-
-> Liu J et al. "An Integrated TCGA Pan-Cancer Clinical Data Resource to Drive
-> High-Quality Survival Outcome Analytics." *Cell* 173(2):400-416, 2018.
-> DOI: [10.1016/j.cell.2018.02.052](https://doi.org/10.1016/j.cell.2018.02.052)
-
-Download **Supplementary Table 1** (Excel).  Columns:
-
-| Column      | Meaning                                |
-| ----------- | -------------------------------------- |
-| `bcr_patient_barcode` | Patient ID (e.g. `TCGA-A7-A0CE`) |
-| `OS`, `OS.time`       | Overall Survival (event + days)  |
-| `PFI`, `PFI.time`     | Progression-Free Interval        |
-| `DFI`, `DFI.time`     | Disease-Free Interval            |
-| `DSS`, `DSS.time`     | Disease-Specific Survival        |
-
-This is the gold-standard source for survival analysis on TCGA data.
-
-### 9.3 Molecular Subtypes & Biomarkers
-
-| Data type               | Best source                                | Join key           | Notes                                                        |
-| ----------------------- | ------------------------------------------ | ------------------ | ------------------------------------------------------------ |
-| **PAM50** (BRCA)        | TCGA BRCA paper supplementary or cBioPortal | `PATIENT_ID`       | Luminal A/B, HER2-enriched, Basal-like, Normal-like          |
-| **MSI-H / MSS**         | TCGA PanCanAtlas or MANTIS/MSISensor scores | `PATIENT_ID`       | Relevant for COAD, READ, STAD, UCEC                          |
-| **Immune subtypes**     | Thorsson et al. 2018 (*Immunity*)          | `TCGA Participant Barcode` | C1–C6 pan-cancer immune subtypes                     |
-| **ER / PR / HER2**      | cBioPortal clinical data tab               | `PATIENT_ID`       | Receptor status for breast cancer                            |
-| **Mutations / CNA**     | cBioPortal or GDC MAF files                | `PATIENT_ID`       | TP53, PIK3CA, BRAF, KRAS, etc.                               |
-
-### 9.4 cBioPortal — One-Stop Download
-
-[cBioPortal](https://www.cbioportal.org/) aggregates clinical, molecular, and
-genomic data into downloadable TSVs.  Example for TCGA-BRCA:
-
-```text
-https://www.cbioportal.org/study/clinicalData?id=brca_tcga_pan_can_atlas_2018
-```
-
-Download the "Clinical Data" tab as TSV — it includes PAM50, ER/PR/HER2
-status, survival, and staging in a single table keyed by `PATIENT_ID`.
-
-### 9.5 Joining Clinical Data with WSInsight Outputs
-
-```python
-import pandas as pd
-from pathlib import Path
-
-# Load WSInsight per-slide output
-slide_csv = Path("results/model-outputs-csv/TCGA-A7-A0CE-01Z-00-DX1.csv")
-df = pd.read_csv(slide_csv)
-
-# Extract patient barcode from filename
-patient_id = slide_csv.stem.rsplit("-", 3)[0]   # "TCGA-A7-A0CE"
-
-# Load clinical table (e.g. Liu et al. or cBioPortal)
-clinical = pd.read_csv("tcga-brca-clinical.tsv", sep="\t")
-
-# Join
-patient_row = clinical[clinical["bcr_patient_barcode"] == patient_id]
-print(patient_row[["OS", "OS.time", "PFI", "PFI.time"]].iloc[0])
-```
-
-For cohort-level analysis, iterate over all CSVs in `model-outputs-csv/`,
-extract each patient barcode, and merge into a single DataFrame.
-
-### 9.6 Example: cross-cohort biomarker-landscape screen
-
-A reference end-to-end pattern (TCGA-BRCA + TCGA-CRC) lives at
-`experiments/biomarker-landscape.ipynb`. It uses only two WSInsight artefacts
-per slide — `model-outputs-csv/<slide>.csv` and `graphs/<slide>.h5` (both
-produced by the stable `infer` + `ncomp` pipeline) — and builds per-slide
-features stratified into three region strata (`all` / `tumor` / `nontumor`)
-from the cached Delaunay graph:
-
-```python
-import h5py, numpy as np
-with h5py.File("results/graphs/SLIDE.h5", "r") as fh:
-    simplices = fh["simplices"][()]           # (M, 3) int32
-    centers   = fh["cell_centers"][()]        # (N, 2) int32
-
-# Prune simplices by µm edge length (25 µm default, matches ncomp).
-EDGE_LIMIT_UM = 25.0
-SPACING_UM_PX = 0.25                          # 40x slides
-edge_limit_px = EDGE_LIMIT_UM / SPACING_UM_PX
-coords = centers[simplices]
-max_edge = np.linalg.norm(coords[:, [0, 1, 0]] - coords[:, [1, 2, 2]], axis=2).max(axis=1)
-simp_ok = simplices[max_edge <= edge_limit_px]
-```
-
-Slide features are averaged to the patient level (first-12-char barcode) and
-screened univariately against every available clinical score per cohort —
-binary outcomes (receptor status, stage, MSI-H, 5-year OS event) via
-two-sided Mann–Whitney *U* / AUC, continuous outcomes (tumor purity, CYT,
-GZMA, PRF1, Leukocyte Fraction, Thorsson immune scores, age) via Spearman *ρ*,
-with Benjamini–Hochberg FDR correction per (cohort, score). Survival is
-handled with `lifelines` (KM + Cox HR).
-
-The notebook ships with a BRCA pretreatment filter
-(`history_of_neoadjuvant_treatment == "No"`, 1085/1099 patients) so
-morphology-derived biomarkers are not confounded by neoadjuvant therapy.
-Cohort artefacts land in `biomarker_landscape_results/`
-(`slide_features_<cohort>.csv`, `biomarker_landscape_screen.csv`,
-`biomarker_landscape_best.csv`, `km_best_per_cohort.{png,svg}`, …).
-Adding a new cohort only requires a `COHORTS[...]` entry and a clinical-score
-assembly function that emits a long-form
-`(patient_barcode, score_name, score_type, value)` table.
-
-> Any features in this notebook that go beyond what `ncomp` emits (e.g.
-> triad-level summaries computed from the raw `simplices` dataset) are
-> *user-side* derivations. They are not part of the stable WSInsight surface
-> and will not track schema changes in the experimental `tcomp` command.
-
----
-
-## 10. URI & Remote Data Support
+## 8. URI & Remote Data Support
 
 `--wsi-dir` and `--results-dir` accept:
 
@@ -1127,13 +837,20 @@ Default Credentials by default and can be overridden with `GS_STORAGE_OPTIONS`.
 **Important:** The GDC manifest URI scheme is `gdc-manifest://` (not `gdc://`).
 The path must be absolute (triple slash: `gdc-manifest:///absolute/path`).
 
+Building a TCGA/GDC manifest, and joining results to clinical endpoints
+(survival, PAM50, MSI, treatment), are covered in
+[`reference/remote-data.md`](reference/remote-data.md). Read that file only when
+the task actually involves a TCGA cohort.
+
 ---
 
-## 11. Error Recovery & Troubleshooting
+## 9. Error Recovery & Troubleshooting
 
 | Symptom                              | Cause                                 | Fix                                                         |
 | ------------------------------------ | ------------------------------------- | ----------------------------------------------------------- |
-| SSL errors / hang on startup         | HuggingFace Hub unreachable           | Set `WSINSIGHT_ZOO_REGISTRY_PATH` to local registry JSON    |
+| `SSLError` / `CERTIFICATE_VERIFY_FAILED` while locating a model | `-m/--model` always resolves through the Hub, even when the weights are already cached | Use `-z/--zoo-model-dir <dir>` (§5.1). Setting `WSINSIGHT_ZOO_REGISTRY_PATH` alone does **not** avoid this |
+| `LocalEntryNotFoundError` (with `HF_HUB_OFFLINE=1`) | Only the Hub cache under `HF_HOME` is searched; local weights sit beside the registry | Use `-z/--zoo-model-dir <dir>` (§5.1) |
+| Model name rejected as an invalid choice | The registry in use does not list it, so it is not a valid `--model` value | `wsinsight schema --models-only` shows what actually resolves |
 | `numpy >= 2.0` assertion failure     | Dependency upgraded numpy             | `pip install -c constraints.txt "numpy<2"`                   |
 | `ModuleNotFoundError: osgeo`         | GDAL not installed via conda          | `conda install -c conda-forge gdal=3.11.3`                  |
 | CUDA out of memory                   | Batch size too large                  | Reduce `--batch-size`                                       |
@@ -1144,16 +861,19 @@ The path must be absolute (triple slash: `gdc-manifest:///absolute/path`).
 
 ---
 
-## 12. Agent Decision Guide
+## 10. Agent Decision Guide
 
 Use this flowchart when deciding which command(s) to run:
 
 ```text
 Is WSInsight already installed / is Docker available?
-├─ Docker available → Prefer Docker (Section 2.4): no install needed
-│        bash docker-run.sh /path/to/data "" wsinsight run ...
-│        Or interactive: bash docker-run.sh /path/to/data [GPU_ID]
-├─ Not installed, no Docker → Install via conda (Section 2.1–2.3)
+├─ Docker available → Prefer Docker (Section 2.2): no install needed
+│        docker run --rm -i --gpus all --shm-size=32g --init \
+│          -e HOST_UID -e HOST_GID -v /path/to/data:/workspace \
+│          -v wsinsight-hf-cache:/app/hf-cache \
+│          huangchtw/wsinsight:latest bash -lc 'wsinsight run ...'
+├─ `wsinsight --help` fails and no Docker → fallback install (§2):
+│        bash ./conda-setup.sh <ENV_NAME>
 └─ Already installed → Continue below
 
 Has the user provided WSIs?
@@ -1161,23 +881,34 @@ Has the user provided WSIs?
 │        ├─ Yes → wsinsight run [--ncomp] [--export-geojson] [--export-omecsv]
 │        └─ No  → wsinsight patch → wsinsight infer → [ncomp] → wsinsight export
 ├─ No, but results-dir exists with model-outputs-csv/ → Skip patch+infer
+│        (Before skipping patch/infer, verify both patches/ and
+│         model-outputs-csv/ exist and are non-empty for the target slides;
+│         if either is missing or incomplete, run the missing upstream stage
+│         first rather than proceeding to ncomp/export.)
 │        ├─ Need per-cell neighborhood composition? → wsinsight ncomp
 │        │    (ncomp requires model-outputs-csv/ to exist. If it is absent,
 │        │     run wsinsight infer first.)
 │        └─ Need GeoJSON / OME-CSV?                 → wsinsight export --geojson --omecsv
 ├─ No slides, but user mentions TCGA / GDC / cancer cohort
-│        → Query GDC API for manifest (Section 8) → save .tsv
+│        → reference/remote-data.md §1 — GDC API manifest → save .tsv
 │        → wsinsight run --wsi-dir "gdc-manifest:///path/to/manifest.tsv" ...
 ├─ User needs clinical / molecular labels (survival, PAM50, MSI, treatment)
-│        → See Section 9: GDC /cases API, Liu et al. 2018, or cBioPortal
+│        → reference/remote-data.md §2 — GDC /cases, Liu et al. 2018, cBioPortal
 │        → Join on first 12 chars of slide filename (patient barcode)
 └─ No slides or results → Ask user for --wsi-dir
 ```
 
 ### Key Constraints for Agents
 
-1. **Model is required** for `run`, `patch`, and `infer`. Use `wsinfer-zoo ls`
-   to list available models, or ask the user.
+1. **A model is required** for `run`, `patch`, and `infer`. Call
+   `wsinsight schema --models-only` (or the `list_models` MCP tool) to see what
+   this installation can actually resolve — do not guess, and do not use
+   `wsinfer-zoo ls`, which contacts the Hub and fails on restricted networks.
+   Prefer `-z/--zoo-model-dir` for any model whose `path` is non-null. If a
+   requested model has a null `path` (weights not on disk) and the host cannot
+   reach huggingface.co, stop and tell the user the weights must first be
+   downloaded on a networked host and placed under the zoo registry directory;
+   do not attempt `-m`.
 2. **`--overwrite`** is needed to recompute existing outputs. Without it,
    completed slides are skipped (idempotent / resumable).
 3. **Environment variables** must be exported before the `wsinsight` command,
@@ -1185,18 +916,21 @@ Has the user provided WSIs?
 4. **`constraints.txt`** should always be used with `pip install -c` to prevent
    dependency drift.
 5. **When the user mentions TCGA, GDC, or a cancer cohort** (e.g. "analyze
-   TCGA-BRCA slides"), use the GDC API `curl` pattern from Section 8 to
-   generate a manifest TSV, then pass it via
+   TCGA-BRCA slides"), use the GDC API `curl` pattern in
+   [`reference/remote-data.md`](reference/remote-data.md) §1 to generate a
+   manifest TSV, then pass it via
    `--wsi-dir "gdc-manifest:///absolute/path/to/manifest.tsv"`. Do not ask
    the user to download slides manually.
 6. **Prefer Docker when available** — it avoids all local dependency
-   installation. Use `bash docker-run.sh /path/to/data` (or a manual
-   `docker run`) and run `wsinsight` commands inside the container. The
-   image pre-sets `WSINSIGHT_ZOO_REGISTRY_PATH` and `KERAS_HOME`.
+   installation. Call `docker run` directly (§2.2): mount the data at
+   `/workspace`, wrap the command in `bash -lc`, and use `-i` rather than
+   `-it` when there is no TTY. The image pre-sets
+   `WSINSIGHT_ZOO_REGISTRY_PATH` and `KERAS_HOME`.
 7. **When the user needs clinical labels** (survival, PAM50, MSI, treatment),
-   refer to Section 9. Use the GDC `/cases` API for demographics/staging,
-   Liu et al. 2018 for curated survival endpoints, and cBioPortal for
-   molecular subtypes. Join on the first 12 characters of the slide filename.
+   see [`reference/remote-data.md`](reference/remote-data.md) §2. Use the GDC
+   `/cases` API for demographics/staging, Liu et al. 2018 for curated survival
+   endpoints, and cBioPortal for molecular subtypes. Join on the first 12
+   characters of the slide filename.
 8. **Do not recommend the experimental subcommands** (`hplot`,
    `hplot-finalize`, `ecomp`, `tcomp`, `niche`, `niche-profile`, `agg`, `import`) unless the user
    has explicitly
@@ -1205,36 +939,7 @@ Has the user provided WSIs?
 
 ---
 
-## 13. Verification Checklist
-
-After installation, an agent should verify:
-
-```bash
-# 1. CLI loads without errors
-wsinsight --help
-
-# 2. All stable sub-commands are registered
-wsinsight run --help
-wsinsight patch --help
-wsinsight infer --help
-wsinsight ncomp --help
-wsinsight reg --help
-wsinsight export --help
-wsinsight schema --help
-
-# 3. Python imports work
-python -c "import wsinsight; print(wsinsight.__version__)"
-
-# 4. CUDA is available (for GPU inference)
-python -c "import torch; print('CUDA:', torch.cuda.is_available())"
-
-# 5. numpy is below 2.0
-python -c "import numpy; print('numpy:', numpy.__version__)"
-```
-
----
-
-## 14. MCP server (FastMCP)
+## 11. MCP server (FastMCP)
 
 WSInsight ships an optional [Model Context Protocol](https://modelcontextprotocol.io/)
 server that exposes the same CLI surface to MCP-compatible clients
@@ -1251,7 +956,7 @@ Auto-registered tools (stable surface):
 - **Long-running** (return `job_id`, poll `job_status` / `job_logs`,
   stop with `cancel_job`): `run`, `patch`, `infer`, `ncomp`.
 - **Short-running** (block, return exit code + log tail): `export`, `reg`.
-- **Meta**: `job_status`, `job_logs`, `cancel_job`, `list_jobs`.
+- **Meta**: `job_status`, `job_logs`, `cancel_job`, `list_jobs`, `list_models`.
 - **Resources**: `wsinsight://schema`, `wsinsight://models`,
   `wsinsight://results/{results_dir}/layout`.
 - **Prompt**: `reproduce_tcga_crc`.

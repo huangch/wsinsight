@@ -277,6 +277,32 @@ def build_server(
     def list_jobs() -> list[dict]:
         return jobs.list()
 
+    @mcp.tool(
+        name="list_models",
+        description=(
+            "List the models this installation can actually resolve, with the zoo "
+            "registry in use. Call this before `run`/`patch`/`infer` instead of "
+            "guessing a model name -- the per-tool `model_name` field does not "
+            "enumerate them. Entries with a non-null `path` are already on disk: "
+            "pass that path as `zoo_model_dir` to load without contacting "
+            "HuggingFace (`model_name` always goes through the Hub)."
+        ),
+    )
+    def list_models() -> dict[str, Any]:
+        out: dict[str, Any] = {"registry_path": None, "models": []}
+        try:
+            from wsinsight.modellib.models import list_registered_models
+            from wsinsight.modellib.models import resolve_zoo_registry_path
+
+            registry = resolve_zoo_registry_path()
+            # Report the resolved target: the lookup may land on a symlink, and
+            # local weights are found beside the real file, not the link.
+            out["registry_path"] = str(Path(registry).resolve()) if registry else None
+            out["models"] = list_registered_models()
+        except Exception as exc:  # pragma: no cover
+            out["error"] = repr(exc)
+        return out
+
     # 3. Resources.
     @mcp.resource(
         "wsinsight://schema",
