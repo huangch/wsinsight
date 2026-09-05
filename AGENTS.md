@@ -11,11 +11,20 @@ Whole-slide-image (WSI) inference pipeline: `wsinsight` CLI (click) → cell det
 - Create env: `bash ./conda-setup.sh wsinsight --mcp`. Use `--mcp` (short form `-m`) to install fastmcp; it is **not** installed by default to avoid jaraco version-scanning issues. Add `--dev` (short form `-d`) to also install pytest/pytest-cov/ruff/pre_commit for running the test suite; add `--reset` (short form `-r`) to nuke and recreate the env. Run `./conda-setup.sh --help` for the full CLI.
 - Known install workarounds live in `conda-setup.sh` (histomicstk `--no-deps`, explicit `large-image`, pyvips SSL fallback, `PIP_CACHE_DIR=/tmp` for NAS inode quotas). Don't "fix" them.
 
+## Running WSInsight (the unified wrapper)
+
+- `./wsinsight.sh` is the **single entry point** for running `wsinsight`. It manages BOTH backends — `native` (the wsinsight CLI on the host inside the activated conda env) and `docker` (the `huangchtw/wsinsight:latest` container). The legacy `wsinsight.sh` env-trampoline and the legacy `wsinsight-docker-run.sh` wrapper have both moved to `bak_old_scripts/`.
+- Subcommands: `./wsinsight.sh run [-b native|docker] [--gpu ID|all] [--tmpdir DIR] [--no-pull] [--dry-run] [WSINSIGHT_ARGS ...]`, `./wsinsight.sh status`, `./wsinsight.sh doctor [-b ...]`, `./wsinsight.sh where`. Run `./wsinsight.sh --help` for the full surface.
+- **Param-parsing rule**: everything before the first wsinsight subcommand name (`run`, `patch`, `infer`, ...) is consumed by the wrapper (env control: `-b`, `--gpu`, `--tmpdir`, `--no-pull`, `--dry-run`). From (and including) the first wsinsight subcommand name onward, every token is passed through verbatim. Use `--` to force passthrough explicitly.
+- **Default backend**: `native`. Override with `-b docker`, or set `WSINSIGHT_BACKEND=docker` in the environment.
+- **Discovery of wsinsight subcommands** (for param parsing): cached at `$HOME/.cache/wsinsight/commands.txt` (TTL `WSINSIGHT_COMMANDS_TTL_SECONDS`, default 86400) via `wsinsight schema --commands-only`. Falls back to a static builtin list if wsinsight isn't on PATH.
+- **Single-shard workflows use `./wsinsight.sh run`**. **Multi-shard parallel workflows keep using `./tmux-multi-gpu.sh`** (it intentionally does its own per-shard invocation; do not unify).
+
 ## Docker
 
-- `./wsinsight-docker-run.sh [DATA_DIR] [COMMAND...]` — wrapper for `docker run` (options: `--gpu <id>`, `--tmpdir <dir>`). HF model cache persists in named volume `wsinsight-hf-cache`.
-- The image **starts as root by design**: `docker-entrypoint.sh` remaps the baked-in `user` (uid 1000) to `$HOST_UID`/`$HOST_GID` if set, otherwise to the owner of the mounted `/workspace`, otherwise to `1000:1000`; then drops privileges via `setpriv`.
-- **Gotcha:** if the mounted dir is root-owned and `HOST_UID`/`HOST_GID` are unset, the session runs as root. Fix: `export HOST_UID=1000 HOST_GID=1000` or mount a dir you own.
+- The image `huangchtw/wsinsight:latest` **starts as root by design**: `docker-entrypoint.sh` remaps the baked-in `user` (uid 1000) to `$HOST_UID`/`$HOST_GID` if set, otherwise to the owner of the mounted `/workspace`, otherwise to `1000:1000`; then drops privileges via `setpriv`.
+- **Gotcha:** if the mounted dir is root-owned and `HOST_UID`/`HOST_GID` are unset, the docker session runs as root. Fix: `export HOST_UID=1000 HOST_GID=1000` or mount a dir you own.
+- You should rarely need to invoke `docker run` directly — use `./wsinsight.sh -b docker run ...` instead. The wrapper honors `--gpu <id>|all`, `--tmpdir <dir>`, `--no-pull`, and forwards `HOST_UID`/`HOST_GID` to the container when set.
 - Build: `./docker-build-push.sh`; entrypoint logic: `docker-entrypoint.sh`.
 
 ## MCP server (`wsinsight-mcp`)

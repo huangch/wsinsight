@@ -26,6 +26,82 @@ GeoJSON / OME-CSV.
 
 ---
 
+## 1.5 Running WSInsight
+
+**Do not** invoke `wsinsight` directly, and **do not** construct a `docker run ...` line by hand. Use the unified `./wsinsight.sh` wrapper in this repo, which manages BOTH backends and forwards the right env vars / docker flags:
+
+```
+./wsinsight.sh run  [-b {native,docker}]  [--gpu ID|all]  [--tmpdir DIR]  [--no-pull]  [--dry-run]   [WSINSIGHT_ARGS ...]
+./wsinsight.sh status
+./wsinsight.sh doctor [-b ...]
+./wsinsight.sh where
+./wsinsight.sh --help
+```
+
+### Why use the wrapper
+
+- **Single entry point for both backends.** Native (`-b native`, default) runs `wsinsight` from the activated conda env with the right `HF_*` / `SSL_CERT_FILE` / `WSINSIGHT_ZOO_REGISTRY_PATH` env-prefix. Docker (`-b docker`) wraps the same CLI in the `huangchtw/wsinsight:latest` container, mounts the data dir, exposes `--gpu`, persists the HF model cache as a named volume (`wsinsight-hf-cache`), and remaps uid/gid via `docker-entrypoint.sh`.
+- **Argv-parsing rule**: everything before the first wsinsight subcommand name (`run`, `patch`, `infer`, `niche`, ...) is env control for the wrapper. From (and including) the first wsinsight subcommand name onward, every token is passed through verbatim. Use `--` to force passthrough explicitly.
+- **Always use `--` if uncertain.** Both forms work; the explicit delimiter removes any doubt:
+  - `./wsinsight.sh -b docker --gpu 0 run --wsi-dir slides/ --results-dir r/ --model X` ✓
+  - `./wsinsight.sh -b docker --gpu 0 -- run --wsi-dir slides/ --results-dir r/ --model X` ✓
+
+### Defaults
+
+| Aspect | Default | Override |
+|---|---|---|
+| Backend | `native` | `-b docker` or `WSINSIGHT_BACKEND=docker` |
+| Docker image | `huangchtw/wsinsight:latest` | `WSINSIGHT_IMAGE=...` |
+| HF cache volume | `wsinsight-hf-cache` | `WSINSIGHT_HF_CACHE_VOLUME=...` |
+| Data dir (docker) | unset → wrapper errors | `WSINSIGHT_DATA_DIR=/path` (must exist) |
+| `docker pull` (docker) | best-effort at run | `--no-pull` flag |
+| Unknown `-X` flag | warn + passthrough to wsinsight | `WSINSIGHT_STRICT=1` |
+
+### Recipe — single run
+
+1. **Discover the wrapper's absolute path** (so the agent doesn't rely on a hardcoded location):
+
+   ```bash
+   WSINSIGHT=$(find /workspace -name wsinsight.sh -not -path '*/bak_old_scripts/*' 2>/dev/null | head -1)
+   ls -l "$WSINSIGHT"
+   ```
+
+2. **Pick a backend**:
+   - If `docker info` works AND you want containerized/reproducible runs → `-b docker`
+   - If the conda env `wsinsight` (or `wsi`) is activated → `-b native` (default)
+   - For per-shard multi-GPU parallel work, use `./tmux-multi-gpu.sh` instead (it does its own per-shard invocations).
+
+3. **Run a command** (replace run with any wsinsight subcommand: patch, infer, ncomp, export, ...):
+
+   ```bash
+   ./wsinsight.sh run --wsi-dir slides/ --results-dir results/ --model breast-tumor-resnet34.tcga-brca
+   # Or docker equivalent:
+   export WSINSIGHT_DATA_DIR=/path/with/slides
+   ./wsinsight.sh -b docker --gpu 0 run --wsi-dir slides/ --results-dir results/ --model breast-tumor-resnet34.tcga-brca
+   ```
+
+4. **Dry-run first** when the data dir or GPU choice is uncertain:
+
+   ```bash
+   WSINSIGHT_DATA_DIR=/tmp/pretend \
+   ./wsinsight.sh -b docker --gpu 1 --tmpdir /scratch --dry-run run --wsi-dir slides/ --results-dir results/ --model X
+   # prints the exact docker run command without executing it
+   ```
+
+### Recipe — diagnose
+
+- **`./wsinsight.sh where`** → absolute path to the wrapper (so the agent always knows where to find it next session).
+- **`./wsinsight.sh status`** → effective configuration: backend, GPU, tmpdir, image, wsinsight version, pass-through args.
+- **`./wsinsight.sh doctor [-b native|docker]`** → preflight checks for the chosen backend. For native, checks `wsinsight --version` and `WSINSIGHT_ZOO_REGISTRY_PATH`. For docker, checks `docker info`, image presence, HF cache volume, and `nvidia-smi`.
+
+### Decision tree
+
+1. Is `docker info` succeeding? → default to `-b docker` for reproducible runs.
+2. Else is `wsinsight --version` succeeding in the activated conda env? → use native (default).
+3. Else run `./wsinsight.sh doctor -b docker` first; if that fails, run `./wsinsight.sh doctor -b native` and decide from the printed diagnostics whether you need to create the conda env (`bash ./conda-setup.sh wsinsight`).
+
+---
+
 ## 2. Assumed Install
 
 Assume one of these already exists, and verify with `wsinsight --help` before
@@ -54,6 +130,10 @@ docker pull huangchtw/wsinsight:latest
 ```
 
 ### 2.2 Running via `docker run`
+
+> **For agents:** prefer `./wsinsight.sh -b docker run ...` (§1.5). The
+> `docker run` form below is documented for human reference and for users who
+> want to debug a container interactively.
 
 Invoke `docker run` directly. The canonical form is:
 

@@ -222,7 +222,15 @@ def _package_version() -> str:
     help="Emit only the model zoo: the active registry path and its entries, "
     "omitting the (much larger) command surface.",
 )
-def schema_cmd(output_path: str | None, models_only: bool) -> None:
+@click.option(
+    "--commands-only",
+    is_flag=True,
+    default=False,
+    help="Emit only the names of the registered subcommands as a flat JSON "
+    'object: {"commands": [...]}. Cheaper than the full schema for callers '
+    "that only need to know what subcommands exist (e.g. wsinsight.sh).",
+)
+def schema_cmd(output_path: str | None, models_only: bool, commands_only: bool) -> None:
     """Emit a machine-readable JSON schema of every wsinsight subcommand.
 
     Intended for downstream tools (e.g. the QuPath extension) that want to
@@ -233,11 +241,32 @@ def schema_cmd(output_path: str | None, models_only: bool) -> None:
     With ``--models-only`` the ``commands`` block is omitted and the registry
     actually in use is reported, which answers "which zoo am I resolving
     against?" without the caller parsing a ~130 kB document.
+
+    With ``--commands-only`` only the names of registered subcommands are
+    emitted (omitting the per-command descriptor and model zoo). This is
+    useful for callers — e.g. the ``wsinsight.sh`` wrapper — that need to
+    decide whether a positional argument is a wsinsight subcommand without
+    parsing the full ~130 kB document.
     """
     from ..modellib.models import list_registered_models
     from ..modellib.models import resolve_zoo_registry_path
 
-    schema: dict[str, Any] = {
+    if commands_only:
+        schema: dict[str, Any] = {
+            "schema_version": 1,
+            "wsinsight_version": _package_version(),
+            "commands": sorted(
+                name for name in cli.commands.keys() if name != "schema"
+            ),
+        }
+        payload = json.dumps(schema, indent=2, sort_keys=True)
+        if output_path:
+            Path(output_path).write_text(payload + "\n", encoding="utf-8")
+        else:
+            click.echo(payload)
+        return
+
+    schema = {
         "schema_version": 1,
         "wsinsight_version": _package_version(),
         "models": list_registered_models(),

@@ -33,6 +33,12 @@ WSInsight is a whole-slide pathology toolkit for giga-pixel H&E images. It start
 
 ## Quick Start
 
+> **For all examples below**, prefer `./wsinsight.sh` over invoking the `wsinsight`
+> command directly. The wrapper manages both `native` and `docker` execution
+> uniformly — see [§1.5 Running WSInsight (SKILL.md)](SKILL.md) for the full surface.
+> Examples that follow show the wrapper form; pass `-b docker` to run in the
+> `huangchtw/wsinsight:latest` container instead of the activated conda env.
+
 ### WSInfer-compatible workflow
 
 1. Prepare a directory of whole slide images, for example the sample data under `tests/reference`.
@@ -40,7 +46,7 @@ WSInsight is a whole-slide pathology toolkit for giga-pixel H&E images. It start
 3. Run inference (one-shot workflow that performs patch extraction + inference):
 
    ```bash
-   wsinsight run \
+   ./wsinsight.sh run \
      --wsi-dir slides/ \
      --results-dir results/ \
      --model breast-tumor-resnet34.tcga-brca \
@@ -48,9 +54,20 @@ WSInsight is a whole-slide pathology toolkit for giga-pixel H&E images. It start
      --num-workers 4
    ```
 
+   Equivalent docker form (requires a data dir exposed via `WSINSIGHT_DATA_DIR`):
+
+   ```bash
+   export WSINSIGHT_DATA_DIR=/path/with/slides
+   ./wsinsight.sh -b docker run \
+     --wsi-dir slides/ \
+     --results-dir results/ \
+     --model breast-tumor-resnet34.tcga-brca \
+     --batch-size 32 --num-workers 4
+   ```
+
 4. Inspect outputs in `results/model-outputs-*`, open the GeoJSON artifacts in QuPath or your preferred viewer, and review `run_metadata_*.json` for the captured environment details.
 
-Prefer an explicit two-step flow? Run `wsinsight patch` to generate cached patches/HDF5 metadata (idempotent and resumable), then invoke `wsinsight infer` against the same `--results-dir` to produce CSV/GeoJSON/OME-CSV outputs. Both commands expose the identical URI, segmentation, and QuPath options as `wsinsight run`.
+Prefer an explicit two-step flow? Run `./wsinsight.sh run patch …` to generate cached patches/HDF5 metadata (idempotent and resumable), then `./wsinsight.sh run infer …` against the same `--results-dir` to produce CSV/GeoJSON/OME-CSV outputs.
 
 ### WSInsight-native workflow (CellViT models)
 
@@ -61,12 +78,11 @@ WSInsight adds cell-centric Vision Transformer and HoverNet variants that are no
 3. Launch inference, for example with `CellViT-SAM-H-x40`:
 
    ```bash
-   wsinsight run \
+   ./wsinsight.sh -b docker --gpu 0 run \
      --wsi-dir slides/ \
      --results-dir results-cellvit/ \
      --model CellViT-SAM-H-x40 \
-     --batch-size 16 \
-     --num-workers 8
+     --batch-size 16 --num-workers 8
    ```
 
 4. Review the outputs in `results-cellvit/model-outputs-*` and downstream GeoJSON artifacts just like the compatible workflow.
@@ -83,7 +99,11 @@ Available WSInsight model names:
 - `hovernet_fast_pannuke`
 
 > [!TIP]
-> Use `CUDA_VISIBLE_DEVICES=… wsinsight run …` to pin execution to specific GPUs. The command prints an environment summary before inference begins.
+> Use the wrapper's `--gpu <ID>|all` flag (or `CUDA_VISIBLE_DEVICES=…` for native) to pin to specific GPUs. The command prints an environment summary before inference begins.
+
+### Multi-shard / parallel workflows
+
+For per-shard multi-GPU parallel runs (one tmux window per GPU), use `./tmux-multi-gpu.sh` — it does its own per-shard invocations and is left untouched by the wrapper unification.
 
 ## Installation
 
@@ -154,55 +174,37 @@ installation is needed** beyond Docker and the
 [NVIDIA Container Toolkit](https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/latest/install-guide.html).
 
 ```bash
-# Pull the published image
+# Pull the published image (the wrapper does this on first run; pull manually if you want)
 docker pull huangchtw/wsinsight:latest
 ```
 
-The repository ships two helper scripts:
-
- Script                                         | Purpose
-------------------------------------------------|----------------------------------------------------------------------------------------------------------------------------------------------------------------------------
- [`docker-run.sh`](docker-run.sh)               | Pull + run: mounts a data directory as `/workspace`. Supports interactive shell and direct-command modes. Usage: `bash docker-run.sh /path/to/data [GPU_ID] [COMMAND ...]`
- [`docker-build-push.sh`](docker-build-push.sh) | Build the image from source and push to Docker Hub (maintainers).
-
-Quick example — interactive shell:
+Use the unified wrapper (`-b docker`) rather than running `docker` directly:
 
 ```bash
-# All GPUs, mount current directory
-bash docker-run.sh $(pwd)
-
-# Specific GPU
-bash docker-run.sh $(pwd) 2
-```
-
-Quick example — direct command (no interactive shell):
-
-```bash
-# All GPUs — pass "" as GPU_ID, then the wsinsight command
-bash docker-run.sh $(pwd) "" wsinsight run \
-  --wsi-dir /workspace/slides --results-dir /workspace/results \
+# Native backend (default; uses your activated conda env):
+./wsinsight.sh run \
+  --wsi-dir slides/ \
+  --results-dir results/ \
   --model breast-tumor-resnet34.tcga-brca --batch-size 32
 
-# Pin to GPU 2
-bash docker-run.sh $(pwd) 2 wsinsight run \
-  --wsi-dir /workspace/slides --results-dir /workspace/results \
+# Docker backend (mounts DATA_DIR into the container, picks GPU):
+export WSINSIGHT_DATA_DIR=/path/with/slides
+./wsinsight.sh -b docker --gpu 0 run \
+  --wsi-dir slides/ \
+  --results-dir results/ \
   --model breast-tumor-resnet34.tcga-brca --batch-size 32
 ```
 
-Inside the container the conda `wsinsight` environment is pre-activated.  When
-no command is given after the GPU argument you land in an interactive shell;
-when a command is provided it runs and the container exits.
+Inside the container the conda `wsinsight` environment is pre-activated, so any
+`wsinsight` subcommand (`run`, `patch`, `infer`, `ncomp`, `export`, ...) works
+identically to the native backend.
 
-#### First-run model auto-download (no manual setup)
-
-Model weights are **not** baked into the image. The first time a registered
-model name is requested, WSInsight transparently downloads the corresponding
-TorchScript weights from Hugging Face Hub (using `huggingface_hub` with the
-`hf_transfer` accelerator) via the registry entry's `hf_repo_id`/`hf_revision`
-fields. No login or user input is needed for the public WSInsight model
+The legacy `wsinsight-docker-run.sh` wrapper (which had a slightly different
+argument style) has been folded into `./wsinsight.sh -b docker`; it lives in
+`bak_old_scripts/wsinsight-docker-run.sh` for reference.
 repositories.
 
-The cache lives at `/app/hf-cache` inside the container. `docker-run.sh`
+The cache lives at `/app/hf-cache` inside the container. `./wsinsight.sh -b docker`
 mounts a named Docker volume (`wsinsight-hf-cache`) on that path so the
 downloaded weights persist across container restarts — subsequent invocations
 reuse the cache and skip re-downloading. To inspect or remove the cache:
@@ -212,21 +214,20 @@ docker volume inspect wsinsight-hf-cache
 docker volume rm     wsinsight-hf-cache      # force a fresh download next run
 ```
 
-If you invoke `docker run` directly (without `docker-run.sh`), add
+If you invoke `docker run` directly (without the wrapper), add
 `-v wsinsight-hf-cache:/app/hf-cache` to keep the same behaviour.
 
-Alternatively, run a one-shot command without an interactive shell:
+Alternatively, run a one-shot command without an interactive shell using the
+wrapper's `--dry-run` flag to print the exact `docker run` it would issue:
 
 ```bash
-docker run --rm -it \
-  --gpus all --shm-size=32g \
-  --user $(id -u):$(id -g) \
-  -v /path/to/slides:/slides \
-  -v /path/to/results:/results \
-  -v wsinsight-hf-cache:/app/hf-cache \
-  huangchtw/wsinsight:latest \
-  bash -lc 'wsinsight run --wsi-dir /slides --results-dir /results --model breast-tumor-resnet34.tcga-brca'
+WSINSIGHT_DATA_DIR=/workspace ./wsinsight.sh -b docker --gpu 0 --dry-run run \
+  --wsi-dir slides --results-dir results --model breast-tumor-resnet34.tcga-brca
 ```
+
+The output is the resolved `docker run ...` invocation; copy and adjust path
+mappings as needed for one-off use. (For day-to-day work, prefer the wrapper
+itself.)
 
 > [!TIP]
 > `--shm-size=32g` is recommended for multi-worker dataloaders.  The image bakes in `WSINSIGHT_ZOO_REGISTRY_PATH`, `KERAS_HOME`, and `HF_HOME=/app/hf-cache` so no environment setup is needed.
@@ -900,7 +901,7 @@ wsinsight run --no-pin-memory --num-workers 0 --batch-size 8 \
 - Execute the test suite with `pytest` from the project root.
 - Documentation lives in `docs/`; build locally with `make -C docs html`.
 - Build and push the Docker image with [`docker-build-push.sh`](docker-build-push.sh).
-- Pull and run the published image with [`docker-run.sh`](docker-run.sh).
+- Pull and run the published image with `./wsinsight.sh -b docker` (data dir via `WSINSIGHT_DATA_DIR`).
 
 ## Interrupting a run
 
