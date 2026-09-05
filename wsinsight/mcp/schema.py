@@ -59,8 +59,30 @@ def schema_path() -> Path:
 
 
 def load_schema() -> dict[str, Any]:
-    """Load and return the bundled CLI JSON schema."""
-    return json.loads(schema_path().read_text(encoding="utf-8"))
+    """Load the bundled CLI JSON schema, refreshing the model zoo from this install.
+
+    The bundle is a build-time snapshot, so its ``models`` list (and the matching
+    ``model_name`` choices) only ever contains the models visible when it was
+    generated -- it cannot see ``WSINSIGHT_ZOO_REGISTRY_PATH``. The command surface
+    is taken from the bundle as before; only the zoo is re-resolved, falling back to
+    the snapshot if the registry cannot be read.
+    """
+    schema = json.loads(schema_path().read_text(encoding="utf-8"))
+    try:
+        from ..modellib.models import list_registered_models
+
+        models = list_registered_models()
+    except Exception:
+        return schema
+    if not models:
+        return schema
+    schema["models"] = models
+    names = sorted(m["name"] if isinstance(m, dict) else str(m) for m in models)
+    for command in schema.get("commands", {}).values():
+        for param in command.get("params", []):
+            if param.get("name") == "model_name" and param.get("choices"):
+                param["choices"] = names
+    return schema
 
 
 def _param_to_json_property(param: dict[str, Any]) -> dict[str, Any]:

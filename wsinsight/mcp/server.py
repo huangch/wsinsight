@@ -294,12 +294,16 @@ def build_server(
         mime_type="application/json",
     )
     def models_resource() -> str:
-        out: dict[str, Any] = {"source": "local-cache", "models": []}
+        out: dict[str, Any] = {"source": "local-registry", "models": []}
         try:
-            from wsinfer_zoo.client import load_registry  # type: ignore
+            # wsinsight's own resolver, not wsinfer_zoo's: only this one honours
+            # WSINSIGHT_ZOO_REGISTRY_PATH and resolves without reaching HuggingFace.
+            from wsinsight.modellib.models import list_registered_models
 
-            reg = load_registry()
-            out["models"] = sorted(reg.models.keys())
+            out["models"] = sorted(
+                m["name"] if isinstance(m, dict) else str(m)
+                for m in list_registered_models()
+            )
         except Exception as exc:  # pragma: no cover
             out["error"] = repr(exc)
         return json.dumps(out, indent=2)
