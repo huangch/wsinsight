@@ -12,7 +12,7 @@ os.environ.setdefault("TQDM_ASCII", " =")
 def _harden_tqdm_against_resize() -> None:
     """Make every tqdm bar survive terminal / tmux resizes.
 
-    Two changes are applied process-wide:
+    Three changes are applied process-wide:
 
     1. ``dynamic_ncols=True`` becomes the default for every bar, so tqdm
        re-queries the terminal width on each refresh instead of caching the
@@ -22,8 +22,11 @@ def _harden_tqdm_against_resize() -> None:
        the moment the terminal is resized, instead of waiting for the next
        ``update()`` call. This is the "reflash the whole bar on resize"
        behaviour.
+    3. Every reported terminal width loses one column, because tqdm pads a bar
+       to exactly ``ncols`` and a full-width bar leaves the closing ``]`` in
+       the final cell, which the terminal renders as an overflow.
 
-    Both are best-effort: any failure (e.g. tqdm not installed, handler
+    All are best-effort: any failure (e.g. tqdm not installed, handler
     installed from a non-main thread) is swallowed so importing wsinsight
     never fails because of progress-bar cosmetics.
     """
@@ -47,6 +50,23 @@ def _harden_tqdm_against_resize() -> None:
 
         _tqdm_std.tqdm.__init__ = _init
         _tqdm_std.tqdm._tqdm_resize_hardened = True
+
+    if not getattr(_tqdm_std, "_tqdm_width_margin_applied", False):
+        _orig_shape = _tqdm_std._screen_shape_wrapper
+
+        def _screen_shape_with_margin():
+            probe = _orig_shape()
+            if probe is None:
+                return probe
+
+            def _probe_one_short(fp):  # noqa: ANN001
+                cols, rows = probe(fp)
+                return (cols - 1 if cols else cols), rows
+
+            return _probe_one_short
+
+        _tqdm_std._screen_shape_wrapper = _screen_shape_with_margin
+        _tqdm_std._tqdm_width_margin_applied = True
 
     # 2. Redraw all active bars on terminal resize (SIGWINCH).
     try:
