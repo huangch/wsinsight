@@ -80,20 +80,40 @@
       "hf_repo_id": "huangch/hovernet_fast_pannuke",
       "hf_revision": "main"
     },
-    "10xGenomics-BRCA-CellViT-SAM-H-x40": {
-      "description": "10xGenomics-BRCA-CellViT-SAM-H-x40",
-      "hf_repo_id": "huangch/10xGenomics-BRCA-CellViT-SAM-H-x40",
-      "hf_revision": "main"
-    },
-    "10xGenomics-CRC-CellViT-SAM-H-x40": {
-      "description": "10xGenomics-CRC-CellViT-SAM-H-x40",
-      "hf_repo_id": "huangch/10xGenomics-CRC-CellViT-SAM-H-x40",
-      "hf_revision": "main"
-    },
     "hne_cell_classification": {
       "description": "hne_cell_classification",
       "hf_repo_id": "huangch/hne_cell_classification",
       "hf_revision": "main"
+    },
+    "10xGenomics-BRCA_BY_SLIDE-CellViT-SAM-H-x40": {
+      "description": "10x-Xenium-supervised breast head, slide-disjoint split",
+      "hf_repo_id": "huangch/10xGenomics-BRCA_BY_SLIDE-CellViT-SAM-H-x40",
+      "hf_revision": "c6c9561d64ac0d9ec3835138003f4d75abbc64a6"
+    },
+    "10xGenomics-BRCA_BY_TILE-CellViT-SAM-H-x40": {
+      "description": "10x-Xenium-supervised breast head, tile-stratified split",
+      "hf_repo_id": "huangch/10xGenomics-BRCA_BY_TILE-CellViT-SAM-H-x40",
+      "hf_revision": "787175e9941c96cc8d3c3a2e4bae19a99137ebc8"
+    },
+    "10xGenomics-CRC_BY_SLIDE-CellViT-SAM-H-x40": {
+      "description": "10x-Xenium-supervised colorectal head, slide-disjoint split",
+      "hf_repo_id": "huangch/10xGenomics-CRC_BY_SLIDE-CellViT-SAM-H-x40",
+      "hf_revision": "80620d90dde45553c16361f4e69d7ef9f4fd5264"
+    },
+    "10xGenomics-CRC_BY_TILE-CellViT-SAM-H-x40": {
+      "description": "10x-Xenium-supervised colorectal head, tile-stratified split",
+      "hf_repo_id": "huangch/10xGenomics-CRC_BY_TILE-CellViT-SAM-H-x40",
+      "hf_revision": "ad68def89d42ededceb1333af36d5b0d2889c3f7"
+    },
+    "10xGenomics-PANTISSUE_BY_SLIDE-CellViT-SAM-H-x40": {
+      "description": "10x-Xenium-supervised pan-tissue head, slide-disjoint split",
+      "hf_repo_id": "huangch/10xGenomics-PANTISSUE_BY_SLIDE-CellViT-SAM-H-x40",
+      "hf_revision": "4375e93d1a4c0ae7bfee472d3098e353a9a44a0a"
+    },
+    "10xGenomics-PANTISSUE_BY_TILE-CellViT-SAM-H-x40": {
+      "description": "10x-Xenium-supervised pan-tissue head, tile-stratified split",
+      "hf_repo_id": "huangch/10xGenomics-PANTISSUE_BY_TILE-CellViT-SAM-H-x40",
+      "hf_revision": "a8498b90411b1093c3166232c4e51c96859b1bea"
     }
   }
 }
