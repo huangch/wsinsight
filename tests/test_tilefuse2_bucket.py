@@ -31,7 +31,7 @@ def _geom(cfg, height=4000, width=3000):
 @pytest.mark.parametrize(
     "cfg,model_pad,model_bucket,exp_m,exp_b",
     [
-        (CELLVIT, 32, 960, 29, 877),
+        (CELLVIT, 32, 960, 32, 877),
         (HOVERNET, 46, 164, 42, 150),
     ],
 )
@@ -52,6 +52,17 @@ def test_tile_identity_holds_after_rounding(cfg):
 def test_hovernet_bucket_equals_model_output_size():
     # 256 - 2*46 = 164 is exactly what the network emits for a 256 px input.
     assert _geom(HOVERNET).model_bucket_size == 256 - 2 * 46
+
+
+def test_geometry_enforces_minimum_slide_pixel_padding():
+    g = BucketGeometry.from_model_config(
+        **CELLVIT,
+        model_mpp=0.25,
+        slide_mpp=0.5,
+        slide_height=1000,
+        slide_width=1000,
+    )
+    assert g.bucket_padding == 32
 
 
 def test_zero_bucket_size_is_rejected():

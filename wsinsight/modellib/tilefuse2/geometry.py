@@ -1,7 +1,7 @@
 """Bucket-ownership geometry for the v2 stitcher.
 
-Every number here is derived from the model's ``config.json``; the module
-introduces no tunable constant of its own.
+Geometry is derived from the model's ``config.json``, with a fixed 32 px
+minimum for slide-pixel bucket padding to reduce truncation of larger cells.
 
 Model-pixel domain::
 
@@ -15,7 +15,8 @@ the same thing for our purpose: the margin of a model patch whose predictions
 are context-only.  Summing them is therefore safe and needs no default.
 
 Slide-pixel domain: ``bucket_size`` and ``bucket_padding`` are converted
-independently and the tile is *derived* as ``T = B + 2M`` so the identity holds
+independently.  Bucket padding has a 32 px minimum to reduce truncation of
+larger cells; the tile is *derived* as ``T = B + 2M`` so the identity holds
 exactly after rounding.
 
 Grid::
@@ -101,7 +102,7 @@ class BucketGeometry:
         ratio = float(model_mpp) / float(slide_mpp)
         return cls(
             bucket_size=max(1, int(round(model_bucket * ratio))),
-            bucket_padding=int(round(model_pad * ratio)),
+            bucket_padding=max(32, int(round(model_pad * ratio))),
             slide_height=int(slide_height),
             slide_width=int(slide_width),
             model_tile_size=model_tile,

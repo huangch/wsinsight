@@ -26,10 +26,10 @@ def _load_helper():
     helper_src = text[i:j]
     ns: dict = {}
     exec(compile(helper_src, str(src_path), "exec"), ns)
-    return ns["_advance_batch_search"]
+    return ns["_advance_batch_search"], ns["_is_corrupt_jpeg_error"]
 
 
-_advance_batch_search = _load_helper()
+_advance_batch_search, _is_corrupt_jpeg_error = _load_helper()
 
 
 # ---------------------------------------------------------------------------
@@ -113,6 +113,21 @@ def test_success_at_converged_bracket_holds_steady():
     assert nxt == 20
     assert lo == 20
     assert hi == 21
+
+
+def test_corrupt_jpeg_openslide_worker_error_is_recognized():
+    openslide_error = type("OpenSlideError", (Exception,), {})
+    err = openslide_error(
+        "Caught OpenSlideError in DataLoader worker process 4.\n"
+        "openslide.lowlevel.OpenSlideError: "
+        "Corrupt JPEG data: premature end of data segment"
+    )
+    assert _is_corrupt_jpeg_error(err)
+
+
+def test_unrelated_data_loader_error_is_not_recognized_as_corrupt_jpeg():
+    err = RuntimeError("DataLoader worker process exited unexpectedly")
+    assert not _is_corrupt_jpeg_error(err)
 
 
 # ---------------------------------------------------------------------------

@@ -251,6 +251,23 @@ def _batch_size_for_available_vram(
         return min_batch
 
 
+def _is_corrupt_jpeg_error(err: Exception) -> bool:
+    """Identify OpenSlide JPEG decode errors, including DataLoader wrappers."""
+    message = str(err)
+    is_openslide_error = (
+        type(err).__name__ == "OpenSlideError"
+        or "Caught OpenSlideError in DataLoader" in message
+    )
+    return is_openslide_error and "Corrupt JPEG data:" in message
+
+
+def _corrupt_jpeg_error_detail(err: Exception) -> str:
+    """Return the concise JPEG decoder message from a worker traceback."""
+    return next(
+        line.strip() for line in str(err).splitlines() if "Corrupt JPEG data:" in line
+    )
+
+
 def run_inference(
     wsi_dir: URIPath | None,
     slide_paths: List[URIPath] | None,
@@ -516,9 +533,21 @@ def run_inference(
                     # multiprocessing_context="spawn",
                 )
 
-                stain_normalization_batch_imgs, _ = next(
-                    iter(stain_normalization_loader)
-                )
+                try:
+                    stain_normalization_batch_imgs, _ = next(
+                        iter(stain_normalization_loader)
+                    )
+                except Exception as exc:
+                    if not _is_corrupt_jpeg_error(exc):
+                        raise
+                    logger.warning(
+                        "Corrupt JPEG data while reading %s; skipping slide: %s",
+                        wsi_path.stem,
+                        _corrupt_jpeg_error_detail(exc),
+                    )
+                    failed_inference.append(wsi_path.stem)
+                    pbar.update(1)
+                    continue
                 # Macenko needs RGB as the last axis of an *image*; a flat
                 # (pixels, 3) table is read as a 3-px-wide 1-channel image and
                 # dies in np.cross.  Stacking patches row-wise is safe because
@@ -866,7 +895,20 @@ def run_inference(
                             current_batch_size, _bs_lo, _bs_hi, _bs_max, oom=False
                         )
                         break
-                    except (torch.cuda.OutOfMemoryError, RuntimeError) as _oom_err:
+                    except Exception as _oom_err:
+                        if _is_corrupt_jpeg_error(_oom_err):
+                            logger.warning(
+                                "Corrupt JPEG data while reading %s; skipping slide: %s",
+                                wsi_path.stem,
+                                _corrupt_jpeg_error_detail(_oom_err),
+                            )
+                            failed_inference.append(wsi_path.stem)
+                            _oom_skip = True
+                            break
+                        if not isinstance(
+                            _oom_err, (torch.cuda.OutOfMemoryError, RuntimeError)
+                        ):
+                            raise
                         _is_cuda_oom = (
                             isinstance(_oom_err, torch.cuda.OutOfMemoryError)
                             or "out of memory" in str(_oom_err).lower()
@@ -1090,7 +1132,20 @@ def run_inference(
                             current_batch_size, _bs_lo, _bs_hi, _bs_max, oom=False
                         )
                         break
-                    except (torch.cuda.OutOfMemoryError, RuntimeError) as _oom_err:
+                    except Exception as _oom_err:
+                        if _is_corrupt_jpeg_error(_oom_err):
+                            logger.warning(
+                                "Corrupt JPEG data while reading %s; skipping slide: %s",
+                                wsi_path.stem,
+                                _corrupt_jpeg_error_detail(_oom_err),
+                            )
+                            failed_inference.append(wsi_path.stem)
+                            _oom_skip = True
+                            break
+                        if not isinstance(
+                            _oom_err, (torch.cuda.OutOfMemoryError, RuntimeError)
+                        ):
+                            raise
                         _is_cuda_oom = (
                             isinstance(_oom_err, torch.cuda.OutOfMemoryError)
                             or "out of memory" in str(_oom_err).lower()
